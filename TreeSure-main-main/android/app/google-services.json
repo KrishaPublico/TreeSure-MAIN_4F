@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "324875915553",
+    "project_id": "treesure-6496c",
+    "storage_bucket": "treesure-6496c.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:324875915553:android:277a5a4d8c704ad0bcae60",
+        "android_client_info": {
+          "package_name": "com.Capstone2.treesure_app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyD59JpWFMXMnGAld4_7X27lhp0vyzj_YSQ"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

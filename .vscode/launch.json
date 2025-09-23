@@ -1,0 +1,48 @@
+{
+    // Use IntelliSense to learn about possible attributes.
+    // Hover to view descriptions of existing attributes.
+    // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "TreeSure-main-main",
+            "cwd": "TreeSure-main-main",
+            "request": "launch",
+            "type": "dart"
+        },
+        {
+            "name": "TreeSure-main-main (profile mode)",
+            "cwd": "TreeSure-main-main",
+            "request": "launch",
+            "type": "dart",
+            "flutterMode": "profile"
+        },
+        {
+            "name": "TreeSure-main-main (release mode)",
+            "cwd": "TreeSure-main-main",
+            "request": "launch",
+            "type": "dart",
+            "flutterMode": "release"
+        },
+        {
+            "name": "tree_sure_new",
+            "cwd": "tree_sure_new",
+            "request": "launch",
+            "type": "dart"
+        },
+        {
+            "name": "tree_sure_new (profile mode)",
+            "cwd": "tree_sure_new",
+            "request": "launch",
+            "type": "dart",
+            "flutterMode": "profile"
+        },
+        {
+            "name": "tree_sure_new (release mode)",
+            "cwd": "tree_sure_new",
+            "request": "launch",
+            "type": "dart",
+            "flutterMode": "release"
+        }
+    ]
+}
