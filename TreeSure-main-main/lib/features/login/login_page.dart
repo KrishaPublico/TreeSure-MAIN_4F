@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:treesure_app/features/navbars/applicant_navbar.dart';
 import 'package:treesure_app/features/navbars/forester_navbar.dart';
+import 'package:treesure_app/features/signup/signup_page.dart';
 
 class LoginPage extends StatefulWidget {
   final String role;
@@ -55,6 +56,18 @@ class _LoginPageState extends State<LoginPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.white,
+      appBar: AppBar(
+        title: Text("Log In"),
+        titleTextStyle: const TextStyle(
+          color: Colors.white,
+          fontSize: 20,
+          fontWeight: FontWeight.bold,
+        ),
+        backgroundColor: Colors.green.shade800,
+        iconTheme: const IconThemeData(
+          color: Colors.white, // <-- This makes the back arrow white
+        ),
+      ),
       body: Center(
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 30),
@@ -71,7 +84,6 @@ class _LoginPageState extends State<LoginPage> {
                 ),
               ),
               const SizedBox(height: 5),
-
               const Text(
                 "Please log in to access your account",
                 style: TextStyle(fontSize: 16, color: Colors.black87),
@@ -133,9 +145,7 @@ class _LoginPageState extends State<LoginPage> {
               Align(
                 alignment: Alignment.centerRight,
                 child: TextButton(
-                  onPressed: () {
-                    // TODO: Implement forgot password with Firebase
-                  },
+                  onPressed: () {},
                   child: const Text(
                     "Forget password?",
                     style: TextStyle(color: Colors.black87),
@@ -164,7 +174,12 @@ class _LoginPageState extends State<LoginPage> {
               // Sign Up Button
               OutlinedButton(
                 onPressed: () {
-                  // TODO: Navigate to SignUpPage
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => SignupPage(role: widget.role),
+                    ),
+                  );
                 },
                 style: OutlinedButton.styleFrom(
                   side: BorderSide(color: Colors.green.shade800),
