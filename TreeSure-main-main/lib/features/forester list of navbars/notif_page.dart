@@ -1,7 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:treesure_app/features/forester/applicant_detail_page.dart';
+
 class NotifPage_Forester extends StatefulWidget {
-  const NotifPage_Forester({super.key});
+  final String foresterId; // comes from login
+  final String foresterName; // comes from login
+  const NotifPage_Forester(
+      {super.key, required this.foresterId, required this.foresterName});
 
   @override
   State<NotifPage_Forester> createState() => _NotifPageState();
@@ -60,18 +64,23 @@ class _NotifPageState extends State<NotifPage_Forester> {
                   return ListTile(
                     leading: const CircleAvatar(
                       backgroundColor: Colors.green,
-                      child: Icon(Icons.notifications_active, color: Colors.white),
+                      child:
+                          Icon(Icons.notifications_active, color: Colors.white),
                     ),
                     title: const Text("Notification Title"),
-                    subtitle: const Text("Applicant's requirement details here"),
+                    subtitle:
+                        const Text("Applicant's requirement details here"),
                     trailing: const Text("12:00 PM"),
                     onTap: () {
                       Navigator.push(
                         context,
                         MaterialPageRoute(
-                          builder: (context) => const ApplicantDetailPage(
+                          builder: (context) => ApplicantDetailPage(
                             applicantName: "Applicant",
-                            requirementDetails: "Details about the applicant's requirements.",
+                            requirementDetails:
+                                "Details about the applicant's requirements.",
+                            foresterName: widget.foresterName,
+                            foresterId: widget.foresterId,
                           ),
                         ),
                       );

@@ -11,21 +11,17 @@ class IntroPage extends StatelessWidget {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            // Main logo image (adjusted size)
-            Image.asset(
-              'assets/treesurelogo.png',
-              height: 220, // smaller logo
-              fit: BoxFit.contain,
-            ),
+            // Main logo image (optional)
+            Image.asset('assets/treesurelogo.png'),
 
-            const SizedBox(height: 30),
+            const SizedBox(height: 50),
 
-            // Leaf and title grouped together
+            // Leaf and title grouped together with proper spacing and no clipping
             SizedBox(
-              height: 60,
+              height: 60, // Allow space for the leaf
               child: Stack(
                 alignment: Alignment.center,
-                clipBehavior: Clip.none,
+                clipBehavior: Clip.none, // Allow leaf to overflow if needed
                 children: [
                   Text(
                     'TreeSure',
@@ -37,8 +33,8 @@ class IntroPage extends StatelessWidget {
                     ),
                   ),
                   Positioned(
-                    top: -14,
-                    right: 60,
+                    top: -14, // Moves the leaf above the text
+                    right: 60, // Adjust this for horizontal placement over 'S'
                     child: Image.asset(
                       'assets/treesure_leaf.png',
                       height: 30,

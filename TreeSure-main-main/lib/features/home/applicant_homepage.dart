@@ -4,8 +4,14 @@ import 'package:treesure_app/features/applicant/CuttingPermit.dart';
 import 'package:treesure_app/features/applicant/summary_Reports.dart';
 
 class ApplicantHomepage extends StatelessWidget {
-  const ApplicantHomepage({super.key});
+  const ApplicantHomepage({
+    super.key,
+    required this.applicantId,
+    required this.applicantName,
+  });
 
+  final String applicantId;   // Dynamic Applicant ID
+  final String applicantName; // Dynamic Applicant Name
   final int totalRestrictedTrees = 30;
 
   @override
@@ -38,9 +44,9 @@ class ApplicantHomepage extends StatelessWidget {
                         child: Icon(Icons.person, size: 40, color: Colors.green),
                       ),
                       const SizedBox(height: 8),
-                      const Text(
-                        "Krisha Arellano Publico",
-                        style: TextStyle(
+                      Text(
+                        applicantName, // 👈 Dynamic Name
+                        style: const TextStyle(
                           fontSize: 18,
                           fontWeight: FontWeight.bold,
                           color: Colors.white,
@@ -166,7 +172,7 @@ class ApplicantHomepage extends StatelessWidget {
                   ),
                   const SizedBox(height: 12),
 
-                  // ✅ CTPO Button -> Opens Upload Page
+                  // CTPO Button
                   _buildApplicantPermitButton(
                     context,
                     "CTPO (Certificate of Tree Plantation Ownership)",
@@ -175,7 +181,10 @@ class ApplicantHomepage extends StatelessWidget {
                       Navigator.push(
                         context,
                         MaterialPageRoute(
-                          builder: (context) => const CTPOUploadPage(),
+                          builder: (context) => CTPOUploadPage(
+                            applicantId: applicantId,
+                            applicantName: applicantName,
+                          ),
                         ),
                       );
                     },
@@ -199,7 +208,7 @@ class ApplicantHomepage extends StatelessWidget {
                   _buildApplicantPermitButton(
                     context,
                     "Certificate to Travel (COV)",
-              Icons.build,
+                    Icons.build,
                     () {
                       ScaffoldMessenger.of(context).showSnackBar(
                         const SnackBar(
@@ -223,7 +232,7 @@ class ApplicantHomepage extends StatelessWidget {
                   _buildApplicantPermitButton(
                     context,
                     "Reports",
-                      Icons.description,
+                    Icons.description,
                     () {
                       Navigator.push(
                         context,

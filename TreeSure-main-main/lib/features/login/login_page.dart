@@ -1,10 +1,12 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:treesure_app/features/navbars/applicant_navbar.dart';
 import 'package:treesure_app/features/navbars/forester_navbar.dart';
 import 'package:treesure_app/features/signup/signup_page.dart';
+import '../roles/roles_page.dart'; // ✅ Import RolePage for back navigation
 
 class LoginPage extends StatefulWidget {
-  final String role;
+  final String role; // Role passed from RolePage
 
   const LoginPage({super.key, required this.role});
 
@@ -17,35 +19,83 @@ class _LoginPageState extends State<LoginPage> {
   final TextEditingController _passwordController = TextEditingController();
   bool _obscurePassword = true;
 
-  void _login(BuildContext context) {
+  Future<void> _login(BuildContext context) async {
     final email = _emailController.text.trim();
     final password = _passwordController.text.trim();
 
-    bool valid = false;
-
-    // TODO: Replace with Firebase Auth
-    if (widget.role == "forester" &&
-        email == "forester@gmail.com" &&
-        password == "1234") {
-      valid = true;
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(builder: (_) => const ForesterNavbar()),
-      );
-    } else if (widget.role == "applicant" &&
-        email == "user@gmail.com" &&
-        password == "1234") {
-      valid = true;
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(builder: (_) => const ApplicantNavbar()),
-      );
-    }
-
-    if (!valid) {
+    if (email.isEmpty || password.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text("Invalid email or password."),
+          content: Text("Please enter both email and password."),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
+    try {
+      final query = await FirebaseFirestore.instance
+          .collection('users')
+          .where('username', isEqualTo: email)
+          .where('password', isEqualTo: password)
+          .limit(1)
+          .get();
+
+      if (query.docs.isNotEmpty) {
+        final doc = query.docs.first;
+        final userData = doc.data();
+        final String dbRole = userData['role'] ?? "Unknown";
+
+        if (dbRole.toLowerCase() == widget.role.toLowerCase()) {
+          if (dbRole == "Forester") {
+            final String foresterId = doc.id;
+            final String foresterName = userData['name'] ?? "Unknown Forester";
+
+            Navigator.pushReplacement(
+              context,
+              MaterialPageRoute(
+                builder: (_) => ForesterNavbar(
+                  foresterId: foresterId,
+                  foresterName: foresterName,
+                ),
+              ),
+            );
+          } else if (dbRole == "Applicant") {
+  final String applicantId = doc.id;
+  final String applicantName = userData['name'] ?? "Unknown Applicant";
+
+  Navigator.pushReplacement(
+    context,
+    MaterialPageRoute(
+      builder: (_) => ApplicantNavbar(
+        applicantId: applicantId,
+        applicantName: applicantName,
+      ),
+    ),
+  );
+}
+
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content:
+                  Text("You are registered as $dbRole, not ${widget.role}."),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text("Invalid username or password."),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text("Error: $e"),
           backgroundColor: Colors.red,
         ),
       );
@@ -57,7 +107,7 @@ class _LoginPageState extends State<LoginPage> {
     return Scaffold(
       backgroundColor: Colors.white,
       appBar: AppBar(
-        title: Text("Log In"),
+        title: const Text("Log In"),
         titleTextStyle: const TextStyle(
           color: Colors.white,
           fontSize: 20,
@@ -65,38 +115,42 @@ class _LoginPageState extends State<LoginPage> {
         ),
         backgroundColor: Colors.green.shade800,
         iconTheme: const IconThemeData(
-          color: Colors.white, // <-- This makes the back arrow white
+          color: Colors.white, // Back arrow color
         ),
       ),
       body: Center(
-        child: Padding(
+        child: SingleChildScrollView(
           padding: const EdgeInsets.symmetric(horizontal: 30),
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              // App Title
+              // Logo above the title
+              Image.asset(
+                "assets/treesurelogo.png", // Replace with your logo path
+                height: 120,
+              ),
+              const SizedBox(height: 20),
+
+              // ✅ Dynamic Title
               Text(
-                "TreeSure",
+                "TreeSure - ${widget.role} Login",
                 style: TextStyle(
-                  fontSize: 42,
+                  fontSize: 30,
+                  fontFamily: 'Poppins',
                   fontWeight: FontWeight.bold,
                   color: Colors.green[900],
                 ),
-              ),
-              const SizedBox(height: 5),
-              const Text(
-                "Please log in to access your account",
-                style: TextStyle(fontSize: 16, color: Colors.black87),
                 textAlign: TextAlign.center,
               ),
+
               const SizedBox(height: 30),
 
-              // Email
+              // Email Field
               TextFormField(
                 controller: _emailController,
                 decoration: InputDecoration(
                   prefixIcon: const Icon(Icons.email, color: Colors.white),
-                  hintText: "Email",
+                  hintText: "Email / Username",
                   filled: true,
                   fillColor: Colors.green,
                   hintStyle: const TextStyle(color: Colors.white),
@@ -109,7 +163,7 @@ class _LoginPageState extends State<LoginPage> {
               ),
               const SizedBox(height: 15),
 
-              // Password
+              // Password Field
               TextFormField(
                 controller: _passwordController,
                 obscureText: _obscurePassword,
@@ -139,20 +193,7 @@ class _LoginPageState extends State<LoginPage> {
                 ),
                 style: const TextStyle(color: Colors.white),
               ),
-              const SizedBox(height: 10),
-
-              // Forgot Password
-              Align(
-                alignment: Alignment.centerRight,
-                child: TextButton(
-                  onPressed: () {},
-                  child: const Text(
-                    "Forget password?",
-                    style: TextStyle(color: Colors.black87),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 10),
+              const SizedBox(height: 20),
 
               // Login Button
               ElevatedButton(
@@ -169,10 +210,11 @@ class _LoginPageState extends State<LoginPage> {
                   style: TextStyle(fontSize: 18, color: Colors.white),
                 ),
               ),
-              const SizedBox(height: 20),
 
-              // Sign Up Button
-              OutlinedButton(
+              const SizedBox(height: 10),
+
+              // ✅ Sign Up Button
+              TextButton(
                 onPressed: () {
                   Navigator.push(
                     context,
@@ -181,16 +223,14 @@ class _LoginPageState extends State<LoginPage> {
                     ),
                   );
                 },
-                style: OutlinedButton.styleFrom(
-                  side: BorderSide(color: Colors.green.shade800),
-                  minimumSize: const Size(double.infinity, 50),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(10),
+                child: const Text(
+                  "Don’t have an account? Sign Up",
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontFamily: 'Poppins',
+                    fontWeight: FontWeight.bold,
+                    color: Colors.green,
                   ),
-                ),
-                child: Text(
-                  "Sign Up",
-                  style: TextStyle(fontSize: 16, color: Colors.green.shade800),
                 ),
               ),
             ],

@@ -1,4 +1,4 @@
-package com.example.treesure_app
+package com.Capstone2.treesure_app
 
 import io.flutter.embedding.android.FlutterActivity
 

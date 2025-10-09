@@ -1,7 +1,18 @@
+import 'dart:io';
+import 'dart:convert'; // for Base64
+import 'package:firebase_database/firebase_database.dart'; // Realtime DB
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 
 class CTPOUploadPage extends StatefulWidget {
-  const CTPOUploadPage({super.key});
+  final String applicantId; // ID of the applicant uploading
+  final String applicantName; // Name of applicant
+
+  const CTPOUploadPage({
+    super.key,
+    required this.applicantId,
+    required this.applicantName,
+  });
 
   @override
   State<CTPOUploadPage> createState() => _CTPOUploadPageState();
@@ -18,6 +29,47 @@ class _CTPOUploadPageState extends State<CTPOUploadPage> {
     "4.c If the trees to be cut fall within more than one municipality/city, endorsement shall be secured either from the Provincial Governor or all the Municipality/City Mayors concerned": null,
     "5. Special Power of Attorney (SPA) (1 original) – [Applicable if the client is a representative]": null,
   };
+
+  /// Pick file and upload to Realtime Database as Base64
+  Future<void> pickAndUploadFile(String label) async {
+    try {
+      final result = await FilePicker.platform.pickFiles(type: FileType.any);
+      if (result != null && result.files.single.path != null) {
+        File file = File(result.files.single.path!);
+        String fileName = result.files.single.name;
+
+        // Convert file to Base64
+        String base64File = base64Encode(await file.readAsBytes());
+
+        // Save Base64 + meta info to Realtime Database
+        DatabaseReference dbRef = FirebaseDatabase.instance
+            .ref()
+            .child("applicants")
+            .child(widget.applicantId)
+            .child("ctpo_uploads")
+            .child(label);
+
+        await dbRef.set({
+          "file_name": fileName,
+          "file_data": base64File, // 🔥 Base64 file
+          "uploaded_at": DateTime.now().toIso8601String(),
+          "applicant_name": widget.applicantName,
+        });
+
+        setState(() {
+          uploadedFiles[label] = fileName;
+        });
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('$fileName uploaded successfully!')),
+        );
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Failed to upload file: $e')),
+      );
+    }
+  }
 
   /// Builds each upload field row
   Widget buildUploadField(String label) {
@@ -42,17 +94,12 @@ class _CTPOUploadPageState extends State<CTPOUploadPage> {
           ),
           if (!noUpload)
             ElevatedButton(
-              onPressed: () {
-                // TODO: replace with file picker
-                setState(() {
-                  uploadedFiles[label] = "dummy_file.pdf";
-                });
-              },
+              onPressed: () => pickAndUploadFile(label),
               style: ElevatedButton.styleFrom(
                 backgroundColor: Colors.green,
                 foregroundColor: Colors.white,
               ),
-              child: const Text("Upload File"),
+              child: Text(uploadedFiles[label] != null ? "Re-upload" : "Upload File"),
             ),
         ],
       ),
@@ -61,20 +108,15 @@ class _CTPOUploadPageState extends State<CTPOUploadPage> {
 
   /// Handles the form submission
   void handleSubmit() {
-    // Determine endorsement level for forester assignment
+    // Determine endorsement level
     String type = "barangay"; // default
 
-    if (uploadedFiles[
-            "4.c If the trees to be cut fall within more than one municipality/city, endorsement shall be secured either from the Provincial Governor or all the Municipality/City Mayors concerned"] !=
-        null) {
+    if (uploadedFiles["4.c If the trees to be cut fall within more than one municipality/city, endorsement shall be secured either from the Provincial Governor or all the Municipality/City Mayors concerned"] != null) {
       type = "province";
-    } else if (uploadedFiles[
-            "4.b If the trees to be cut falls within more than one barangay, endorsement shall be secured either from the Municipal/City Mayor or all the Barangay Captains concerned"] !=
-        null) {
+    } else if (uploadedFiles["4.b If the trees to be cut falls within more than one barangay, endorsement shall be secured either from the Municipal/City Mayor or all the Barangay Captains concerned"] != null) {
       type = "municipality";
     }
 
-    // Show feedback
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text('CTPO submitted. Level: $type')),
     );

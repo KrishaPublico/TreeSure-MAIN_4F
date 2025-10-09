@@ -5,9 +5,11 @@ import 'package:treesure_app/features/forester%20list%20of%20navbars/notif_page.
 import 'package:treesure_app/features/forester%20list%20of%20navbars/profile_page.dart';
 import 'package:treesure_app/features/home/forester_homepage.dart';
 
-
 class ForesterNavbar extends StatefulWidget {
-  const ForesterNavbar({super.key});
+  final String foresterId; // comes from login
+  final String foresterName; // comes from login
+  const ForesterNavbar(
+      {super.key, required this.foresterId, required this.foresterName});
 
   @override
   ForesterNavbarState createState() => ForesterNavbarState();
@@ -15,13 +17,29 @@ class ForesterNavbar extends StatefulWidget {
 
 class ForesterNavbarState extends State<ForesterNavbar> {
   int _currentIndex = 0;
+  late final List<Widget> _pages;
 
-  final List<Widget> _pages = const [
-    ForesterHomepage(),
-    HistoryPage_Forester(),
-    NotifPage_Forester(),
-    ProfilePage_Forester(),
-  ];
+  @override
+  void initState() {
+    super.initState();
+_pages = [
+  ForesterHomepage(
+    foresterId: widget.foresterId,
+    foresterName: widget.foresterName,
+  ),
+  const HistoryPage_Forester(),
+  NotifPage_Forester(
+    foresterId: widget.foresterId,
+    foresterName: widget.foresterName,
+  ),
+  ProfilePage_Forester(   // 🔥 FIXED: provide the required parameter
+    foresterId: widget.foresterId,
+  ),
+];
+
+
+
+  }
 
   void _onItemTapped(int index) {
     setState(() {
@@ -29,7 +47,7 @@ class ForesterNavbarState extends State<ForesterNavbar> {
     });
   }
 
-   @override
+  @override
   Widget build(BuildContext context) {
     return Scaffold(
       body: SafeArea(
@@ -44,8 +62,8 @@ class ForesterNavbarState extends State<ForesterNavbar> {
         child: BottomNavigationBar(
           type: BottomNavigationBarType.fixed,
           backgroundColor: const Color(0xFFF5F5F5), // Matches dirty white
-          selectedItemColor: Colors.green,      // Green selected icon
-          unselectedItemColor: Colors.green,    // Green unselected icon
+          selectedItemColor: Colors.green, // Green selected icon
+          unselectedItemColor: Colors.green, // Green unselected icon
           currentIndex: _currentIndex,
           onTap: _onItemTapped,
           items: const [

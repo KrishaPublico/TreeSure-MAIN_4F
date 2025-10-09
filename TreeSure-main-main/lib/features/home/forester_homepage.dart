@@ -1,10 +1,19 @@
 import 'package:flutter/material.dart';
+import 'package:treesure_app/features/forester/forester_tree_mapping.dart';
 import 'package:treesure_app/features/forester/register_trees.dart';
 import 'package:treesure_app/features/forester/forester_summary_reports.dart';
 
-class ForesterHomepage extends StatelessWidget {
-  const ForesterHomepage({super.key});
+class ForesterHomepage extends StatefulWidget {
+  final String foresterId; // comes from login
+  final String foresterName; // comes from login
+  const ForesterHomepage(
+      {super.key, required this.foresterId, required this.foresterName});
 
+  @override
+  State<ForesterHomepage> createState() => _ForesterHomepageState();
+}
+
+class _ForesterHomepageState extends State<ForesterHomepage> {
   @override
   Widget build(BuildContext context) {
     return SingleChildScrollView(
@@ -31,17 +40,19 @@ class ForesterHomepage extends StatelessWidget {
                       const CircleAvatar(
                         radius: 30,
                         backgroundColor: Colors.white,
-                        child: Icon(Icons.person, size: 40, color: Colors.green),
+                        child:
+                            Icon(Icons.person, size: 40, color: Colors.green),
                       ),
                       const SizedBox(height: 8),
-                      const Text(
-                        "Teresa Ubasa Bayuga",
-                        style: TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
-                          color: Colors.white,
-                        ),
-                      ),
+                      Text(
+  widget.foresterName, // ✅ Dynamic from login
+  style: const TextStyle(
+    fontSize: 18,
+    fontWeight: FontWeight.bold,
+    color: Colors.white,
+  ),
+),
+
                       const Text(
                         "Forester",
                         style: TextStyle(fontSize: 14, color: Colors.white70),
@@ -66,7 +77,8 @@ class ForesterHomepage extends StatelessWidget {
                       child: CircleAvatar(
                         radius: 25,
                         backgroundColor: Colors.white,
-                        child: Icon(Icons.qr_code, size: 30, color: Colors.green),
+                        child:
+                            Icon(Icons.qr_code, size: 30, color: Colors.green),
                       ),
                     ),
                   ),
@@ -87,7 +99,14 @@ class ForesterHomepage extends StatelessWidget {
                   Icons.check_circle,
                   Colors.green[800]!,
                   () {
-                    // TODO: Add navigation to registered trees
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                          builder: (context) => RegisterTreesPage(
+                                foresterId: widget.foresterId,
+                                foresterName: widget.foresterName,
+                              )),
+                    );
                   },
                   textStyle: const TextStyle(
                     fontSize: 20,
@@ -104,7 +123,11 @@ class ForesterHomepage extends StatelessWidget {
                   () {
                     Navigator.push(
                       context,
-                      MaterialPageRoute(builder: (context) => const RegisterTreesPage()),
+                      MaterialPageRoute(
+                          builder: (context) => RegisterTreesPage(
+                                foresterId: widget.foresterId,
+                                foresterName: widget.foresterName,
+                              )),
                     );
                   },
                 ),
@@ -115,7 +138,14 @@ class ForesterHomepage extends StatelessWidget {
                   Icons.map,
                   Colors.green[800]!,
                   () {
-                    // TODO: Add Tree Mapping Page navigation
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                          builder: (context) => ForesterTreeMapping(
+                                foresterId: widget.foresterId,
+                                foresterName: widget.foresterName,
+                              )),
+                    );
                   },
                 ),
                 const SizedBox(height: 8), // reduced spacing
@@ -127,7 +157,8 @@ class ForesterHomepage extends StatelessWidget {
                   () {
                     Navigator.push(
                       context,
-                      MaterialPageRoute(builder: (context) => const ForesterSummaryReports()),
+                      MaterialPageRoute(
+                          builder: (context) => const ForesterSummaryReports()),
                     );
                   },
                 ),
@@ -182,7 +213,8 @@ class ForesterHomepage extends StatelessWidget {
             Expanded(
               child: Text(
                 title,
-                style: textStyle ?? const TextStyle(fontSize: 16, color: Colors.white),
+                style: textStyle ??
+                    const TextStyle(fontSize: 16, color: Colors.white),
               ),
             ),
           ],

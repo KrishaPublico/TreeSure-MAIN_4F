@@ -1,25 +1,45 @@
 import 'package:flutter/material.dart';
-import 'package:treesure_app/features/applicant%20list%20navbars/history_page.dart';
+
+import 'package:treesure_app/features/forester%20list%20of%20navbars/history_page.dart';
+import 'package:treesure_app/features/forester%20list%20of%20navbars/notif_page.dart';
+import 'package:treesure_app/features/forester%20list%20of%20navbars/profile_page.dart';
 import 'package:treesure_app/features/home/applicant_homepage.dart';
-import 'package:treesure_app/features/applicant%20list%20navbars/notif_page.dart';
-import 'package:treesure_app/features/applicant%20list%20navbars/profile_page.dart';
 
 class ApplicantNavbar extends StatefulWidget {
-  const ApplicantNavbar({super.key});
+  final String applicantId; // comes from login
+  final String applicantName; // comes from login
+  const ApplicantNavbar(
+      {super.key, required this.applicantId, required this.applicantName});
 
   @override
-  ApplicantNavbarState createState() => ApplicantNavbarState();
+  ForesterNavbarState createState() => ForesterNavbarState();
 }
 
-class ApplicantNavbarState extends State<ApplicantNavbar> {
+class ForesterNavbarState extends State<ApplicantNavbar> {
   int _currentIndex = 0;
+  late final List<Widget> _pages;
 
-  final List<Widget> _pages = const [
-    ApplicantHomepage(),
-    HistoryPage(),
-    NotifPage(),
-    ProfilePage(),
-  ];
+  @override
+  void initState() {
+    super.initState();
+_pages = [
+  ApplicantHomepage(
+    applicantId: widget.applicantId,
+    applicantName: widget.applicantName,
+  ),
+  const HistoryPage_Forester(),
+  NotifPage_Forester(
+    foresterId: widget.applicantId,
+    foresterName: widget.applicantName,
+  ),
+  ProfilePage_Forester(   // 🔥 FIXED: provide the required parameter
+    foresterId: widget.applicantId,
+  ),
+];
+
+
+
+  }
 
   void _onItemTapped(int index) {
     setState(() {
@@ -27,7 +47,7 @@ class ApplicantNavbarState extends State<ApplicantNavbar> {
     });
   }
 
-   @override
+  @override
   Widget build(BuildContext context) {
     return Scaffold(
       body: SafeArea(
@@ -42,8 +62,8 @@ class ApplicantNavbarState extends State<ApplicantNavbar> {
         child: BottomNavigationBar(
           type: BottomNavigationBarType.fixed,
           backgroundColor: const Color(0xFFF5F5F5), // Matches dirty white
-          selectedItemColor: Colors.green,      // Green selected icon
-          unselectedItemColor: Colors.green,    // Green unselected icon
+          selectedItemColor: Colors.green, // Green selected icon
+          unselectedItemColor: Colors.green, // Green unselected icon
           currentIndex: _currentIndex,
           onTap: _onItemTapped,
           items: const [

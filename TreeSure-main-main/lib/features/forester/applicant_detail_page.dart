@@ -1,26 +1,36 @@
 import 'package:flutter/material.dart';
 import 'register_trees.dart'; // Ensure this path is correct based on your project structure
 
-class ApplicantDetailPage extends StatelessWidget {
+class ApplicantDetailPage extends StatefulWidget {
+  final String foresterId; // comes from login
+  final String foresterName; // comes from login
   final String applicantName;
   final String requirementDetails;
 
   const ApplicantDetailPage({
-    Key? key,
+    super.key,
     required this.applicantName,
     required this.requirementDetails,
-  }) : super(key: key);
+    required this.foresterId,
+    required this.foresterName,
+  });
 
+  @override
+  State<ApplicantDetailPage> createState() => _ApplicantDetailPageState();
+}
+
+class _ApplicantDetailPageState extends State<ApplicantDetailPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
         title: Text(
-          applicantName,
+          widget.applicantName,
           style: const TextStyle(color: Colors.white),
         ),
         backgroundColor: Colors.green,
-        iconTheme: const IconThemeData(color: Colors.white), // Ensures back button is white
+        iconTheme: const IconThemeData(
+            color: Colors.white), // Ensures back button is white
       ),
       body: Padding(
         padding: const EdgeInsets.all(16.0),
@@ -33,7 +43,7 @@ class ApplicantDetailPage extends StatelessWidget {
             ),
             const SizedBox(height: 10),
             Text(
-              requirementDetails,
+              widget.requirementDetails,
               style: const TextStyle(fontSize: 16),
             ),
             const Spacer(),
@@ -44,7 +54,11 @@ class ApplicantDetailPage extends StatelessWidget {
                   // Navigate to Tree Inventory page on acceptance
                   Navigator.pushReplacement(
                     context,
-                    MaterialPageRoute(builder: (context) => const RegisterTreesPage()),
+                    MaterialPageRoute(
+                        builder: (context) => RegisterTreesPage(
+                              foresterId: widget.foresterId,
+                              foresterName: widget.foresterName,
+                            )),
                   );
                 },
                 style: ElevatedButton.styleFrom(
