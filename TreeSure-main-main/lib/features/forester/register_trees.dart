@@ -1,10 +1,18 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
+import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:geolocator/geolocator.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
+
+import 'tree_services.dart';
+import 'package:permission_handler/permission_handler.dart';
+import 'package:flutter_map/flutter_map.dart';
+import 'package:latlong2/latlong.dart';
 
 class RegisterTreesPage extends StatefulWidget {
-  final String foresterId; // comes from login
-  final String foresterName; // comes from login
+  final String foresterId;
+  final String foresterName;
 
   const RegisterTreesPage({
     super.key,
@@ -25,13 +33,21 @@ class _RegisterTreesPageState extends State<RegisterTreesPage> {
   final TextEditingController latController = TextEditingController();
   final TextEditingController longController = TextEditingController();
 
+  LatLng? _currentPosition; // for displaying on map
+  final MapController _mapController = MapController();
+
+
+
+
   final FocusNode treeNoFocus = FocusNode();
   final FocusNode specieFocus = FocusNode();
   final FocusNode diameterFocus = FocusNode();
   final FocusNode heightFocus = FocusNode();
 
+  final TreeService _treeService = TreeService(); // ✅ use the service here
+
   XFile? imageFile;
-  final ImagePicker _picker = ImagePicker();
+  String? lastSubmittedTreeId;
 
   @override
   void initState() {
@@ -39,43 +55,49 @@ class _RegisterTreesPageState extends State<RegisterTreesPage> {
     diameterController.addListener(_updateVolume);
     heightController.addListener(_updateVolume);
   }
-
-  /// save into sub-collection under forester document
-  Future<void> sendTreeInfo({
-    required String foresterId,
-    required String forester,
-    required double lat,
-    required double lng,
-    required String treeNo,
-    required String specie,
-    required double diameter,
-    required double height,
-    required double volume,
-  }) async {
-    final collectionRef = FirebaseFirestore.instance
-        .collection('users')
-        .doc(foresterId)
-        .collection('tree_inventory'); // sub-collection
-
-    // 🔹 Get the current number of documents to create new ID
-    final snapshot = await collectionRef.get();
-    final count = snapshot.docs.length; // total documents
-    final newId = "T${count + 1}"; // e.g., T1, T2, T3...
-
-    await collectionRef.doc(newId).set({
-      'latitude': lat,
-      'longitude': lng,
-      'tree_no': treeNo,
-      'specie': specie,
-      'diameter': diameter,
-      'height': height,
-      'volume': volume,
-      'timestamp': Timestamp.now(),
-      'forester_name': forester,
-    });
+Future<void> _getLocation() async {
+  var permission = await Permission.location.status;
+  if (!permission.isGranted) {
+    permission = await Permission.location.request();
+    if (!permission.isGranted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Location permission denied.")),
+      );
+      return;
+    }
   }
 
-  void handleSubmit() {
+  try {
+    final position = await Geolocator.getCurrentPosition(
+      desiredAccuracy: LocationAccuracy.high,
+    );
+
+    setState(() {
+      latController.text = position.latitude.toStringAsFixed(6);
+      longController.text = position.longitude.toStringAsFixed(6);
+      _currentPosition = LatLng(position.latitude, position.longitude);
+    });
+
+    _mapController.move(_currentPosition!, 17); // zoom in
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text("Location fetched successfully!")),
+    );
+  } catch (e) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text("Failed to get location: $e")),
+    );
+  }
+}
+
+  void _updateVolume() {
+    double diameter = double.tryParse(diameterController.text) ?? 0;
+    double height = double.tryParse(heightController.text) ?? 0;
+    double volume = _treeService.calculateVolume(diameter, height); // ✅ service
+    volumeController.text = volume > 0 ? volume.toStringAsFixed(2) : '';
+  }
+
+  Future<void> handleSubmit() async {
     final latitude = double.tryParse(latController.text);
     final longitude = double.tryParse(longController.text);
     final treeNo = treeNoController.text.trim();
@@ -91,29 +113,29 @@ class _RegisterTreesPageState extends State<RegisterTreesPage> {
         diameter != null &&
         height != null &&
         volume != null) {
-      sendTreeInfo(
-          lat: latitude,
-          lng: longitude,
-          treeNo: treeNo,
-          specie: specie,
-          diameter: diameter,
-          height: height,
-          volume: volume,
-          foresterId: widget.foresterId,
-          forester: widget.foresterName);
+      final newDocId = await _treeService.sendTreeInfo(
+        // ✅ service
+        lat: latitude,
+        lng: longitude,
+        treeNo: treeNo,
+        specie: specie,
+        diameter: diameter,
+        height: height,
+        volume: volume,
+        foresterId: widget.foresterId,
+        forester: widget.foresterName,
+        imageFile: imageFile,
+      );
+
+      setState(() {
+        lastSubmittedTreeId = newDocId;
+      });
+
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text("Submission successful!")),
       );
 
-      /// clear fields after save
-      treeNoController.clear();
-      specieController.clear();
-      diameterController.clear();
-      heightController.clear();
-      volumeController.clear();
-      latController.clear();
-      longController.clear();
-      setState(() => imageFile = null);
+      _clearFields();
     } else {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text("All fields are required!")),
@@ -121,36 +143,20 @@ class _RegisterTreesPageState extends State<RegisterTreesPage> {
     }
   }
 
-  void _updateVolume() {
-    double diameter = double.tryParse(diameterController.text) ?? 0;
-    double height = double.tryParse(heightController.text) ?? 0;
-    double volume =
-        3.141592653589793 * (diameter / 2) * (diameter / 2) * height;
-    volumeController.text = volume > 0 ? volume.toStringAsFixed(2) : '';
-  }
-
-  @override
-  void dispose() {
-    treeNoController.dispose();
-    specieController.dispose();
-    diameterController.dispose();
-    heightController.dispose();
-    volumeController.dispose();
-    latController.dispose();
-    longController.dispose();
-
-    treeNoFocus.dispose();
-    specieFocus.dispose();
-    diameterFocus.dispose();
-    heightFocus.dispose();
-
-    super.dispose();
+  void _clearFields() {
+    treeNoController.clear();
+    specieController.clear();
+    diameterController.clear();
+    heightController.clear();
+    volumeController.clear();
+    latController.clear();
+    longController.clear();
+    setState(() => imageFile = null);
   }
 
   Future<void> pickImage() async {
     try {
-      final XFile? picked =
-          await _picker.pickImage(source: ImageSource.gallery);
+      final picked = await _treeService.pickImage(); // ✅ service
       if (picked != null) {
         setState(() {
           imageFile = picked;
@@ -163,13 +169,7 @@ class _RegisterTreesPageState extends State<RegisterTreesPage> {
     }
   }
 
-  void generateQrTag() {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text("QR Code generated based on tree details")),
-    );
-  }
-
-  void viewSummaryDialog() {
+  Future<void> viewSummaryDialog() async {
     Map<String, dynamic> submittedData = {
       "Forester Name": widget.foresterName,
       "Tree No.": treeNoController.text,
@@ -179,8 +179,23 @@ class _RegisterTreesPageState extends State<RegisterTreesPage> {
       "Volume (CU m)": volumeController.text,
       "Latitude": latController.text,
       "Longitude": longController.text,
-      "Photo Evidence": imageFile != null ? imageFile!.name : "No image",
     };
+
+    String? photoUrl;
+
+    // ✅ Fetch from Firestore (UI side only)
+    if (lastSubmittedTreeId != null) {
+      final doc = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(widget.foresterId)
+          .collection('tree_inventory')
+          .doc(lastSubmittedTreeId)
+          .get();
+
+      if (doc.exists && doc.data()?['photo_url'] != null) {
+        photoUrl = doc['photo_url'];
+      }
+    }
 
     final Map<String, FocusNode> focusMap = {
       "Tree No.": treeNoFocus,
@@ -194,40 +209,59 @@ class _RegisterTreesPageState extends State<RegisterTreesPage> {
       builder: (_) => AlertDialog(
         title: const Text("Tree Data Summary"),
         content: SingleChildScrollView(
-          child: DataTable(
-            columnSpacing: 10,
-            columns: const [
-              DataColumn(
-                  label: Text("Field",
-                      style: TextStyle(fontWeight: FontWeight.bold))),
-              DataColumn(
-                  label: Text("Value",
-                      style: TextStyle(fontWeight: FontWeight.bold))),
-              DataColumn(
-                  label: Text("Edit",
-                      style: TextStyle(fontWeight: FontWeight.bold))),
-            ],
-            rows: submittedData.entries.map((entry) {
-              final key = entry.key;
-              final value = entry.value.toString();
-              final canEdit = focusMap.containsKey(key);
+          child: Column(
+            children: [
+              DataTable(
+                columnSpacing: 10,
+                columns: const [
+                  DataColumn(
+                      label: Text("Field",
+                          style: TextStyle(fontWeight: FontWeight.bold))),
+                  DataColumn(
+                      label: Text("Value",
+                          style: TextStyle(fontWeight: FontWeight.bold))),
+                  DataColumn(
+                      label: Text("Edit",
+                          style: TextStyle(fontWeight: FontWeight.bold))),
+                ],
+                rows: submittedData.entries.map((entry) {
+                  final key = entry.key;
+                  final value = entry.value.toString();
+                  final canEdit = focusMap.containsKey(key);
 
-              return DataRow(cells: [
-                DataCell(Text(key)),
-                DataCell(Text(value)),
-                DataCell(
-                  canEdit
-                      ? IconButton(
-                          icon: Icon(Icons.edit, color: Colors.green[700]),
-                          onPressed: () {
-                            Navigator.of(context).pop();
-                            FocusScope.of(context).requestFocus(focusMap[key]);
-                          },
-                        )
-                      : const SizedBox.shrink(),
-                ),
-              ]);
-            }).toList(),
+                  return DataRow(cells: [
+                    DataCell(Text(key)),
+                    DataCell(Text(value)),
+                    DataCell(
+                      canEdit
+                          ? IconButton(
+                              icon: Icon(Icons.edit, color: Colors.green[700]),
+                              onPressed: () {
+                                Navigator.of(context).pop();
+                                FocusScope.of(context)
+                                    .requestFocus(focusMap[key]);
+                              },
+                            )
+                          : const SizedBox.shrink(),
+                    ),
+                  ]);
+                }).toList(),
+              ),
+              const SizedBox(height: 20),
+              const Text("Photo Evidence",
+                  style: TextStyle(fontWeight: FontWeight.bold)),
+              const SizedBox(height: 8),
+              if (photoUrl != null && photoUrl.isNotEmpty)
+                Image.network(photoUrl, height: 200, fit: BoxFit.cover)
+              else if (imageFile != null)
+                kIsWeb
+                    ? Image.network(imageFile!.path,
+                        height: 200, fit: BoxFit.cover)
+                    : Image.file(File(imageFile!.path),
+                        height: 200, fit: BoxFit.cover)
+              else
+                const Text("No image available"),
+            ],
           ),
         ),
         actions: [
@@ -247,13 +281,6 @@ class _RegisterTreesPageState extends State<RegisterTreesPage> {
         title: const Text("Tree Inventory"),
         backgroundColor: Colors.green[800],
         foregroundColor: Colors.white,
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.qr_code),
-            tooltip: 'Generate QR Tag',
-            onPressed: generateQrTag,
-          ),
-        ],
       ),
       body: Padding(
         padding: const EdgeInsets.all(16.0),
@@ -283,26 +310,38 @@ class _RegisterTreesPageState extends State<RegisterTreesPage> {
             ),
             buildTextField("Volume (CU m)", volumeController, enabled: false),
             const SizedBox(height: 12),
-            const Text("GPS Location",
-                style: TextStyle(fontWeight: FontWeight.bold)),
-            const SizedBox(height: 8),
+            // ✅ Auto-location fields
             Row(
               children: [
-                Expanded(child: buildTextField("Latitude", latController)),
+                Expanded(
+                  child:
+                      buildTextField("Latitude", latController, enabled: false),
+                ),
                 const SizedBox(width: 12),
-                Expanded(child: buildTextField("Longitude", longController)),
+                Expanded(
+                  child: buildTextField("Longitude", longController,
+                      enabled: false),
+                ),
               ],
+            ),
+            TextButton.icon(
+              icon: const Icon(Icons.my_location, color: Colors.green),
+              label: const Text("Get Current Location"),
+              onPressed: _getLocation,
             ),
             const SizedBox(height: 20),
             const Text("Photo Evidence",
                 style: TextStyle(fontWeight: FontWeight.bold)),
             const SizedBox(height: 8),
-            imageFile != null
-                ? Image.network(imageFile!.path, height: 200)
-                : const Text("No image selected."),
+            if (imageFile != null)
+              kIsWeb
+                  ? Image.network(imageFile!.path, height: 200)
+                  : Image.file(File(imageFile!.path), height: 200)
+            else
+              const Text("No image selected."),
             TextButton.icon(
               icon: const Icon(Icons.upload),
-              label: const Text("Upload Photo"),
+              label: const Text("Pick Photo"),
               onPressed: pickImage,
             ),
             const SizedBox(height: 20),

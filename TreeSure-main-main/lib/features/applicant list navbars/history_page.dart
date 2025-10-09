@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 
 class HistoryPage extends StatefulWidget {
-  const HistoryPage({super.key});
+  final String applicantId; // ✅ Add this line
+
+  const HistoryPage({super.key, required this.applicantId}); // ✅ Add this
 
   @override
   HistoryPageState createState() => HistoryPageState();

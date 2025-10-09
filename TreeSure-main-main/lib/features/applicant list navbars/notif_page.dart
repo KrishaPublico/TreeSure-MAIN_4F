@@ -8,6 +8,47 @@ class NotifPage extends StatefulWidget {
 }
 
 class _NotifPageState extends State<NotifPage> {
+  // Example notifications data
+  final List<Map<String, String>> notifications = [
+      {
+      "title": "Tree Tagging Update",
+      "message": "Your tree tagging has been approved.",
+      "time": "11:00 AM",
+    },
+    {
+      "title": "Applicant Requirements",
+      "message": "Please complete your pending requirements.",
+      "time": "10:30 AM",
+    },
+  
+    {
+      "title": "System Notice",
+      "message": "Maintenance scheduled at 5:00 PM.",
+      "time": "03:30 PM",
+    },
+  ];
+
+  void _handleNotificationTap(String title) {
+    // If the notification is "Applicant Requirements", do nothing
+    if (title == "Applicant Requirements") {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text("This notification doesn’t open any page."),
+          duration: Duration(seconds: 2),
+        ),
+      );
+      return;
+    }
+
+    // Otherwise, navigate to a sample page or show info
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => NotificationDetailPage(title: title),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -52,25 +93,48 @@ class _NotifPageState extends State<NotifPage> {
                 ),
               ),
             ),
-            // Notifications
+            // Notifications List
             Expanded(
               child: ListView.builder(
-                itemCount: 5,
+                itemCount: notifications.length,
                 itemBuilder: (context, index) {
-                  return const ListTile(
-                    leading: CircleAvatar(
+                  final notif = notifications[index];
+                  return ListTile(
+                    leading: const CircleAvatar(
                       backgroundColor: Colors.green,
                       child:
                           Icon(Icons.notifications_active, color: Colors.white),
                     ),
-                    title: Text("Notification Title"),
-                    subtitle: Text("Notification Message"),
-                    trailing: Text("12:00 PM"),
+                    title: Text(notif["title"]!),
+                    subtitle: Text(notif["message"]!),
+                    trailing: Text(notif["time"]!),
+                    onTap: () => _handleNotificationTap(notif["title"]!),
                   );
                 },
               ),
             ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+class NotificationDetailPage extends StatelessWidget {
+  final String title;
+  const NotificationDetailPage({super.key, required this.title});
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: Text(title),
+        backgroundColor: Colors.green,
+      ),
+      body: Center(
+        child: Text(
+          'This is the detail page for "$title"',
+          style: const TextStyle(fontSize: 18),
         ),
       ),
     );

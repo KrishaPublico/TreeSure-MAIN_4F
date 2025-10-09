@@ -1,82 +1,138 @@
 import 'dart:io';
-import 'dart:convert'; // for Base64
-import 'package:firebase_database/firebase_database.dart'; // Realtime DB
-import 'package:file_picker/file_picker.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
+import 'package:file_picker/file_picker.dart';
+import 'package:firebase_storage/firebase_storage.dart';
+import 'package:path/path.dart' as path;
 
 class CTPOUploadPage extends StatefulWidget {
-  final String applicantId; // ID of the applicant uploading
-  final String applicantName; // Name of applicant
+  final String applicantId; // new parameter
+  final String applicantName; 
 
   const CTPOUploadPage({
     super.key,
     required this.applicantId,
-    required this.applicantName,
+    required this.applicantName, // 👈 Also required here
   });
 
   @override
   State<CTPOUploadPage> createState() => _CTPOUploadPageState();
 }
-
 class _CTPOUploadPageState extends State<CTPOUploadPage> {
-  final Map<String, String?> uploadedFiles = {
-    "1. Letter of Application (1 original, 1 photocopy)": null,
-    "2. OCT, TCT, Judicial Title, CLOA, Tax Declared Alienable and Disposable Lands (1 certified true copy)": null,
-    "3. Data on the number of seedlings planted, species and area planted": null,
-    "4. Endorsement from concerned LGU interposing no objection to the cutting of tree under the following conditions (1 original)": null,
-    "4.a If the trees to be cut falls within one barangay, an endorsement from the Barangay Captain shall be secured": null,
-    "4.b If the trees to be cut falls within more than one barangay, endorsement shall be secured either from the Municipal/City Mayor or all the Barangay Captains concerned": null,
-    "4.c If the trees to be cut fall within more than one municipality/city, endorsement shall be secured either from the Provincial Governor or all the Municipality/City Mayors concerned": null,
-    "5. Special Power of Attorney (SPA) (1 original) – [Applicable if the client is a representative]": null,
+  /// Each item will store { "file": PlatformFile?, "url": String? }
+  final Map<String, Map<String, dynamic>> uploadedFiles = {
+    "1. Letter of Application (1 original, 1 photocopy)": {
+      "file": null,
+      "url": null
+    },
+    "2. OCT, TCT, Judicial Title, CLOA, Tax Declared Alienable and Disposable Lands (1 certified true copy)":
+        {"file": null, "url": null},
+    "3. Data on the number of seedlings planted, species and area planted": {
+      "file": null,
+      "url": null
+    },
+    "4. Endorsement from concerned LGU interposing no objection to the cutting of tree under the following conditions (1 original)":
+        {"file": null, "url": null},
+    "4.a If the trees to be cut falls within one barangay, an endorsement from the Barangay Captain shall be secured":
+        {"file": null, "url": null},
+    "4.b If the trees to be cut falls within more than one barangay, endorsement shall be secured either from the Municipal/City Mayor or all the Barangay Captains concerned":
+        {"file": null, "url": null},
+    "4.c If the trees to be cut fall within more than one municipality/city, endorsement shall be secured either from the Provincial Governor or all the Municipality/City Mayors concerned":
+        {"file": null, "url": null},
+    "5. Special Power of Attorney (SPA) (1 original) – [Applicable if the client is a representative]":
+        {"file": null, "url": null},
   };
 
-  /// Pick file and upload to Realtime Database as Base64
-  Future<void> pickAndUploadFile(String label) async {
+  bool _isUploading = false;
+
+  /// File Picker (select only PDF/DOC/DOCX)
+  Future<void> pickFile(String label) async {
     try {
-      final result = await FilePicker.platform.pickFiles(type: FileType.any);
-      if (result != null && result.files.single.path != null) {
-        File file = File(result.files.single.path!);
-        String fileName = result.files.single.name;
+      FilePickerResult? result = await FilePicker.platform.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: ['pdf', 'doc', 'docx'],
+        withData: true,
+      );
 
-        // Convert file to Base64
-        String base64File = base64Encode(await file.readAsBytes());
+      if (result == null) return;
 
-        // Save Base64 + meta info to Realtime Database
-        DatabaseReference dbRef = FirebaseDatabase.instance
-            .ref()
-            .child("applicants")
-            .child(widget.applicantId)
-            .child("ctpo_uploads")
-            .child(label);
+      final PlatformFile file = result.files.single;
+      final ext = path.extension(file.name).toLowerCase();
 
-        await dbRef.set({
-          "file_name": fileName,
-          "file_data": base64File, // 🔥 Base64 file
-          "uploaded_at": DateTime.now().toIso8601String(),
-          "applicant_name": widget.applicantName,
-        });
-
-        setState(() {
-          uploadedFiles[label] = fileName;
-        });
-
+      if (!['.pdf', '.doc', '.docx'].contains(ext)) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('$fileName uploaded successfully!')),
+          const SnackBar(content: Text("Please upload only PDF or DOC files.")),
         );
+        return;
       }
+
+      setState(() {
+        uploadedFiles[label]!["file"] = file;
+      });
     } catch (e) {
+      debugPrint("File selection failed: $e");
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Failed to upload file: $e')),
+        SnackBar(content: Text("Error selecting file: $e")),
       );
     }
   }
 
-  /// Builds each upload field row
+  /// Upload all selected files on Submit
+  Future<void> handleSubmit() async {
+    setState(() => _isUploading = true);
+
+    try {
+      for (final entry in uploadedFiles.entries) {
+        final label = entry.key;
+        final file = entry.value["file"] as PlatformFile?;
+
+        if (file == null) continue; // skip if not selected
+
+        final fileName =
+            "${DateTime.now().millisecondsSinceEpoch}_${file.name}";
+        final ref =
+            FirebaseStorage.instance.ref().child("ctpo_uploads/$fileName");
+
+        UploadTask uploadTask;
+
+        if (kIsWeb) {
+          final fileBytes = file.bytes;
+          if (fileBytes == null) throw Exception("File bytes missing");
+          uploadTask = ref.putData(fileBytes);
+        } else {
+          final filePath = file.path;
+          if (filePath == null) throw Exception("File path missing");
+          uploadTask = ref.putFile(File(filePath));
+        }
+
+        await uploadTask.whenComplete(() {});
+        final url = await ref.getDownloadURL();
+
+        uploadedFiles[label]!["url"] = url;
+      }
+
+      setState(() => _isUploading = false);
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("All files uploaded successfully!")),
+      );
+    } catch (e) {
+      setState(() => _isUploading = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text("Error uploading files: $e")),
+      );
+    }
+  }
+
   Widget buildUploadField(String label) {
-    final isIndented =
-        label.startsWith("4.a") || label.startsWith("4.b") || label.startsWith("4.c");
+    final isIndented = label.startsWith("4.a") ||
+        label.startsWith("4.b") ||
+        label.startsWith("4.c");
     final noUpload = label ==
         "4. Endorsement from concerned LGU interposing no objection to the cutting of tree under the following conditions (1 original)";
+
+    final file = uploadedFiles[label]!["file"] as PlatformFile?;
+    final url = uploadedFiles[label]!["url"] as String?;
 
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 6),
@@ -87,38 +143,35 @@ class _CTPOUploadPageState extends State<CTPOUploadPage> {
             child: Padding(
               padding: EdgeInsets.only(left: isIndented ? 24.0 : 0),
               child: Text(
-                label,
-                style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
+                label +
+                    (url != null
+                        ? " ✅ (Uploaded)"
+                        : file != null
+                            ? " (Ready to upload)"
+                            : ""),
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w500,
+                  color: url != null
+                      ? Colors.green
+                      : file != null
+                          ? Colors.orange
+                          : Colors.black,
+                ),
               ),
             ),
           ),
           if (!noUpload)
             ElevatedButton(
-              onPressed: () => pickAndUploadFile(label),
+              onPressed: () => pickFile(label),
               style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.green,
+                backgroundColor: file != null ? Colors.orange : Colors.green,
                 foregroundColor: Colors.white,
               ),
-              child: Text(uploadedFiles[label] != null ? "Re-upload" : "Upload File"),
+              child: Text(file != null ? "Change File" : "Select File"),
             ),
         ],
       ),
-    );
-  }
-
-  /// Handles the form submission
-  void handleSubmit() {
-    // Determine endorsement level
-    String type = "barangay"; // default
-
-    if (uploadedFiles["4.c If the trees to be cut fall within more than one municipality/city, endorsement shall be secured either from the Provincial Governor or all the Municipality/City Mayors concerned"] != null) {
-      type = "province";
-    } else if (uploadedFiles["4.b If the trees to be cut falls within more than one barangay, endorsement shall be secured either from the Municipal/City Mayor or all the Barangay Captains concerned"] != null) {
-      type = "municipality";
-    }
-
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('CTPO submitted. Level: $type')),
     );
   }
 
@@ -144,7 +197,7 @@ class _CTPOUploadPageState extends State<CTPOUploadPage> {
             ),
             const SizedBox(height: 16),
 
-            // Build fields
+            // Upload fields
             for (String label in uploadedFiles.keys) buildUploadField(label),
 
             const SizedBox(height: 32),
@@ -154,7 +207,7 @@ class _CTPOUploadPageState extends State<CTPOUploadPage> {
               child: SizedBox(
                 width: double.infinity,
                 child: ElevatedButton(
-                  onPressed: handleSubmit,
+                  onPressed: _isUploading ? null : handleSubmit,
                   style: ElevatedButton.styleFrom(
                     backgroundColor: Colors.green[700],
                     foregroundColor: Colors.white,
@@ -167,7 +220,9 @@ class _CTPOUploadPageState extends State<CTPOUploadPage> {
                       borderRadius: BorderRadius.circular(12),
                     ),
                   ),
-                  child: const Text('Submit'),
+                  child: _isUploading
+                      ? const CircularProgressIndicator(color: Colors.white)
+                      : const Text('Submit (Upload All Files)'),
                 ),
               ),
             ),
