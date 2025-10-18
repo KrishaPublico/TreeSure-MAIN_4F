@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:treesure_app/features/forester/forester_tree_mapping.dart';
 import 'package:treesure_app/features/forester/register_trees.dart';
 import 'package:treesure_app/features/forester/forester_summary_reports.dart';
+import 'package:treesure_app/features/forester/testQr_screen.dart';
 
 class ForesterHomepage extends StatefulWidget {
   final String foresterId; // comes from login
@@ -112,6 +113,20 @@ class _ForesterHomepageState extends State<ForesterHomepage> {
                     fontWeight: FontWeight.bold,
                     color: Colors.white,
                   ),
+                ),
+                const SizedBox(height: 15), // keep spacing above Tree Inventory
+                _buildMenuButton(
+                  context,
+                  "Test QR",
+                  Icons.forest,
+                  Colors.green[800]!,
+                  () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                          builder: (context) => const QrUploadScanner()),
+                    );
+                  },
                 ),
                 const SizedBox(height: 15), // keep spacing above Tree Inventory
                 _buildMenuButton(

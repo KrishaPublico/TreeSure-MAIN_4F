@@ -62,13 +62,18 @@ class MapPage extends StatelessWidget {
       ),
       body: StreamBuilder<QuerySnapshot>(
         stream: FirebaseFirestore.instance
-            .collection(
-                'tree_inventory') // if you want per-forester, adjust here
-            .orderBy('timestamp')
+            .collection('users')
+            .doc(foresterId) // get the logged-in forester’s document
+            .collection('tree_inventory') // get their sub-collection
+            .orderBy('timestamp', descending: false)
             .snapshots(),
         builder: (context, snapshot) {
           if (!snapshot.hasData) {
             return const Center(child: CircularProgressIndicator());
+          }
+
+          if (snapshot.data!.docs.isEmpty) {
+            return const Center(child: Text("No trees mapped yet."));
           }
 
           final markers = snapshot.data!.docs.map((doc) {

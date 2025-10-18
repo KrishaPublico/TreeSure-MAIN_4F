@@ -1,10 +1,20 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
+import 'dart:io';
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
+import 'package:geolocator/geolocator.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:firebase_storage/firebase_storage.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:qr_flutter/qr_flutter.dart';
+
+import 'tree_services.dart';
 
 class RegisterTreesPage extends StatefulWidget {
-  final String foresterId; // comes from login
-  final String foresterName; // comes from login
+  final String foresterId;
+  final String foresterName;
 
   const RegisterTreesPage({
     super.key,
@@ -17,7 +27,6 @@ class RegisterTreesPage extends StatefulWidget {
 }
 
 class _RegisterTreesPageState extends State<RegisterTreesPage> {
-  final TextEditingController treeNoController = TextEditingController();
   final TextEditingController specieController = TextEditingController();
   final TextEditingController diameterController = TextEditingController();
   final TextEditingController heightController = TextEditingController();
@@ -25,13 +34,14 @@ class _RegisterTreesPageState extends State<RegisterTreesPage> {
   final TextEditingController latController = TextEditingController();
   final TextEditingController longController = TextEditingController();
 
-  final FocusNode treeNoFocus = FocusNode();
   final FocusNode specieFocus = FocusNode();
   final FocusNode diameterFocus = FocusNode();
   final FocusNode heightFocus = FocusNode();
 
+  final TreeService _treeService = TreeService();
   XFile? imageFile;
-  final ImagePicker _picker = ImagePicker();
+  String? lastSubmittedTreeId;
+  String? qrUrl;
 
   @override
   void initState() {
@@ -40,83 +50,32 @@ class _RegisterTreesPageState extends State<RegisterTreesPage> {
     heightController.addListener(_updateVolume);
   }
 
-  /// save into sub-collection under forester document
-  Future<void> sendTreeInfo({
-    required String foresterId,
-    required String forester,
-    required double lat,
-    required double lng,
-    required String treeNo,
-    required String specie,
-    required double diameter,
-    required double height,
-    required double volume,
-  }) async {
-    final collectionRef = FirebaseFirestore.instance
-        .collection('users')
-        .doc(foresterId)
-        .collection('tree_inventory'); // sub-collection
-
-    // 🔹 Get the current number of documents to create new ID
-    final snapshot = await collectionRef.get();
-    final count = snapshot.docs.length; // total documents
-    final newId = "T${count + 1}"; // e.g., T1, T2, T3...
-
-    await collectionRef.doc(newId).set({
-      'latitude': lat,
-      'longitude': lng,
-      'tree_no': treeNo,
-      'specie': specie,
-      'diameter': diameter,
-      'height': height,
-      'volume': volume,
-      'timestamp': Timestamp.now(),
-      'forester_name': forester,
-    });
+  @override
+  void dispose() {
+    specieController.dispose();
+    diameterController.dispose();
+    heightController.dispose();
+    volumeController.dispose();
+    latController.dispose();
+    longController.dispose();
+    super.dispose();
   }
 
-  void handleSubmit() {
-    final latitude = double.tryParse(latController.text);
-    final longitude = double.tryParse(longController.text);
-    final treeNo = treeNoController.text.trim();
-    final specie = specieController.text.trim();
-    final diameter = double.tryParse(diameterController.text);
-    final height = double.tryParse(heightController.text);
-    final volume = double.tryParse(volumeController.text);
-
-    if (latitude != null &&
-        longitude != null &&
-        treeNo.isNotEmpty &&
-        specie.isNotEmpty &&
-        diameter != null &&
-        height != null &&
-        volume != null) {
-      sendTreeInfo(
-          lat: latitude,
-          lng: longitude,
-          treeNo: treeNo,
-          specie: specie,
-          diameter: diameter,
-          height: height,
-          volume: volume,
-          foresterId: widget.foresterId,
-          forester: widget.foresterName);
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Submission successful!")),
+  Future<void> _getLocation() async {
+    try {
+      final position = await Geolocator.getCurrentPosition(
+        desiredAccuracy: LocationAccuracy.high,
       );
-
-      /// clear fields after save
-      treeNoController.clear();
-      specieController.clear();
-      diameterController.clear();
-      heightController.clear();
-      volumeController.clear();
-      latController.clear();
-      longController.clear();
-      setState(() => imageFile = null);
-    } else {
+      setState(() {
+        latController.text = position.latitude.toStringAsFixed(6);
+        longController.text = position.longitude.toStringAsFixed(6);
+      });
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("All fields are required!")),
+        const SnackBar(content: Text("📍 Location fetched successfully!")),
+      );
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text("⚠️ Failed to get location: $e")),
       );
     }
   }
@@ -124,33 +83,167 @@ class _RegisterTreesPageState extends State<RegisterTreesPage> {
   void _updateVolume() {
     double diameter = double.tryParse(diameterController.text) ?? 0;
     double height = double.tryParse(heightController.text) ?? 0;
-    double volume =
-        3.141592653589793 * (diameter / 2) * (diameter / 2) * height;
+    double volume = _treeService.calculateVolume(diameter, height);
     volumeController.text = volume > 0 ? volume.toStringAsFixed(2) : '';
   }
 
-  @override
-  void dispose() {
-    treeNoController.dispose();
-    specieController.dispose();
-    diameterController.dispose();
-    heightController.dispose();
-    volumeController.dispose();
-    latController.dispose();
-    longController.dispose();
+  /// ✅ Generate QR, upload to Storage, and return the download URL
+  Future<String?> _generateAndUploadQr(
+      String treeId, Map<String, dynamic> data) async {
+    try {
+      // Generate QR data text
+      final qrData = '''
+Tree ID: $treeId
+Tree No: ${data['tree_no']}
+Specie: ${data['specie']}
+Diameter: ${data['diameter']}
+Height: ${data['height']}
+Volume: ${data['volume']}
+Location: (${data['latitude']}, ${data['longitude']})
+Forester: ${data['forester_name']}
+''';
 
-    treeNoFocus.dispose();
-    specieFocus.dispose();
-    diameterFocus.dispose();
-    heightFocus.dispose();
+      // Generate QR image as bytes
+      final qrPainter = QrPainter(
+        data: qrData,
+        version: QrVersions.auto,
+        gapless: true,
+      );
+      final picData = await qrPainter.toImageData(300);
+      final Uint8List bytes = picData!.buffer.asUint8List();
 
-    super.dispose();
+      // Upload bytes directly to Firebase Storage
+      final ref =
+          FirebaseStorage.instance.ref().child('tree_qrcodes/$treeId.png');
+
+      UploadTask uploadTask;
+      if (kIsWeb) {
+        uploadTask = ref.putData(bytes);
+      } else {
+        // For mobile — use path_provider
+        final dir = await getTemporaryDirectory();
+        final file = File('${dir.path}/$treeId.png');
+        await file.writeAsBytes(bytes);
+        uploadTask = ref.putFile(file);
+      }
+
+      await uploadTask;
+      return await ref.getDownloadURL();
+    } catch (e) {
+      print('❌ QR generation/upload failed: $e');
+      return null;
+    }
+  }
+
+  /// ✅ Handle form submission
+  Future<void> handleSubmit() async {
+    final latitude = double.tryParse(latController.text);
+    final longitude = double.tryParse(longController.text);
+    final specie = specieController.text.trim();
+    final diameter = double.tryParse(diameterController.text);
+    final height = double.tryParse(heightController.text);
+    final volume = double.tryParse(volumeController.text);
+
+    // Get the count of existing trees and generate the new tree ID
+    final treeCollection = FirebaseFirestore.instance
+        .collection('users')
+        .doc(widget.foresterId)
+        .collection('tree_inventory');
+
+    final count = await treeCollection.count().get();
+    final treeId = 'T${(count.count ?? 0) + 1}'; // Format as T1, T2, etc.
+
+    if (latitude == null ||
+        longitude == null ||
+        specie.isEmpty ||
+        diameter == null ||
+        height == null ||
+        volume == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("⚠️ Please fill out all fields.")),
+      );
+      return;
+    }
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text("⏳ Submitting data...")),
+    );
+
+    try {
+      // ✅ Save the tree info first
+      final newDocId = await _treeService.sendTreeInfo(
+        lat: latitude,
+        lng: longitude,
+        treeId: treeId, // Pass the generated treeId
+        treeNo: treeId, // Use the same ID as tree number
+        specie: specie,
+        diameter: diameter,
+        height: height,
+        volume: volume,
+        foresterId: widget.foresterId,
+        forester: widget.foresterName,
+        imageFile: imageFile,
+      );
+
+      // ✅ Prepare QR data
+      final data = {
+        'tree_id': treeId,
+        'tree_no': treeId, // Use the same ID as tree number
+        'specie': specie,
+        'diameter': diameter,
+        'height': height,
+        'volume': volume,
+        'latitude': latitude,
+        'longitude': longitude,
+        'forester_name': widget.foresterName,
+      };
+
+      // ✅ Generate and upload QR
+      final qrDownloadUrl = await _generateAndUploadQr(newDocId, data);
+
+      // ✅ Update Firestore with QR URL
+      if (qrDownloadUrl != null) {
+        await FirebaseFirestore.instance
+            .collection('users')
+            .doc(widget.foresterId)
+            .collection('tree_inventory')
+            .doc(newDocId)
+            .update({'qr_url': qrDownloadUrl});
+      }
+
+      setState(() {
+        lastSubmittedTreeId = newDocId;
+        qrUrl = qrDownloadUrl;
+      });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("✅ Tree and QR successfully saved!")),
+      );
+
+      _clearFields();
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text("❌ Submission failed: $e")),
+      );
+    }
+  }
+
+  void _clearFields() {
+    specieController.clear();
+    diameterController.clear();
+    heightController.clear();
+    volumeController.clear();
+    latController.clear();
+    longController.clear();
+    setState(() {
+      imageFile = null;
+      qrUrl = null;
+    });
   }
 
   Future<void> pickImage() async {
     try {
-      final XFile? picked =
-          await _picker.pickImage(source: ImageSource.gallery);
+      final picked = await _treeService.pickImage();
       if (picked != null) {
         setState(() {
           imageFile = picked;
@@ -158,88 +251,78 @@ class _RegisterTreesPageState extends State<RegisterTreesPage> {
       }
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text("Failed to pick image: $e")),
+        SnackBar(content: Text("⚠️ Failed to pick image: $e")),
       );
     }
   }
 
-  void generateQrTag() {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text("QR Code generated based on tree details")),
-    );
-  }
-
-  void viewSummaryDialog() {
+  Future<void> viewSummaryDialog() async {
     Map<String, dynamic> submittedData = {
       "Forester Name": widget.foresterName,
-      "Tree No.": treeNoController.text,
       "Specie": specieController.text,
       "Diameter (cm)": diameterController.text,
       "Height (m)": heightController.text,
       "Volume (CU m)": volumeController.text,
       "Latitude": latController.text,
       "Longitude": longController.text,
-      "Photo Evidence": imageFile != null ? imageFile!.name : "No image",
     };
 
-    final Map<String, FocusNode> focusMap = {
-      "Tree No.": treeNoFocus,
-      "Specie": specieFocus,
-      "Diameter (cm)": diameterFocus,
-      "Height (m)": heightFocus,
-    };
+    String? photoUrl;
+
+    if (lastSubmittedTreeId != null) {
+      final doc = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(widget.foresterId)
+          .collection('tree_inventory')
+          .doc(lastSubmittedTreeId)
+          .get();
+
+      if (doc.exists) {
+        photoUrl = doc.data()?['photo_url'];
+        qrUrl = doc.data()?['qr_url'];
+      }
+    }
 
     showDialog(
       context: context,
       builder: (_) => AlertDialog(
-        title: const Text("Tree Data Summary"),
+        title: const Text("🌳 Tree Data Summary"),
         content: SingleChildScrollView(
-          child: DataTable(
-            columnSpacing: 10,
-            columns: const [
-              DataColumn(
-                  label: Text("Field",
-                      style: TextStyle(fontWeight: FontWeight.bold))),
-              DataColumn(
-                  label: Text("Value",
-                      style: TextStyle(fontWeight: FontWeight.bold))),
-              DataColumn(
-                  label: Text("Edit",
-                      style: TextStyle(fontWeight: FontWeight.bold))),
-            ],
-            rows: submittedData.entries.map((entry) {
-              final key = entry.key;
-              final value = entry.value.toString();
-              final canEdit = focusMap.containsKey(key);
-
-              return DataRow(cells: [
-                DataCell(Text(key)),
-                DataCell(Text(value)),
-                DataCell(
-                  canEdit
-                      ? IconButton(
-                          icon: Icon(Icons.edit, color: Colors.green[700]),
-                          onPressed: () {
-                            Navigator.of(context).pop();
-                            FocusScope.of(context).requestFocus(focusMap[key]);
-                          },
-                        )
-                      : const SizedBox.shrink(),
+          child: Column(
+            children: [
+              for (var entry in submittedData.entries)
+                ListTile(
+                  title: Text(entry.key),
+                  subtitle: Text(entry.value.toString()),
                 ),
-              ]);
-            }).toList(),
+              const Divider(),
+              const Text("Photo Evidence",
+                  style: TextStyle(fontWeight: FontWeight.bold)),
+              if (photoUrl != null && photoUrl.isNotEmpty)
+                Image.network(photoUrl, height: 200, fit: BoxFit.cover)
+              else
+                const Text("No photo available"),
+              const SizedBox(height: 10),
+              const Text("QR Code",
+                  style: TextStyle(fontWeight: FontWeight.bold)),
+              if (qrUrl != null && qrUrl!.isNotEmpty)
+                Image.network(qrUrl!, height: 200, fit: BoxFit.cover)
+              else
+                const Text("No QR available"),
+            ],
           ),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(context).pop(),
-            child: Text("Close", style: TextStyle(color: Colors.green[700])),
-          )
+            child: const Text("Close"),
+          ),
         ],
       ),
     );
   }
 
+  // ✅ UI
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -247,13 +330,6 @@ class _RegisterTreesPageState extends State<RegisterTreesPage> {
         title: const Text("Tree Inventory"),
         backgroundColor: Colors.green[800],
         foregroundColor: Colors.white,
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.qr_code),
-            tooltip: 'Generate QR Tag',
-            onPressed: generateQrTag,
-          ),
-        ],
       ),
       body: Padding(
         padding: const EdgeInsets.all(16.0),
@@ -263,8 +339,6 @@ class _RegisterTreesPageState extends State<RegisterTreesPage> {
                 style:
                     const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
             const SizedBox(height: 20),
-            buildTextField("Tree No.", treeNoController,
-                focusNode: treeNoFocus),
             buildTextField("Specie", specieController, focusNode: specieFocus),
             Row(
               children: [
@@ -283,47 +357,53 @@ class _RegisterTreesPageState extends State<RegisterTreesPage> {
             ),
             buildTextField("Volume (CU m)", volumeController, enabled: false),
             const SizedBox(height: 12),
-            const Text("GPS Location",
-                style: TextStyle(fontWeight: FontWeight.bold)),
-            const SizedBox(height: 8),
             Row(
               children: [
-                Expanded(child: buildTextField("Latitude", latController)),
+                Expanded(
+                    child: buildTextField("Latitude", latController,
+                        enabled: false)),
                 const SizedBox(width: 12),
-                Expanded(child: buildTextField("Longitude", longController)),
+                Expanded(
+                    child: buildTextField("Longitude", longController,
+                        enabled: false)),
               ],
+            ),
+            TextButton.icon(
+              icon: const Icon(Icons.my_location, color: Colors.green),
+              label: const Text("Get Current Location"),
+              onPressed: _getLocation,
             ),
             const SizedBox(height: 20),
             const Text("Photo Evidence",
                 style: TextStyle(fontWeight: FontWeight.bold)),
-            const SizedBox(height: 8),
-            imageFile != null
-                ? Image.network(imageFile!.path, height: 200)
-                : const Text("No image selected."),
+            if (imageFile != null)
+              kIsWeb
+                  ? Image.network(imageFile!.path, height: 200)
+                  : Image.file(File(imageFile!.path), height: 200)
+            else
+              const Text("No image selected."),
             TextButton.icon(
               icon: const Icon(Icons.upload),
-              label: const Text("Upload Photo"),
+              label: const Text("Pick Photo"),
               onPressed: pickImage,
             ),
             const SizedBox(height: 20),
             ElevatedButton(
               onPressed: handleSubmit,
               style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.green[800],
-                padding: const EdgeInsets.symmetric(vertical: 16),
-              ),
+                  backgroundColor: Colors.green[800],
+                  padding: const EdgeInsets.symmetric(vertical: 16)),
               child: const Text("Submit",
-                  style: TextStyle(fontSize: 16, color: Colors.white)),
+                  style: TextStyle(color: Colors.white, fontSize: 16)),
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: 10),
             ElevatedButton(
               onPressed: viewSummaryDialog,
               style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.green[800],
-                padding: const EdgeInsets.symmetric(vertical: 16),
-              ),
+                  backgroundColor: Colors.green[800],
+                  padding: const EdgeInsets.symmetric(vertical: 16)),
               child: const Text("View Summary",
-                  style: TextStyle(fontSize: 16, color: Colors.white)),
+                  style: TextStyle(color: Colors.white, fontSize: 16)),
             ),
           ],
         ),
