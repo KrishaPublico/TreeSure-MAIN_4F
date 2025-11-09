@@ -3,14 +3,23 @@ import 'pltp.dart'; // Ensure this path is correct based on your project structu
 import 'splt.dart';
 import 'PermitToCut.dart';
 
-class CuttingPermitPage extends StatelessWidget {
-  const CuttingPermitPage({super.key});
+class CuttingPermitPage extends StatefulWidget {
+  final String applicantId;
+  final String applicantName;
+  const CuttingPermitPage(
+      {super.key, required this.applicantId, required this.applicantName});
 
+  @override
+  State<CuttingPermitPage> createState() => _CuttingPermitPageState();
+}
+
+class _CuttingPermitPageState extends State<CuttingPermitPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Cutting Permit Options', style: TextStyle(color: Colors.white)),
+        title: const Text('Cutting Permit Options',
+            style: TextStyle(color: Colors.white)),
         backgroundColor: Colors.green[700],
         iconTheme: const IconThemeData(color: Colors.white),
       ),
@@ -20,13 +29,21 @@ class CuttingPermitPage extends StatelessWidget {
           _buildCardButton(context, "Private Land Timber Permit (PLTP)", () {
             Navigator.push(
               context,
-              MaterialPageRoute(builder: (context) => const PLTPFormPage()),
+              MaterialPageRoute(
+                  builder: (context) => PLTPFormPage(
+                        applicantId: widget.applicantId,
+                        applicantName: widget.applicantName,
+                      )),
             );
           }),
           _buildCardButton(context, "Special Land Timber Permit (SPLT)", () {
             Navigator.push(
               context,
-              MaterialPageRoute(builder: (context) => const SPLTFormPage()),
+              MaterialPageRoute(
+                  builder: (context) => SPLTFormPage(
+                        applicantName: widget.applicantName,
+                        applicantId: widget.applicantId,
+                      )),
             );
           }),
           _buildCardButton(context, "Wood Delivery Permit", () {
@@ -35,7 +52,11 @@ class CuttingPermitPage extends StatelessWidget {
           _buildCardButton(context, "Permit to Cut", () {
             Navigator.push(
               context,
-              MaterialPageRoute(builder: (context) => const PermitToCutPage()),
+              MaterialPageRoute(
+                  builder: (context) => PermitToCutPage(
+                        applicantId: widget.applicantId,
+                        applicantName: widget.applicantName,
+                      )),
             );
           }),
           _buildCardButton(context, "Wood Charcoal Production Permit", () {
@@ -60,7 +81,8 @@ class CuttingPermitPage extends StatelessWidget {
     );
   }
 
-  Widget _buildCardButton(BuildContext context, String title, VoidCallback onPressed) {
+  Widget _buildCardButton(
+      BuildContext context, String title, VoidCallback onPressed) {
     return Card(
       color: Colors.green[700],
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
@@ -73,7 +95,8 @@ class CuttingPermitPage extends StatelessWidget {
           padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 20),
           child: Text(
             title,
-            style: const TextStyle(fontSize: 16, color: Colors.white, fontWeight: FontWeight.w600),
+            style: const TextStyle(
+                fontSize: 16, color: Colors.white, fontWeight: FontWeight.w600),
           ),
         ),
       ),
@@ -93,19 +116,22 @@ class CuttingPermitPage extends StatelessWidget {
         ),
         child: ExpansionTile(
           tilePadding: const EdgeInsets.symmetric(horizontal: 20),
-          childrenPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+          childrenPadding:
+              const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
           collapsedIconColor: Colors.white,
           iconColor: Colors.white,
           title: Text(
             title,
-            style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w600),
+            style: const TextStyle(
+                color: Colors.white, fontSize: 16, fontWeight: FontWeight.w600),
           ),
           children: options
               .map(
                 (option) => ListTile(
                   title: Text(
                     option,
-                    style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w500),
+                    style: const TextStyle(
+                        color: Colors.white, fontWeight: FontWeight.w500),
                   ),
                   contentPadding: const EdgeInsets.symmetric(horizontal: 8),
                   onTap: () {

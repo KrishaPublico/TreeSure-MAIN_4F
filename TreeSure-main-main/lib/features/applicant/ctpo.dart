@@ -1,62 +1,156 @@
 import 'dart:io';
-import 'package:flutter/foundation.dart' show kIsWeb;
-import 'package:flutter/material.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:firebase_storage/firebase_storage.dart';
+import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
 import 'package:path/path.dart' as path;
+import 'package:url_launcher/url_launcher.dart';
 
 class CTPOUploadPage extends StatefulWidget {
-  final String applicantId; // new parameter
-  final String applicantName; 
+  final String applicantId;
+  final String applicantName;
 
   const CTPOUploadPage({
     super.key,
     required this.applicantId,
-    required this.applicantName, // 👈 Also required here
+    required this.applicantName,
   });
 
   @override
   State<CTPOUploadPage> createState() => _CTPOUploadPageState();
 }
+
 class _CTPOUploadPageState extends State<CTPOUploadPage> {
-  /// Each item will store { "file": PlatformFile?, "url": String? }
-  final Map<String, Map<String, dynamic>> uploadedFiles = {
-    "1. Letter of Application (1 original, 1 photocopy)": {
-      "file": null,
-      "url": null
+  final List<Map<String, String>> formLabels = [
+    {"title": "Letter of Application", "description": "(1 original, 1 photocopy)"},
+    {
+      "title":
+          "OCT, TCT, Judicial Title, CLOA, Tax Declared Alienable and Disposable Lands",
+      "description": "(1 certified true copy)"
     },
-    "2. OCT, TCT, Judicial Title, CLOA, Tax Declared Alienable and Disposable Lands (1 certified true copy)":
-        {"file": null, "url": null},
-    "3. Data on the number of seedlings planted, species and area planted": {
-      "file": null,
-      "url": null
+    {
+      "title": "Data on the number of seedlings planted, species and area planted",
+      "description": ""
     },
-    "4. Endorsement from concerned LGU interposing no objection to the cutting of tree under the following conditions (1 original)":
-        {"file": null, "url": null},
-    "4.a If the trees to be cut falls within one barangay, an endorsement from the Barangay Captain shall be secured":
-        {"file": null, "url": null},
-    "4.b If the trees to be cut falls within more than one barangay, endorsement shall be secured either from the Municipal/City Mayor or all the Barangay Captains concerned":
-        {"file": null, "url": null},
-    "4.c If the trees to be cut fall within more than one municipality/city, endorsement shall be secured either from the Provincial Governor or all the Municipality/City Mayors concerned":
-        {"file": null, "url": null},
-    "5. Special Power of Attorney (SPA) (1 original) – [Applicable if the client is a representative]":
-        {"file": null, "url": null},
-  };
+    {
+      "title": "Endorsement from concerned LGU interposing no objection to the cutting of trees",
+      "description": "(1 original)"
+    },
+    {
+      "title": "If the trees to be cut fall within one barangay, endorsement from the Barangay Captain",
+      "description": ""
+    },
+    {
+      "title": "If within more than one barangay, endorsement from the Municipal/City Mayor or all Captains",
+      "description": ""
+    },
+    {
+      "title": "If within more than one municipality/city, endorsement from the Provincial Governor or all Mayors",
+      "description": ""
+    },
+    {
+      "title": "Special Power of Attorney (SPA) – Applicable if the client is a representative",
+      "description": "(1 original)"
+    },
+  ];
 
+  final Map<String, Map<String, dynamic>> uploadedFiles = {};
   bool _isUploading = false;
+  bool _reuploadAllowed = false; // ✅ Track reuploadAllowed status
+  List<Map<String, dynamic>> _adminComments = []; // ✅ Store admin comments
 
-  /// File Picker (select only PDF/DOC/DOCX)
-  Future<void> pickFile(String label) async {
+  @override
+  void initState() {
+    super.initState();
+    for (final label in formLabels) {
+      uploadedFiles[label["title"]!] = {"file": null, "url": null};
+    }
+    _loadExistingUploads();
+    _loadReuploadStatus(); // ✅ Load reuploadAllowed status
+    _loadAdminComments(); // ✅ Load admin comments
+  }
+
+  /// Load already uploaded files (from applications → ctpo → applicants → uploads)
+  Future<void> _loadExistingUploads() async {
+    final uploadsRef = FirebaseFirestore.instance
+        .collection('applications')
+        .doc('ctpo')
+        .collection('applicants')
+        .doc(widget.applicantId)
+        .collection('uploads');
+
+    final snapshot = await uploadsRef.get();
+    for (final doc in snapshot.docs) {
+      final data = doc.data();
+      final title = data['title'] as String?;
+      final url = data['url'] as String?;
+      if (title != null && uploadedFiles.containsKey(title)) {
+        uploadedFiles[title]!["url"] = url;
+      }
+    }
+    setState(() {});
+  }
+
+  /// ✅ Load reuploadAllowed status from Firestore
+  Future<void> _loadReuploadStatus() async {
     try {
-      FilePickerResult? result = await FilePicker.platform.pickFiles(
+      final applicantRef = FirebaseFirestore.instance
+          .collection('applications')
+          .doc('ctpo')
+          .collection('applicants')
+          .doc(widget.applicantId);
+
+      final snapshot = await applicantRef.get();
+      if (snapshot.exists) {
+        final reuploadAllowed = snapshot.data()?['reuploadAllowed'] as bool? ?? false;
+        setState(() {
+          _reuploadAllowed = reuploadAllowed;
+        });
+      }
+    } catch (e) {
+      print("Error loading reupload status: $e");
+    }
+  }
+
+  /// ✅ Load admin comments from Firestore
+  Future<void> _loadAdminComments() async {
+    try {
+      final applicantRef = FirebaseFirestore.instance
+          .collection('applications')
+          .doc('ctpo')
+          .collection('applicants')
+          .doc(widget.applicantId);
+
+      final commentsSnapshot = await applicantRef.collection('comments').orderBy('createdAt', descending: true).get();
+      
+      final comments = commentsSnapshot.docs.map((doc) {
+        return {
+          'message': doc.data()['message'] as String? ?? '',
+          'from': doc.data()['from'] as String? ?? 'Admin',
+          'createdAt': doc.data()['createdAt'] as Timestamp?,
+        };
+      }).toList();
+
+      setState(() {
+        _adminComments = comments;
+      });
+    } catch (e) {
+      print("Error loading admin comments: $e");
+    }
+  }
+
+  /// Selects a file for a particular requirement
+  Future<void> pickFile(String title) async {
+    try {
+      final result = await FilePicker.platform.pickFiles(
         type: FileType.custom,
         allowedExtensions: ['pdf', 'doc', 'docx'],
         withData: true,
       );
-
       if (result == null) return;
 
-      final PlatformFile file = result.files.single;
+      final file = result.files.single;
       final ext = path.extension(file.name).toLowerCase();
 
       if (!['.pdf', '.doc', '.docx'].contains(ext)) {
@@ -67,109 +161,164 @@ class _CTPOUploadPageState extends State<CTPOUploadPage> {
       }
 
       setState(() {
-        uploadedFiles[label]!["file"] = file;
+        uploadedFiles[title]!["file"] = file;
       });
     } catch (e) {
-      debugPrint("File selection failed: $e");
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text("Error selecting file: $e")),
       );
     }
   }
 
-  /// Upload all selected files on Submit
+  /// Handles all uploads and synchronization (hybrid write)
   Future<void> handleSubmit() async {
     setState(() => _isUploading = true);
 
     try {
+      final firestore = FirebaseFirestore.instance;
+      final storage = FirebaseStorage.instance;
+
+      // References
+      final appDoc = firestore.collection('applications').doc('ctpo');
+      final applicantDoc = appDoc.collection('applicants').doc(widget.applicantId);
+      final userUploadsRef = firestore
+          .collection('users')
+          .doc(widget.applicantId)
+          .collection('ctpo_uploads');
+      final applicantUploadsRef = applicantDoc.collection('uploads');
+
+      // Upload files one by one
       for (final entry in uploadedFiles.entries) {
-        final label = entry.key;
+        final title = entry.key;
         final file = entry.value["file"] as PlatformFile?;
+        if (file == null) continue;
 
-        if (file == null) continue; // skip if not selected
-
-        final fileName =
-            "${DateTime.now().millisecondsSinceEpoch}_${file.name}";
-        final ref =
-            FirebaseStorage.instance.ref().child("ctpo_uploads/$fileName");
+        final safeTitle = title.replaceAll(RegExp(r'[.#$/\[\]]'), '-').trim();
+        final fileName = "${DateTime.now().millisecondsSinceEpoch}_${file.name}";
+        final ref = storage.ref().child("ctpo_uploads/$fileName");
 
         UploadTask uploadTask;
-
         if (kIsWeb) {
-          final fileBytes = file.bytes;
-          if (fileBytes == null) throw Exception("File bytes missing");
-          uploadTask = ref.putData(fileBytes);
+          final bytes = file.bytes;
+          if (bytes == null) throw Exception("File bytes missing");
+          uploadTask = ref.putData(bytes);
         } else {
-          final filePath = file.path;
-          if (filePath == null) throw Exception("File path missing");
-          uploadTask = ref.putFile(File(filePath));
+          final pathStr = file.path;
+          if (pathStr == null) throw Exception("File path missing");
+          uploadTask = ref.putFile(File(pathStr));
         }
 
         await uploadTask.whenComplete(() {});
         final url = await ref.getDownloadURL();
 
-        uploadedFiles[label]!["url"] = url;
+        // Save data structure
+        final uploadData = {
+          'title': title,
+          'fileName': file.name,
+          'url': url,
+          'uploadedAt': FieldValue.serverTimestamp(),
+        };
+
+        // 1️⃣ Save inside user → ctpo_uploads
+        await userUploadsRef.doc(safeTitle).set(uploadData);
+
+        // 2️⃣ Save inside applications → ctpo → applicants → uploads
+        await applicantUploadsRef.doc(safeTitle).set(uploadData);
+
+        uploadedFiles[title]!["url"] = url;
       }
 
-      setState(() => _isUploading = false);
+      // Ensure applicant metadata exists
+      await applicantDoc.set({
+        'applicantName': widget.applicantName,
+        'uploadedAt': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("All files uploaded successfully!")),
-      );
+      // Update main summary document
+      final applicantsSnapshot = await appDoc.collection('applicants').get();
+      final uploadedCount = applicantsSnapshot.docs.length;
+
+      await appDoc.set({
+        'uploadedCount': uploadedCount,
+        'lastUpdated': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
+
+      if (mounted) {
+        setState(() => _isUploading = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("All files uploaded successfully!")),
+        );
+      }
     } catch (e) {
-      setState(() => _isUploading = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text("Error uploading files: $e")),
-      );
+      if (mounted) {
+        setState(() => _isUploading = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text("Error uploading files: $e")),
+        );
+      }
     }
   }
 
-  Widget buildUploadField(String label) {
-    final isIndented = label.startsWith("4.a") ||
-        label.startsWith("4.b") ||
-        label.startsWith("4.c");
-    final noUpload = label ==
-        "4. Endorsement from concerned LGU interposing no objection to the cutting of tree under the following conditions (1 original)";
-
-    final file = uploadedFiles[label]!["file"] as PlatformFile?;
-    final url = uploadedFiles[label]!["url"] as String?;
+  Widget buildUploadField(Map<String, String> label) {
+    final title = label["title"]!;
+    final description = label["description"] ?? "";
+    final file = uploadedFiles[title]!["file"] as PlatformFile?;
+    final url = uploadedFiles[title]!["url"] as String?;
+    final isUploaded = url != null;
 
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 6),
+      padding: const EdgeInsets.symmetric(vertical: 8),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Expanded(
-            child: Padding(
-              padding: EdgeInsets.only(left: isIndented ? 24.0 : 0),
-              child: Text(
-                label +
-                    (url != null
-                        ? " ✅ (Uploaded)"
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title +
+                      (isUploaded
+                          ? " ✅ (Uploaded)"
+                          : file != null
+                              ? " (Ready)"
+                              : ""),
+                  style: TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.bold,
+                    color: isUploaded
+                        ? Colors.green
                         : file != null
-                            ? " (Ready to upload)"
-                            : ""),
-                style: TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w500,
-                  color: url != null
-                      ? Colors.green
-                      : file != null
-                          ? Colors.orange
-                          : Colors.black,
+                            ? Colors.orange
+                            : Colors.black,
+                  ),
                 ),
-              ),
+                const SizedBox(height: 4),
+                Text(description,
+                    style: const TextStyle(fontSize: 13, color: Colors.black87)),
+                if (isUploaded)
+                  TextButton(
+                    onPressed: () async {
+                      await launchUrl(Uri.parse(url));
+                    },
+                    child: const Text("View Uploaded File"),
+                  ),
+              ],
             ),
           ),
-          if (!noUpload)
-            ElevatedButton(
-              onPressed: () => pickFile(label),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: file != null ? Colors.orange : Colors.green,
-                foregroundColor: Colors.white,
-              ),
-              child: Text(file != null ? "Change File" : "Select File"),
+          ElevatedButton(
+            onPressed: isUploaded ? null : () => pickFile(title),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: isUploaded
+                  ? Colors.grey
+                  : (file != null ? Colors.orange : Colors.green[700]),
+              foregroundColor: Colors.white,
             ),
+            child: Text(
+              isUploaded
+                  ? "Uploaded"
+                  : (file != null ? "Change File" : "Select File"),
+            ),
+          ),
         ],
       ),
     );
@@ -177,6 +326,15 @@ class _CTPOUploadPageState extends State<CTPOUploadPage> {
 
   @override
   Widget build(BuildContext context) {
+    // ✅ Determine button state
+    final isButtonDisabled = _isUploading || (!_reuploadAllowed && _adminComments.isNotEmpty);
+    final buttonColor = (_reuploadAllowed || _adminComments.isEmpty)
+        ? Colors.green[700]
+        : Colors.grey[400];
+    final buttonText = (_reuploadAllowed || _adminComments.isEmpty)
+        ? 'Submit (Upload All Files)'
+        : 'Submit Disabled - Waiting for Approval';
+
     return Scaffold(
       appBar: AppBar(
         backgroundColor: Colors.green[700],
@@ -191,45 +349,168 @@ class _CTPOUploadPageState extends State<CTPOUploadPage> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            Text(
+              "Applicant: ${widget.applicantName}",
+              style: const TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.bold,
+                color: Colors.green,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              "User ID: ${widget.applicantId}",
+              style: const TextStyle(fontSize: 13, color: Colors.black54),
+            ),
+            const Divider(thickness: 1, height: 24),
+            
+            // ✅ Admin Comments Section
+            if (_adminComments.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      '💬 Admin Comments',
+                      style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
+                    ),
+                    const SizedBox(height: 8),
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: Colors.blue[50],
+                        border: Border.all(color: Colors.blue, width: 1),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: _adminComments.map((comment) {
+                          return Padding(
+                            padding: const EdgeInsets.only(bottom: 8),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  comment['message'] ?? '',
+                                  style: const TextStyle(fontSize: 14),
+                                ),
+                                const SizedBox(height: 4),
+                                Text(
+                                  'From: ${comment['from'] ?? 'Admin'} • ${_formatTimestamp(comment['createdAt'])}',
+                                  style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+                                ),
+                              ],
+                            ),
+                          );
+                        }).toList(),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    
+                    // ✅ Status Notification
+                    if (_reuploadAllowed)
+                      Container(
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: Colors.green[50],
+                          border: Border.all(color: Colors.green, width: 1),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: const Row(
+                          children: [
+                            Icon(Icons.check_circle, color: Colors.green),
+                            SizedBox(width: 12),
+                            Expanded(
+                              child: Text(
+                                'You can re-upload files now.\nPlease correct the issues above.',
+                                style: TextStyle(color: Colors.green, fontSize: 13),
+                              ),
+                            ),
+                          ],
+                        ),
+                      )
+                    else
+                      Container(
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: Colors.red[50],
+                          border: Border.all(color: Colors.red, width: 1),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: const Row(
+                          children: [
+                            Icon(Icons.cancel, color: Colors.red),
+                            SizedBox(width: 12),
+                            Expanded(
+                              child: Text(
+                                'You cannot re-upload files yet.\nPlease wait for admin approval.',
+                                style: TextStyle(color: Colors.red, fontSize: 13),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    const SizedBox(height: 16),
+                  ],
+                ),
+              ),
+            
             const Text(
               'Upload Documents for Certificate of Tree Plantation Ownership (CTPO)',
               style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: 16),
-
-            // Upload fields
-            for (String label in uploadedFiles.keys) buildUploadField(label),
-
+            for (final label in formLabels) buildUploadField(label),
             const SizedBox(height: 32),
-
-            // Submit button
             Center(
               child: SizedBox(
                 width: double.infinity,
                 child: ElevatedButton(
-                  onPressed: _isUploading ? null : handleSubmit,
+                  onPressed: isButtonDisabled ? null : handleSubmit,
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.green[700],
+                    backgroundColor: buttonColor,
                     foregroundColor: Colors.white,
                     padding: const EdgeInsets.symmetric(vertical: 20),
-                    textStyle: const TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.bold,
-                    ),
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(12),
                     ),
                   ),
                   child: _isUploading
                       ? const CircularProgressIndicator(color: Colors.white)
-                      : const Text('Submit (Upload All Files)'),
+                      : Text(
+                          buttonText,
+                          style: const TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
                 ),
               ),
             ),
-            const SizedBox(height: 32),
           ],
         ),
       ),
     );
+  }
+
+  /// ✅ Format Firestore Timestamp to readable date format
+  String _formatTimestamp(Timestamp? timestamp) {
+    if (timestamp == null) return '';
+    final dateTime = timestamp.toDate();
+    final now = DateTime.now();
+    final difference = now.difference(dateTime);
+
+    if (difference.inMinutes < 1) {
+      return 'Just now';
+    } else if (difference.inHours < 1) {
+      return '${difference.inMinutes}m ago';
+    } else if (difference.inDays < 1) {
+      return '${difference.inHours}h ago';
+    } else if (difference.inDays < 7) {
+      return '${difference.inDays}d ago';
+    } else {
+      return '${dateTime.month}/${dateTime.day}/${dateTime.year} ${dateTime.hour}:${dateTime.minute.toString().padLeft(2, '0')} ${dateTime.hour >= 12 ? 'PM' : 'AM'}';
+    }
   }
 }

@@ -3,17 +3,20 @@ import 'package:flutter/material.dart';
 import 'package:treesure_app/features/roles/roles_page.dart';
 
 class ProfilePage extends StatelessWidget {
-  final String userId; // Firestore document ID from login
+  final String userId; // Firestore document ID (applicant ID)
 
   const ProfilePage({super.key, required this.userId});
 
+  /// Fetch applicant data from Firestore
   Future<Map<String, dynamic>?> _getUserData() async {
     try {
-      final doc =
-          await FirebaseFirestore.instance.collection("users").doc(userId).get();
+      final doc = await FirebaseFirestore.instance
+          .collection("users")
+          .doc(userId)
+          .get();
       return doc.data();
     } catch (e) {
-      debugPrint("Error fetching user data: $e");
+      debugPrint("Error fetching applicant data: $e");
       return null;
     }
   }
@@ -31,8 +34,10 @@ class ProfilePage extends StatelessWidget {
 
           if (!snapshot.hasData || snapshot.data == null) {
             return const Center(
-              child: Text("No profile data found.",
-                  style: TextStyle(color: Colors.red)),
+              child: Text(
+                "No profile data found.",
+                style: TextStyle(color: Colors.red),
+              ),
             );
           }
 
@@ -43,83 +48,113 @@ class ProfilePage extends StatelessWidget {
           final username = userData['username'] ?? "No Username";
 
           return Center(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                // Profile Picture
-                const CircleAvatar(
-                  radius: 50,
-                  backgroundColor: Colors.green,
-                  child: Icon(
-                    Icons.person,
-                    size: 50,
-                    color: Colors.white,
-                  ),
-                ),
-                const SizedBox(height: 10),
-
-                // ✅ Dynamic User Name
-                Text(
-                  name,
-                  style: const TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.green,
-                  ),
-                ),
-                const SizedBox(height: 30),
-
-                // ✅ Information Card
-                Container(
-                  width: MediaQuery.of(context).size.width * 0.8,
-                  padding: const EdgeInsets.all(20),
-                  decoration: BoxDecoration(
-                    color: Colors.green[100],
-                    borderRadius: BorderRadius.circular(15),
-                    boxShadow: const [
-                      BoxShadow(
-                        color: Colors.black26,
-                        blurRadius: 5,
-                        offset: Offset(2, 4),
-                      ),
-                    ],
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      _buildInfoRow(Icons.home, "Address", address),
-                      const Divider(color: Colors.green),
-                      _buildInfoRow(Icons.phone, "Contact", contact),
-                      const Divider(color: Colors.green),
-                      _buildInfoRow(Icons.person, "Username", username),
-                    ],
-                  ),
-                ),
-
-                const SizedBox(height: 30),
-
-                // Logout Button
-                ElevatedButton(
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.green[800],
-                    foregroundColor: Colors.white,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(25),
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  // Profile Picture
+                  const CircleAvatar(
+                    radius: 50,
+                    backgroundColor: Colors.green,
+                    child: Icon(
+                      Icons.person,
+                      size: 50,
+                      color: Colors.white,
                     ),
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 50, vertical: 15),
                   ),
-                  onPressed: () {
-                    Navigator.pushReplacement(
-                      context,
-                      MaterialPageRoute(
-                        builder: (context) => const RolePage(),
+                  const SizedBox(height: 10),
+
+                  // Applicant Name
+                  Text(
+                    name,
+                    style: const TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.green,
+                    ),
+                  ),
+                  const SizedBox(height: 30),
+
+                  // Info Card
+                  Container(
+                    width: MediaQuery.of(context).size.width * 0.8,
+                    padding: const EdgeInsets.all(20),
+                    decoration: BoxDecoration(
+                      color: Colors.green[100],
+                      borderRadius: BorderRadius.circular(15),
+                      boxShadow: const [
+                        BoxShadow(
+                          color: Colors.black26,
+                          blurRadius: 5,
+                          offset: Offset(2, 4),
+                        ),
+                      ],
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        _buildInfoRow(Icons.home, "Address", address),
+                        const Divider(color: Colors.green),
+                        _buildInfoRow(Icons.phone, "Contact", contact),
+                        const Divider(color: Colors.green),
+                        _buildInfoRow(Icons.person, "Username", username),
+                      ],
+                    ),
+                  ),
+
+                  const SizedBox(height: 30),
+
+                  // Logout Button with confirmation dialog
+                  ElevatedButton(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.green[800],
+                      foregroundColor: Colors.white,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(25),
                       ),
-                    );
-                  },
-                  child: const Text("Logout"),
-                ),
-              ],
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 50, vertical: 15),
+                    ),
+                    onPressed: () async {
+                      // Show confirmation dialog
+                      final confirmLogout = await showDialog<bool>(
+                        context: context,
+                        builder: (context) => AlertDialog(
+                          title: const Text("Logout"),
+                          content: const Text(
+                            "Are you sure you want to log out?",
+                            style: TextStyle(fontSize: 16),
+                          ),
+                          actions: [
+                            TextButton(
+                              onPressed: () => Navigator.pop(context, false),
+                              child: const Text("Cancel"),
+                            ),
+                            TextButton(
+                              onPressed: () => Navigator.pop(context, true),
+                              child: const Text(
+                                "Logout",
+                                style: TextStyle(color: Colors.red),
+                              ),
+                            ),
+                          ],
+                        ),
+                      );
+
+                      // If confirmed, navigate to RolePage
+                      if (confirmLogout == true && context.mounted) {
+                        Navigator.pushReplacement(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) => const RolePage(),
+                          ),
+                        );
+                      }
+                    },
+                    child: const Text("Logout"),
+                  ),
+                ],
+              ),
             ),
           );
         },
@@ -127,9 +162,10 @@ class ProfilePage extends StatelessWidget {
     );
   }
 
-  // ✅ Helper Widget for displaying info rows
+  /// Helper method for each info line
   Widget _buildInfoRow(IconData icon, String label, String value) {
     return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Icon(icon, color: Colors.green[800]),
         const SizedBox(width: 10),

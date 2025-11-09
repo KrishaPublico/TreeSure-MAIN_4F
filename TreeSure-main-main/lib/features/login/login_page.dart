@@ -46,36 +46,43 @@ class _LoginPageState extends State<LoginPage> {
         final userData = doc.data();
         final String dbRole = userData['role'] ?? "Unknown";
 
-        if (dbRole.toLowerCase() == widget.role.toLowerCase()) {
-          if (dbRole == "Forester") {
-            final String foresterId = doc.id;
-            final String foresterName = userData['name'] ?? "Unknown Forester";
+      if (dbRole.toLowerCase() == widget.role.toLowerCase()) {
+  if (dbRole == "Forester") {
+    final String foresterId = doc.id;
+    final String foresterName = userData['name'] ?? "Unknown Forester";
 
-            Navigator.pushReplacement(
-              context,
-              MaterialPageRoute(
-                builder: (_) => ForesterNavbar(
-                  foresterId: foresterId,
-                  foresterName: foresterName,
-                ),
-              ),
-            );
-          } else if (dbRole == "Applicant") {
-  final String applicantId = doc.id;
-  final String applicantName = userData['name'] ?? "Unknown Applicant";
+    // 🔥 Add applicantName even if forester doesn’t have one yet (can be optional)
+    final String applicantName = userData['assignedApplicantName'] ?? "Unknown Applicant";
 
-  Navigator.pushReplacement(
-    context,
-    MaterialPageRoute(
-      builder: (_) => ApplicantNavbar(
-        applicantId: applicantId,
-        applicantName: applicantName,
+    Navigator.pushReplacement(
+      context,
+      MaterialPageRoute(
+        builder: (_) => ForesterNavbar(
+          foresterId: foresterId,
+          foresterName: foresterName,
+         
+        ),
       ),
-    ),
-  );
+    );
+  } else if (dbRole == "Applicant") {
+    final String applicantId = doc.id;
+    final String applicantName = userData['name'] ?? "Unknown Applicant";
+
+    Navigator.pushReplacement(
+      context,
+      MaterialPageRoute(
+        builder: (_) => ApplicantNavbar(
+          applicantId: applicantId,
+          applicantName: applicantName,
+        ),
+      ),
+    );
+  }
 }
 
-        } else {
+
+
+        else {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
               content:
@@ -133,7 +140,7 @@ class _LoginPageState extends State<LoginPage> {
 
               // ✅ Dynamic Title
               Text(
-                "TreeSure - ${widget.role} Login",
+                " ${widget.role}",
                 style: TextStyle(
                   fontSize: 30,
                   fontFamily: 'Poppins',
@@ -150,7 +157,7 @@ class _LoginPageState extends State<LoginPage> {
                 controller: _emailController,
                 decoration: InputDecoration(
                   prefixIcon: const Icon(Icons.email, color: Colors.white),
-                  hintText: "Email / Username",
+                  hintText: "Username",
                   filled: true,
                   fillColor: Colors.green,
                   hintStyle: const TextStyle(color: Colors.white),

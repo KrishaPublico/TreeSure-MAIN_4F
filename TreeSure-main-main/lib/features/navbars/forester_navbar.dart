@@ -8,6 +8,7 @@ import 'package:treesure_app/features/home/forester_homepage.dart';
 class ForesterNavbar extends StatefulWidget {
   final String foresterId; // comes from login
   final String foresterName; // comes from login
+
   const ForesterNavbar(
       {super.key, required this.foresterId, required this.foresterName});
 
@@ -22,23 +23,22 @@ class ForesterNavbarState extends State<ForesterNavbar> {
   @override
   void initState() {
     super.initState();
-_pages = [
-  ForesterHomepage(
-    foresterId: widget.foresterId,
-    foresterName: widget.foresterName,
-  ),
-  const HistoryPage_Forester(),
-  NotifPage_Forester(
-    foresterId: widget.foresterId,
-    foresterName: widget.foresterName,
-  ),
-  ProfilePage_Forester(   // 🔥 FIXED: provide the required parameter
-    foresterId: widget.foresterId,
-  ),
-];
-
-
-
+    _pages = [
+      ForesterHomepage(
+        foresterId: widget.foresterId,
+        foresterName: widget.foresterName,
+      ),
+      const HistoryPage_Forester(),
+      NotifPage_Forester(
+  foresterId: widget.foresterId,
+  foresterName: widget.foresterName,
+  applicantName: '', // ✅ Required by your NotifPage_Forester constructor
+),
+     ProfilePage_Forester(
+  foresterId: widget.foresterId,
+  foresterName: widget.foresterName,
+),
+    ];
   }
 
   void _onItemTapped(int index) {
