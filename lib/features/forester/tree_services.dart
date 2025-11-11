@@ -4,6 +4,7 @@ import 'dart:ui';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import 'package:path_provider/path_provider.dart';
@@ -39,7 +40,14 @@ class TreeService {
           ? ref.putData(await image.readAsBytes(), metadata)
           : ref.putFile(File(image.path), metadata);
 
-      TaskSnapshot snapshot = await task;
+      // ✅ Handle the upload task on the main thread
+      TaskSnapshot snapshot = await task.then((snapshot) {
+        return snapshot;
+      }, onError: (error, stackTrace) {
+        print("Image upload error: $error");
+        throw error;
+      });
+
       return await snapshot.ref.getDownloadURL();
     } catch (e) {
       print("Image upload error: $e");
@@ -82,7 +90,15 @@ class TreeService {
       // Upload to Firebase Storage
       final ref = FirebaseStorage.instance.ref().child("tree_qr/$treeId.png");
       final uploadTask = ref.putFile(qrFile);
-      final snapshot = await uploadTask;
+      
+      // ✅ Handle the upload task on the main thread
+      final snapshot = await uploadTask.then((snapshot) {
+        return snapshot;
+      }, onError: (error, stackTrace) {
+        print("QR upload error: $error");
+        throw error;
+      });
+      
       final qrUrl = await snapshot.ref.getDownloadURL();
 
       return qrUrl;
@@ -105,10 +121,13 @@ class TreeService {
     XFile? imageFile,
     required double lat,
     required double lng,
+    required String appointmentId, // ✅ cutting appointment document ID
+    String? treeTaggingAppointmentId, // ✅ tree_tagging_appointment doc ID to store as field
+    String? treeStatus, // ✅ tree cutting status (Ready for Cutting / Not Yet Ready)
   }) async {
     final collectionRef = FirebaseFirestore.instance
-        .collection('users')
-        .doc(foresterId)
+        .collection('appointments')
+        .doc(appointmentId)
         .collection('tree_inventory');
 
     String? photoUrl;
@@ -132,6 +151,10 @@ class TreeService {
       'volume': volume,
       'timestamp': Timestamp.now(),
       'forester_name': forester,
+      'forester_id': foresterId,
+      'appointment_id': appointmentId,
+      'tree_tagging_appointment_id': treeTaggingAppointmentId, // ✅ Store the tree_tagging_appointment doc ID
+      'tree_status': treeStatus ?? 'Not Yet Ready', // ✅ Store the tree cutting status
       'photo_url': photoUrl ?? '',
     };
 

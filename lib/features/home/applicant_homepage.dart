@@ -4,7 +4,10 @@ import 'package:treesure_app/features/applicant/CuttingPermit.dart';
 import 'package:treesure_app/features/applicant/summary_Reports.dart';
 
 class ApplicantHomepage extends StatelessWidget {
-  const ApplicantHomepage({super.key});
+  final String applicantId; // comes from login
+  final String applicantName; // comes from login
+  const ApplicantHomepage(
+      {super.key, required this.applicantId, required this.applicantName});
 
   final int totalRestrictedTrees = 30;
 
@@ -35,19 +38,20 @@ class ApplicantHomepage extends StatelessWidget {
                       const CircleAvatar(
                         radius: 30,
                         backgroundColor: Colors.white,
-                        child: Icon(Icons.person, size: 40, color: Colors.green),
+                        child:
+                            Icon(Icons.person, size: 40, color: Colors.green),
                       ),
                       const SizedBox(height: 8),
-                      const Text(
-                        "Krisha Arellano Publico",
-                        style: TextStyle(
+                      Text(
+                        applicantName,
+                        style: const TextStyle(
                           fontSize: 18,
                           fontWeight: FontWeight.bold,
                           color: Colors.white,
                         ),
                       ),
-                      const Text(
-                        "Applicant",
+                       Text(
+                        applicantId,
                         style: TextStyle(
                           fontSize: 14,
                           color: Colors.white70,
@@ -71,7 +75,8 @@ class ApplicantHomepage extends StatelessWidget {
                       child: const CircleAvatar(
                         radius: 25,
                         backgroundColor: Colors.white,
-                        child: Icon(Icons.qr_code, size: 30, color: Colors.green),
+                        child:
+                            Icon(Icons.qr_code, size: 30, color: Colors.green),
                       ),
                     ),
                   ),
@@ -175,7 +180,10 @@ class ApplicantHomepage extends StatelessWidget {
                       Navigator.push(
                         context,
                         MaterialPageRoute(
-                          builder: (context) => const CTPOUploadPage(),
+                          builder: (context) => CTPOUploadPage(
+                            applicantId: applicantId,
+                            applicantName: applicantName,
+                          ),
                         ),
                       );
                     },
@@ -190,7 +198,10 @@ class ApplicantHomepage extends StatelessWidget {
                       Navigator.push(
                         context,
                         MaterialPageRoute(
-                          builder: (context) => const CuttingPermitPage(),
+                          builder: (context) => CuttingPermitPage(
+                            applicantId: applicantId,
+                            applicantName: applicantName,
+                          ),
                         ),
                       );
                     },
@@ -199,11 +210,12 @@ class ApplicantHomepage extends StatelessWidget {
                   _buildApplicantPermitButton(
                     context,
                     "Certificate to Travel (COV)",
-              Icons.build,
+                    Icons.build,
                     () {
                       ScaffoldMessenger.of(context).showSnackBar(
                         const SnackBar(
-                            content: Text("Access Certificate to Travel information")),
+                            content: Text(
+                                "Access Certificate to Travel information")),
                       );
                     },
                   ),
@@ -215,7 +227,8 @@ class ApplicantHomepage extends StatelessWidget {
                     () {
                       ScaffoldMessenger.of(context).showSnackBar(
                         const SnackBar(
-                            content: Text("Access Chainsaw Permit information.")),
+                            content:
+                                Text("Access Chainsaw Permit information.")),
                       );
                     },
                   ),
@@ -223,12 +236,15 @@ class ApplicantHomepage extends StatelessWidget {
                   _buildApplicantPermitButton(
                     context,
                     "Reports",
-                      Icons.description,
+                    Icons.description,
                     () {
                       Navigator.push(
                         context,
                         MaterialPageRoute(
-                          builder: (context) => const SummaryReportsPage(),
+                          builder: (context) => SummaryReportsPage(
+                            applicantId: applicantId,
+                            applicantName: applicantName,
+                          ),
                         ),
                       );
                     },
@@ -292,8 +308,8 @@ class ApplicantHomepage extends StatelessWidget {
   }
 
   // Permit Button Widget
-  Widget _buildApplicantPermitButton(
-      BuildContext context, String title, IconData icon, VoidCallback onPressed) {
+  Widget _buildApplicantPermitButton(BuildContext context, String title,
+      IconData icon, VoidCallback onPressed) {
     return SizedBox(
       width: double.infinity,
       child: ElevatedButton(

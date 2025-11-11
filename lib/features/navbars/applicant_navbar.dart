@@ -5,7 +5,14 @@ import 'package:treesure_app/features/applicant%20list%20navbars/notif_page.dart
 import 'package:treesure_app/features/applicant%20list%20navbars/profile_page.dart';
 
 class ApplicantNavbar extends StatefulWidget {
-  const ApplicantNavbar({super.key});
+  final String applicantId; // comes from login
+  final String applicantName; // comes from login
+
+  const ApplicantNavbar({
+    super.key,
+    required this.applicantId,
+    required this.applicantName,
+  });
 
   @override
   ApplicantNavbarState createState() => ApplicantNavbarState();
@@ -14,38 +21,45 @@ class ApplicantNavbar extends StatefulWidget {
 class ApplicantNavbarState extends State<ApplicantNavbar> {
   int _currentIndex = 0;
 
-  final List<Widget> _pages = const [
-    ApplicantHomepage(),
-    HistoryPage(),
-    NotifPage(),
-    ProfilePage(),
-  ];
-
-  void _onItemTapped(int index) {
-    setState(() {
-      _currentIndex = index;
-    });
-  }
-
-   @override
+  @override
   Widget build(BuildContext context) {
+    final List<Widget> pages = [
+      ApplicantHomepage(
+        applicantId: widget.applicantId,
+        applicantName: widget.applicantName,
+      ),
+      const HistoryPage(),
+      NotifPage(
+        applicantName: widget.applicantName,
+        applicantId: widget.applicantId,
+      ),
+      ProfilePage(
+        applicantId: widget.applicantId,
+        applicantName: widget.applicantName,
+      ),
+    ];
+
     return Scaffold(
       body: SafeArea(
         child: IndexedStack(
           index: _currentIndex,
-          children: _pages,
+          children: pages,
         ),
       ),
       bottomNavigationBar: Material(
-        elevation: 8, // Adds shadow effect
-        color: const Color(0xFFF5F5F5), // Dirty white background
+        elevation: 8,
+        color: const Color(0xFFF5F5F5),
         child: BottomNavigationBar(
           type: BottomNavigationBarType.fixed,
-          backgroundColor: const Color(0xFFF5F5F5), // Matches dirty white
-          selectedItemColor: Colors.green,      // Green selected icon
-          unselectedItemColor: Colors.green,    // Green unselected icon
+          backgroundColor: const Color(0xFFF5F5F5),
+          selectedItemColor: Colors.green,
+          unselectedItemColor: Colors.green,
           currentIndex: _currentIndex,
-          onTap: _onItemTapped,
+          onTap: (index) {
+            setState(() {
+              _currentIndex = index;
+            });
+          },
           items: const [
             BottomNavigationBarItem(
               icon: Icon(Icons.home),

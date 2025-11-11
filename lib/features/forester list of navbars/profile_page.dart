@@ -1,9 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:treesure_app/features/roles/roles_page.dart';
 
-class ProfilePage_Forester extends StatelessWidget {
-  const ProfilePage_Forester({super.key});
+class ProfilePage_Forester extends StatefulWidget {
+  final String foresterName;
+  const ProfilePage_Forester({super.key, required this.foresterName});
 
+  @override
+  State<ProfilePage_Forester> createState() => _ProfilePage_ForesterState();
+}
+
+class _ProfilePage_ForesterState extends State<ProfilePage_Forester> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -25,9 +31,9 @@ class ProfilePage_Forester extends StatelessWidget {
             const SizedBox(height: 10),
 
             // User Name
-            const Text(
-              "Teresa Ubasa Bayuga",
-              style: TextStyle(
+            Text(
+              widget.foresterName,
+              style: const TextStyle(
                 fontSize: 18,
                 fontWeight: FontWeight.bold,
                 color: Colors.green,

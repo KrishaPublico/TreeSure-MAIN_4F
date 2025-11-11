@@ -1,14 +1,16 @@
 import 'package:flutter/material.dart';
-import 'package:treesure_app/features/forester/forester_tree_mapping.dart';
-import 'package:treesure_app/features/forester/register_trees.dart';
 import 'package:treesure_app/features/forester/forester_summary_reports.dart';
+import 'package:treesure_app/features/forester/forester_tree_mapping.dart';
 import 'package:treesure_app/features/forester/testQr_screen.dart';
 
 class ForesterHomepage extends StatefulWidget {
   final String foresterId; // comes from login
   final String foresterName; // comes from login
-  const ForesterHomepage(
-      {super.key, required this.foresterId, required this.foresterName});
+  const ForesterHomepage({
+    super.key,
+    required this.foresterId,
+    required this.foresterName,
+  });
 
   @override
   State<ForesterHomepage> createState() => _ForesterHomepageState();
@@ -45,9 +47,9 @@ class _ForesterHomepageState extends State<ForesterHomepage> {
                             Icon(Icons.person, size: 40, color: Colors.green),
                       ),
                       const SizedBox(height: 8),
-                      const Text(
-                        "Teresa Ubasa Bayuga",
-                        style: TextStyle(
+                      Text(
+                        widget.foresterName,
+                        style: const TextStyle(
                           fontSize: 18,
                           fontWeight: FontWeight.bold,
                           color: Colors.white,
@@ -93,27 +95,28 @@ class _ForesterHomepageState extends State<ForesterHomepage> {
             padding: const EdgeInsets.symmetric(horizontal: 30.0),
             child: Column(
               children: [
-                _buildMenuButton(
-                  context,
-                  "50 Registered Trees",
-                  Icons.check_circle,
-                  Colors.green[800]!,
-                  () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                          builder: (context) => RegisterTreesPage(
-                                foresterId: widget.foresterId,
-                                foresterName: widget.foresterName,
-                              )),
-                    );
-                  },
-                  textStyle: const TextStyle(
-                    fontSize: 20,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.white,
-                  ),
-                ),
+                // _buildMenuButton(
+                //   context,
+                //   "50 Registered Trees",
+                //   Icons.check_circle,
+                //   Colors.green[800]!,
+                //   () {
+                //     Navigator.push(
+                //       context,
+                //       MaterialPageRoute(
+                //           builder: (context) => RegisterTreesPage(
+                //                 foresterId: widget.foresterId,
+                //                 foresterName: widget.foresterName,
+                //                 appointmentId: appointmentId,
+                //               )),
+                //     );
+                //   },
+                //   textStyle: const TextStyle(
+                //     fontSize: 20,
+                //     fontWeight: FontWeight.bold,
+                //     color: Colors.white,
+                //   ),
+                // ),
                 const SizedBox(height: 15), // keep spacing above Tree Inventory
                 _buildMenuButton(
                   context,
@@ -129,27 +132,28 @@ class _ForesterHomepageState extends State<ForesterHomepage> {
                   },
                 ),
                 const SizedBox(height: 15), // keep spacing above Tree Inventory
-                _buildMenuButton(
-                  context,
-                  "Tree Inventory",
-                  Icons.forest,
-                  Colors.green[800]!,
-                  () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                          builder: (context) => RegisterTreesPage(
-                                foresterId: widget.foresterId,
-                                foresterName: widget.foresterName,
-                              )),
-                    );
-                  },
-                ),
+                // _buildMenuButton(
+                //   context,
+                //   "Tree Inventory",
+                //   Icons.forest,
+                //   Colors.green[800]!,
+                //   () {
+                //     Navigator.push(
+                //       context,
+                //       MaterialPageRoute(
+                //           builder: (context) => RegisterTreesPage(
+                //                 foresterId: widget.foresterId,
+                //                 foresterName: widget.foresterName,
+                //                 appointmentId: widget.appointmentId,
+                //               )),
+                //     );
+                //   },
+                // ),
                 const SizedBox(height: 8), // reduced spacing
                 _buildMenuButton(
                   context,
                   "Tree Mapping",
-                  Icons.map,
+                  Icons.forest,
                   Colors.green[800]!,
                   () {
                     Navigator.push(
@@ -157,7 +161,7 @@ class _ForesterHomepageState extends State<ForesterHomepage> {
                       MaterialPageRoute(
                           builder: (context) => ForesterTreeMapping(
                                 foresterId: widget.foresterId,
-                                foresterName: widget.foresterName,
+                                
                               )),
                     );
                   },

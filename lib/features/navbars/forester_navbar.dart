@@ -29,10 +29,13 @@ class ForesterNavbarState extends State<ForesterNavbar> {
       ),
       const HistoryPage_Forester(),
       NotifPage_Forester(
+        applicantName: widget.foresterName,
         foresterId: widget.foresterId,
         foresterName: widget.foresterName,
       ),
-      const ProfilePage_Forester(),
+      ProfilePage_Forester(
+        foresterName: widget.foresterName,
+      ),
     ];
   }
 

@@ -1,13 +1,17 @@
 import 'dart:io' as io;
 import 'dart:convert';
+import 'dart:async';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:flutter_map/flutter_map.dart';
-import 'package:latlong2/latlong.dart';
+import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:http/http.dart' as http;
+
+// 🗝️ Google Maps API key for Directions API
+const String googleAPIKey = 'AIzaSyC8E4EJ8h5H1Csre_oHjrMP9_XbVi7-Xz0';
 
 class QrUploadScanner extends StatefulWidget {
   const QrUploadScanner({super.key});
@@ -16,7 +20,8 @@ class QrUploadScanner extends StatefulWidget {
   State<QrUploadScanner> createState() => _QrUploadScannerState();
 }
 
-class _QrUploadScannerState extends State<QrUploadScanner> {
+class _QrUploadScannerState extends State<QrUploadScanner>
+    with SingleTickerProviderStateMixin {
   String? scannedData;
   bool isScanning = false;
   bool isUploading = false;
@@ -29,17 +34,37 @@ class _QrUploadScannerState extends State<QrUploadScanner> {
   bool isLoadingLocation = false;
   String? locationError;
   bool showMapView = false;
+  List<LatLng> routePoints = []; // Route polyline points
+  bool isLoadingRoute = false; // Loading state for route
+  Completer<GoogleMapController> _mapController = Completer();
+  Set<Marker> markers = {};
+  Set<Polyline> polylines = {};
+
+  // Animation controller for scanning line
+  AnimationController? _animationController;
+  Animation<double>? _animation;
 
   @override
   void initState() {
     super.initState();
     controller = MobileScannerController();
     _getCurrentLocation();
+
+    // Initialize animation controller
+    _animationController = AnimationController(
+      vsync: this,
+      duration: const Duration(seconds: 2),
+    )..repeat(reverse: true);
+
+    _animation = Tween<double>(begin: 0.0, end: 1.0).animate(
+      CurvedAnimation(parent: _animationController!, curve: Curves.easeInOut),
+    );
   }
 
   @override
   void dispose() {
     controller?.dispose();
+    _animationController?.dispose();
     super.dispose();
   }
 
@@ -120,11 +145,186 @@ class _QrUploadScannerState extends State<QrUploadScanner> {
         currentLocation = LatLng(position.latitude, position.longitude);
         isLoadingLocation = false;
       });
+
+      // Update markers with new location
+      _updateMarkers();
+      _updatePolylines();
+
+      // If we have both current location and tree location, fetch route
+      if (treeLocation != null) {
+        await _fetchRoute();
+      }
     } catch (e) {
       setState(() {
         locationError = e.toString();
         isLoadingLocation = false;
       });
+    }
+  }
+
+  /// 🗺️ Fetch route from Google Directions API
+  Future<void> _fetchRoute() async {
+    if (currentLocation == null || treeLocation == null) {
+      debugPrint('⚠️ Cannot fetch route: missing location data');
+      return;
+    }
+
+    setState(() {
+      isLoadingRoute = true;
+      routePoints = [];
+    });
+
+    try {
+      debugPrint('🌐 Fetching route from API...');
+      
+      final url = Uri.parse(
+        'https://maps.googleapis.com/maps/api/directions/json?'
+        'origin=${currentLocation!.latitude},${currentLocation!.longitude}&'
+        'destination=${treeLocation!.latitude},${treeLocation!.longitude}&'
+        'key=$googleAPIKey',
+      );
+
+      final response = await http.get(url);
+      debugPrint('📡 API Response status: ${response.statusCode}');
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        debugPrint('📊 API Response status: ${data['status']}');
+
+        if (data['status'] == 'REQUEST_DENIED') {
+          debugPrint('❌ API Error: ${data['error_message']}');
+          throw Exception('API request denied: ${data['error_message']}');
+        }
+
+        if (data['status'] == 'OK' && data['routes'] != null && (data['routes'] as List).isNotEmpty) {
+          // Get the overview polyline
+          final polylinePoints = data['routes'][0]['overview_polyline']['points'];
+          debugPrint('🔢 Encoded polyline received');
+
+          // Decode the polyline
+          final decodedPoints = _decodePolyline(polylinePoints);
+          debugPrint('✅ Decoded ${decodedPoints.length} route points');
+
+          setState(() {
+            routePoints = decodedPoints;
+            isLoadingRoute = false;
+          });
+          
+          // Update polylines on map
+          _updatePolylines();
+        } else {
+          debugPrint('❌ No routes found in response');
+          setState(() {
+            isLoadingRoute = false;
+          });
+        }
+      } else {
+        debugPrint('❌ HTTP Error: ${response.statusCode}');
+        setState(() {
+          isLoadingRoute = false;
+        });
+      }
+    } catch (e) {
+      debugPrint('❌ Error fetching route: $e');
+      setState(() {
+        isLoadingRoute = false;
+      });
+      
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Unable to fetch route: $e'),
+            backgroundColor: Colors.orange,
+          ),
+        );
+      }
+    }
+  }
+
+  /// 📍 Decode Google Maps polyline format
+  List<LatLng> _decodePolyline(String encoded) {
+    List<LatLng> points = [];
+    int index = 0;
+    int len = encoded.length;
+    int lat = 0;
+    int lng = 0;
+
+    while (index < len) {
+      int b;
+      int shift = 0;
+      int result = 0;
+      do {
+        b = encoded.codeUnitAt(index++) - 63;
+        result |= (b & 0x1f) << shift;
+        shift += 5;
+      } while (b >= 0x20);
+      int dlat = ((result & 1) != 0 ? ~(result >> 1) : (result >> 1));
+      lat += dlat;
+
+      shift = 0;
+      result = 0;
+      do {
+        b = encoded.codeUnitAt(index++) - 63;
+        result |= (b & 0x1f) << shift;
+        shift += 5;
+      } while (b >= 0x20);
+      int dlng = ((result & 1) != 0 ? ~(result >> 1) : (result >> 1));
+      lng += dlng;
+
+      points.add(LatLng(lat / 1E5, lng / 1E5));
+    }
+
+    return points;
+  }
+
+  /// 🗺️ Update markers on the map
+  void _updateMarkers() {
+    markers.clear();
+    
+    // Add current location marker
+    if (currentLocation != null) {
+      markers.add(Marker(
+        markerId: const MarkerId('current_location'),
+        position: currentLocation!,
+        infoWindow: const InfoWindow(title: 'Your Location'),
+        icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueBlue),
+      ));
+    }
+
+    // Add tree location marker
+    if (treeLocation != null) {
+      markers.add(Marker(
+        markerId: const MarkerId('tree_location'),
+        position: treeLocation!,
+        infoWindow: const InfoWindow(title: 'Tree Location'),
+        icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueRed),
+      ));
+    }
+  }
+
+  /// 📍 Update polylines on the map
+  void _updatePolylines() {
+    polylines.clear();
+    
+    if (routePoints.isNotEmpty) {
+      // Display route polyline if available
+      polylines.add(Polyline(
+        polylineId: const PolylineId('route'),
+        points: routePoints,
+        width: 5,
+        color: Colors.blue,
+        startCap: Cap.roundCap,
+        endCap: Cap.roundCap,
+      ));
+    } else if (currentLocation != null && treeLocation != null) {
+      // Fallback: simple straight line if no route
+      polylines.add(Polyline(
+        polylineId: const PolylineId('straight_line'),
+        points: [currentLocation!, treeLocation!],
+        width: 3,
+        color: Colors.blue.withOpacity(0.5),
+        patterns: [PatternItem.dash(20), PatternItem.gap(10)],
+      ));
     }
   }
 
@@ -188,29 +388,36 @@ class _QrUploadScannerState extends State<QrUploadScanner> {
   Future<void> _fetchTreeDataFromQR(String qrData) async {
     try {
       String? treeId;
+      String? appointmentId;
 
-      // First try to extract tree ID from multiline format
-      final treeIdMatch = RegExp(r'Tree ID: (T\d+)').firstMatch(qrData);
-      if (treeIdMatch != null) {
-        treeId = treeIdMatch.group(1);
-      } else {
-        try {
-          // Try parsing as JSON
-          final qrInfo = json.decode(qrData);
-          treeId = qrInfo['tree_id']?.toString();
-        } catch (e) {
-          // If both methods fail, check if the string itself matches our tree ID format
-          if (RegExp(r'^T\d+$').hasMatch(qrData.trim())) {
-            treeId = qrData.trim();
-          }
+      // Parse the new QR format (key: value format)
+      final lines = qrData.split('\n');
+      for (var line in lines) {
+        line = line.trim();
+        if (line.isEmpty) continue;
+
+        if (line.startsWith('tree_id:')) {
+          treeId = line.substring('tree_id:'.length).trim();
+        } else if (line.startsWith('appointment_id:')) {
+          appointmentId = line.substring('appointment_id:'.length).trim();
+        }
+      }
+
+      // Fallback: try old format or direct tree ID
+      if (treeId == null) {
+        final treeIdMatch = RegExp(r'Tree ID: (T\d+)').firstMatch(qrData);
+        if (treeIdMatch != null) {
+          treeId = treeIdMatch.group(1);
+        } else if (RegExp(r'^T\d+$').hasMatch(qrData.trim())) {
+          treeId = qrData.trim();
         }
       }
 
       if (treeId != null) {
-        await _fetchTreeFromFirestore(treeId);
+        await _fetchTreeFromFirestore(treeId, appointmentId);
       } else {
         setState(() {
-          scannedData = "❌ Invalid QR code format. Expected tree ID like 'T1', 'T2', etc.";
+          scannedData = "❌ Invalid QR code format. No tree_id found.";
         });
       }
     } catch (e) {
@@ -221,36 +428,38 @@ class _QrUploadScannerState extends State<QrUploadScanner> {
     }
   }
 
-  Future<void> _fetchTreeFromFirestore(String treeId) async {
+  Future<void> _fetchTreeFromFirestore(String treeId, [String? appointmentId]) async {
     try {
-      // Query all users' tree inventories for a tree with matching tree_id field
-      final usersSnapshot = await FirebaseFirestore.instance.collection('users').get();
       DocumentSnapshot? treeDoc;
-      String? foresterId;
 
-      // First try finding by document ID
-      for (var userDoc in usersSnapshot.docs) {
-        final treesRef = userDoc.reference.collection('tree_inventory');
-        final doc = await treesRef.doc(treeId.trim()).get();
+      // If appointment ID is provided, search directly in that appointment's tree_inventory
+      if (appointmentId != null && appointmentId.isNotEmpty) {
+        final doc = await FirebaseFirestore.instance
+            .collection('appointments')
+            .doc(appointmentId)
+            .collection('tree_inventory')
+            .doc(treeId)
+            .get();
+
         if (doc.exists) {
           treeDoc = doc;
-          foresterId = userDoc.id;
-          break;
         }
       }
 
-      // If not found by document ID, try searching by tree_id field
+      // If not found or no appointmentId provided, search all appointments
       if (treeDoc == null) {
-        for (var userDoc in usersSnapshot.docs) {
-          final treesRef = userDoc.reference.collection('tree_inventory');
-          final querySnapshot = await treesRef
-              .where('tree_id', isEqualTo: treeId.trim())
-              .limit(1)
+        final appointmentsSnapshot = await FirebaseFirestore.instance
+            .collection('appointments')
+            .get();
+
+        for (var appointmentDoc in appointmentsSnapshot.docs) {
+          final doc = await appointmentDoc.reference
+              .collection('tree_inventory')
+              .doc(treeId)
               .get();
-          
-          if (querySnapshot.docs.isNotEmpty) {
-            treeDoc = querySnapshot.docs.first;
-            foresterId = userDoc.id;
+
+          if (doc.exists) {
+            treeDoc = doc;
             break;
           }
         }
@@ -265,15 +474,13 @@ class _QrUploadScannerState extends State<QrUploadScanner> {
           scannedData = '''
 ✅ Tree Found!
 
-Tree ID: ${treeData['tree_id'] ?? treeId}
 Tree No: ${treeData['tree_no'] ?? 'N/A'}
 Specie: ${treeData['specie'] ?? 'N/A'}
 Diameter: ${treeData['diameter']?.toString() ?? 'N/A'} cm
 Height: ${treeData['height']?.toString() ?? 'N/A'} m
 Volume: ${treeData['volume']?.toStringAsFixed(2) ?? 'N/A'} cu.m
 Forester: ${treeData['forester_name'] ?? 'N/A'}
-Location: ${lat != null ? lat.toStringAsFixed(6) : 'N/A'}, ${lng != null ? lng.toStringAsFixed(6) : 'N/A'}
-Timestamp: ${treeData['timestamp'] != null ? (treeData['timestamp'] as Timestamp).toDate().toString() : 'N/A'}
+Location: ${lat != null ? '${lat.toStringAsFixed(6)}, ${lng!.toStringAsFixed(6)}' : 'N/A'}
 ''';
 
           // Set tree location for map if coordinates are available
@@ -281,6 +488,15 @@ Timestamp: ${treeData['timestamp'] != null ? (treeData['timestamp'] as Timestamp
             treeLocation = LatLng(lat, lng);
           }
         });
+
+        // Fetch route if we have both locations
+        if (lat != null && lng != null && currentLocation != null) {
+          await _fetchRoute();
+        } else if (lat != null && lng != null) {
+          // If only tree location is available, update markers
+          _updateMarkers();
+          _updatePolylines();
+        }
 
         // Show map view if location is available
         if (lat != null && lng != null) {
@@ -290,7 +506,7 @@ Timestamp: ${treeData['timestamp'] != null ? (treeData['timestamp'] as Timestamp
         }
       } else {
         setState(() {
-          scannedData = "❌ Tree with ID '$treeId' not found in database.";
+          scannedData = "❌ Tree with ID '$treeId' not found in any appointment.";
         });
       }
     } catch (e) {
@@ -348,9 +564,173 @@ Timestamp: ${treeData['timestamp'] != null ? (treeData['timestamp'] as Timestamp
               children: [
                 if (isScanning) ...[
                   Expanded(
-                    child: MobileScanner(
-                      controller: controller!,
-                      onDetect: _onDetect,
+                    child: Stack(
+                      children: [
+                        MobileScanner(
+                          controller: controller!,
+                          onDetect: _onDetect,
+                        ),
+                        // Overlay with scanning region
+                        Container(
+                          decoration: BoxDecoration(
+                            color: Colors.black.withOpacity(0.5),
+                          ),
+                          child: Center(
+                            child: Container(
+                              width: 250,
+                              height: 250,
+                              decoration: BoxDecoration(
+                                border: Border.all(
+                                  color: Colors.green,
+                                  width: 3,
+                                ),
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              child: Stack(
+                                children: [
+                                  // Corner indicators
+                                  Positioned(
+                                    top: 0,
+                                    left: 0,
+                                    child: Container(
+                                      width: 30,
+                                      height: 30,
+                                      decoration: BoxDecoration(
+                                        border: Border(
+                                          top: BorderSide(
+                                              color: Colors.green, width: 5),
+                                          left: BorderSide(
+                                              color: Colors.green, width: 5),
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                  Positioned(
+                                    top: 0,
+                                    right: 0,
+                                    child: Container(
+                                      width: 30,
+                                      height: 30,
+                                      decoration: BoxDecoration(
+                                        border: Border(
+                                          top: BorderSide(
+                                              color: Colors.green, width: 5),
+                                          right: BorderSide(
+                                              color: Colors.green, width: 5),
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                  Positioned(
+                                    bottom: 0,
+                                    left: 0,
+                                    child: Container(
+                                      width: 30,
+                                      height: 30,
+                                      decoration: BoxDecoration(
+                                        border: Border(
+                                          bottom: BorderSide(
+                                              color: Colors.green, width: 5),
+                                          left: BorderSide(
+                                              color: Colors.green, width: 5),
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                  Positioned(
+                                    bottom: 0,
+                                    right: 0,
+                                    child: Container(
+                                      width: 30,
+                                      height: 30,
+                                      decoration: BoxDecoration(
+                                        border: Border(
+                                          bottom: BorderSide(
+                                              color: Colors.green, width: 5),
+                                          right: BorderSide(
+                                              color: Colors.green, width: 5),
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                  // Scanning line animation
+                                  AnimatedBuilder(
+                                    animation: _animation!,
+                                    builder: (context, child) {
+                                      return Positioned(
+                                        top: _animation!.value * 250,
+                                        left: 0,
+                                        right: 0,
+                                        child: Container(
+                                          height: 2,
+                                          decoration: BoxDecoration(
+                                            color: Colors.green,
+                                            boxShadow: [
+                                              BoxShadow(
+                                                color: Colors.green
+                                                    .withOpacity(0.5),
+                                                blurRadius: 8,
+                                                spreadRadius: 2,
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                      );
+                                    },
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+                        // Instruction text
+                        Positioned(
+                          bottom: 100,
+                          left: 0,
+                          right: 0,
+                          child: Container(
+                            padding: const EdgeInsets.all(16),
+                            child: Column(
+                              children: [
+                                Container(
+                                  padding: const EdgeInsets.symmetric(
+                                      horizontal: 24, vertical: 12),
+                                  decoration: BoxDecoration(
+                                    color: Colors.black.withOpacity(0.7),
+                                    borderRadius: BorderRadius.circular(20),
+                                  ),
+                                  child: const Text(
+                                    "📱 Position QR code within the frame",
+                                    style: TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 16,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                    textAlign: TextAlign.center,
+                                  ),
+                                ),
+                                const SizedBox(height: 8),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(
+                                      horizontal: 20, vertical: 8),
+                                  decoration: BoxDecoration(
+                                    color: Colors.black.withOpacity(0.7),
+                                    borderRadius: BorderRadius.circular(16),
+                                  ),
+                                  child: const Text(
+                                    "Hold steady for automatic scanning",
+                                    style: TextStyle(
+                                      color: Colors.white70,
+                                      fontSize: 12,
+                                    ),
+                                    textAlign: TextAlign.center,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
                   ),
                 ] else ...[
@@ -596,10 +976,20 @@ Timestamp: ${treeData['timestamp'] != null ? (treeData['timestamp'] as Timestamp
                         style:
                             const TextStyle(fontSize: 12, color: Colors.blue),
                       ),
+                    if (isLoadingRoute)
+                      const Text(
+                        "🔄 Loading route...",
+                        style: TextStyle(fontSize: 11, color: Colors.orange, fontStyle: FontStyle.italic),
+                      )
+                    else if (routePoints.isNotEmpty)
+                      Text(
+                        "✅ Route displayed (${routePoints.length} points)",
+                        style: const TextStyle(fontSize: 11, color: Colors.green, fontStyle: FontStyle.italic),
+                      ),
                   ],
                 ),
               ),
-              if (isLoadingLocation)
+              if (isLoadingLocation || isLoadingRoute)
                 const SizedBox(
                   width: 16,
                   height: 16,
@@ -622,20 +1012,20 @@ Timestamp: ${treeData['timestamp'] != null ? (treeData['timestamp'] as Timestamp
                 icon: const Icon(Icons.refresh),
                 label: const Text("Refresh Location"),
                 onPressed: _getCurrentLocation,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.green[700],
+                  foregroundColor: Colors.white,
+                ),
               ),
               if (currentLocation != null && treeLocation != null)
                 ElevatedButton.icon(
-                  icon: const Icon(Icons.directions),
-                  label: const Text("Get Directions"),
-                  onPressed: () {
-                    // This would open external maps app
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                        content: Text(
-                            "Directions feature would open external maps app"),
-                      ),
-                    );
-                  },
+                  icon: const Icon(Icons.route),
+                  label: const Text("Show Route"),
+                  onPressed: isLoadingRoute ? null : _fetchRoute,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.blue[700],
+                    foregroundColor: Colors.white,
+                  ),
                 ),
             ],
           ),
@@ -689,56 +1079,30 @@ Timestamp: ${treeData['timestamp'] != null ? (treeData['timestamp'] as Timestamp
       );
     }
 
-    // Create markers
-    List<Marker> markers = [
-      Marker(
-        point: currentLocation!,
-        width: 60,
-        height: 60,
-        child:
-            const Icon(Icons.person_pin_circle, color: Colors.blue, size: 40),
+    // Update markers and polylines
+    _updateMarkers();
+    _updatePolylines();
+
+    // Determine initial camera position
+    LatLng initialPosition = treeLocation ?? currentLocation!;
+
+    return GoogleMap(
+      mapType: MapType.normal,
+      initialCameraPosition: CameraPosition(
+        target: initialPosition,
+        zoom: treeLocation != null ? 15 : 13,
       ),
-    ];
-
-    if (treeLocation != null) {
-      markers.add(
-        Marker(
-          point: treeLocation!,
-          width: 60,
-          height: 60,
-          child: const Icon(Icons.location_on, color: Colors.red, size: 40),
-        ),
-      );
-    }
-
-    // Create path points
-    List<LatLng> pathPoints = [currentLocation!];
-    if (treeLocation != null) {
-      pathPoints.add(treeLocation!);
-    }
-
-    return FlutterMap(
-      options: MapOptions(
-        initialCenter: treeLocation ?? currentLocation!,
-        initialZoom: treeLocation != null ? 15 : 13,
-      ),
-      children: [
-        TileLayer(
-          urlTemplate: "https://tile.openstreetmap.org/{z}/{x}/{y}.png",
-          subdomains: const ['a', 'b', 'c'],
-        ),
-        if (treeLocation != null)
-          PolylineLayer(
-            polylines: [
-              Polyline(
-                points: pathPoints,
-                strokeWidth: 4.0,
-                color: Colors.blue,
-              ),
-            ],
-          ),
-        MarkerLayer(markers: markers),
-      ],
+      onMapCreated: (GoogleMapController controller) {
+        if (!_mapController.isCompleted) {
+          _mapController.complete(controller);
+        }
+      },
+      markers: markers,
+      polylines: polylines,
+      myLocationEnabled: true,
+      myLocationButtonEnabled: true,
+      zoomControlsEnabled: true,
+      mapToolbarEnabled: true,
     );
   }
 }

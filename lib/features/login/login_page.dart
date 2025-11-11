@@ -24,7 +24,7 @@ class _LoginPageState extends State<LoginPage> {
     if (email.isEmpty || password.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text("Please enter both email and password."),   
+          content: Text("Please enter both email and password."),
           backgroundColor: Colors.red,
         ),
       );
@@ -62,9 +62,16 @@ class _LoginPageState extends State<LoginPage> {
               ),
             );
           } else if (dbRole == "Applicant") {
+            final String applicantId = doc.id; // Document ID
+            final String applicantName = userData['name'] ?? "Unknown Forester";
+
             Navigator.pushReplacement(
               context,
-              MaterialPageRoute(builder: (_) => const ApplicantNavbar()),
+              MaterialPageRoute(
+                  builder: (_) => ApplicantNavbar(
+                        applicantId: applicantId,
+                        applicantName: applicantName,
+                      )),
             );
           }
         } else {

@@ -12,21 +12,23 @@ import 'package:qr_flutter/qr_flutter.dart';
 
 import 'tree_services.dart';
 
-class RegisterTreesPage extends StatefulWidget {
+class CtpoRegisterTreesPage extends StatefulWidget {
   final String foresterId;
   final String foresterName;
+  final String appointmentId; // ✅ appointment document ID
 
-  const RegisterTreesPage({
+  const CtpoRegisterTreesPage({
     super.key,
     required this.foresterId,
     required this.foresterName,
+    required this.appointmentId,
   });
 
   @override
-  State<RegisterTreesPage> createState() => _RegisterTreesPageState();
+  State<CtpoRegisterTreesPage> createState() => _CtpoRegisterTreesPageState();
 }
 
-class _RegisterTreesPageState extends State<RegisterTreesPage> {
+class _CtpoRegisterTreesPageState extends State<CtpoRegisterTreesPage> {
   final TextEditingController specieController = TextEditingController();
   final TextEditingController diameterController = TextEditingController();
   final TextEditingController heightController = TextEditingController();
@@ -42,6 +44,23 @@ class _RegisterTreesPageState extends State<RegisterTreesPage> {
   XFile? imageFile;
   String? lastSubmittedTreeId;
   String? qrUrl;
+
+  /// ✅ Show notification dialog
+  void _showDialog(String title, String message) {
+    showDialog(
+      context: context,
+      builder: (BuildContext dialogContext) => AlertDialog(
+        title: Text(title),
+        content: Text(message),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(),
+            child: const Text('OK'),
+          ),
+        ],
+      ),
+    );
+  }
 
   @override
   void initState() {
@@ -70,13 +89,9 @@ class _RegisterTreesPageState extends State<RegisterTreesPage> {
         latController.text = position.latitude.toStringAsFixed(6);
         longController.text = position.longitude.toStringAsFixed(6);
       });
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("📍 Location fetched successfully!")),
-      );
+      _showDialog('Success', '📍 Location fetched successfully!');
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text("⚠️ Failed to get location: $e")),
-      );
+      _showDialog('Error', '⚠️ Failed to get location: $e');
     }
   }
 
@@ -91,16 +106,21 @@ class _RegisterTreesPageState extends State<RegisterTreesPage> {
   Future<String?> _generateAndUploadQr(
       String treeId, Map<String, dynamic> data) async {
     try {
-      // Generate QR data text
+      // Generate QR data text with all tree_inventory fields (except qr_url)
       final qrData = '''
-Tree ID: $treeId
-Tree No: ${data['tree_no']}
-Specie: ${data['specie']}
-Diameter: ${data['diameter']}
-Height: ${data['height']}
-Volume: ${data['volume']}
-Location: (${data['latitude']}, ${data['longitude']})
-Forester: ${data['forester_name']}
+tree_id: $treeId
+tree_no: ${data['tree_no']}
+appointment_id: ${data['appointment_id']}
+specie: ${data['specie']}
+diameter: ${data['diameter']}
+height: ${data['height']}
+volume: ${data['volume']}
+latitude: ${data['latitude']}
+longitude: ${data['longitude']}
+forester_id: ${data['forester_id']}
+forester_name: ${data['forester_name']}
+photo_url: ${data['photo_url'] ?? 'N/A'}
+timestamp: ${data['timestamp']}
 ''';
 
       // Generate QR image as bytes
@@ -127,7 +147,14 @@ Forester: ${data['forester_name']}
         uploadTask = ref.putFile(file);
       }
 
-      await uploadTask;
+      // ✅ Handle the upload task on the main thread
+      await uploadTask.then((_) {
+        return;
+      }, onError: (error, stackTrace) {
+        print('❌ QR upload error: $error');
+        throw error;
+      });
+
       return await ref.getDownloadURL();
     } catch (e) {
       print('❌ QR generation/upload failed: $e');
@@ -143,11 +170,12 @@ Forester: ${data['forester_name']}
     final diameter = double.tryParse(diameterController.text);
     final height = double.tryParse(heightController.text);
     final volume = double.tryParse(volumeController.text);
+    final appointmentId = widget.appointmentId;
 
-    // Get the count of existing trees and generate the new tree ID
+    // ✅ Get the count of existing trees in the appointment and generate the new tree ID
     final treeCollection = FirebaseFirestore.instance
-        .collection('users')
-        .doc(widget.foresterId)
+        .collection('appointments')
+        .doc(appointmentId)
         .collection('tree_inventory');
 
     final count = await treeCollection.count().get();
@@ -159,14 +187,17 @@ Forester: ${data['forester_name']}
         diameter == null ||
         height == null ||
         volume == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("⚠️ Please fill out all fields.")),
-      );
+      _showDialog('Validation Error', '⚠️ Please fill out all fields.');
       return;
     }
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text("⏳ Submitting data...")),
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (BuildContext dialogContext) => AlertDialog(
+        title: const Text('Processing'),
+        content: const Text('⏳ Submitting data...'),
+      ),
     );
 
     try {
@@ -182,20 +213,37 @@ Forester: ${data['forester_name']}
         volume: volume,
         foresterId: widget.foresterId,
         forester: widget.foresterName,
-        imageFile: imageFile,
+        imageFile: imageFile, appointmentId: appointmentId,
       );
 
-      // ✅ Prepare QR data
+      // ✅ Fetch the complete tree document to get all fields including photo_url and timestamp
+      final treeDoc = await FirebaseFirestore.instance
+          .collection('appointments')
+          .doc(widget.appointmentId)
+          .collection('tree_inventory')
+          .doc(newDocId)
+          .get();
+
+      if (!treeDoc.exists) {
+        throw Exception('Failed to retrieve saved tree data');
+      }
+
+      // ✅ Prepare QR data with all fields from the saved document
+      final treeData = treeDoc.data()!;
       final data = {
-        'tree_id': treeId,
-        'tree_no': treeId, // Use the same ID as tree number
-        'specie': specie,
-        'diameter': diameter,
-        'height': height,
-        'volume': volume,
-        'latitude': latitude,
-        'longitude': longitude,
-        'forester_name': widget.foresterName,
+        'tree_id': treeData['tree_id'] ?? treeId,
+        'tree_no': treeData['tree_no'] ?? treeId,
+        'appointment_id': treeData['appointment_id'] ?? appointmentId,
+        'specie': treeData['specie'] ?? specie,
+        'diameter': treeData['diameter'] ?? diameter,
+        'height': treeData['height'] ?? height,
+        'volume': treeData['volume'] ?? volume,
+        'latitude': treeData['latitude'] ?? latitude,
+        'longitude': treeData['longitude'] ?? longitude,
+        'forester_id': treeData['forester_id'] ?? widget.foresterId,
+        'forester_name': treeData['forester_name'] ?? widget.foresterName,
+        'photo_url': treeData['photo_url'] ?? '',
+        'timestamp': treeData['timestamp']?.toDate().toString() ?? DateTime.now().toString(),
       };
 
       // ✅ Generate and upload QR
@@ -204,27 +252,35 @@ Forester: ${data['forester_name']}
       // ✅ Update Firestore with QR URL
       if (qrDownloadUrl != null) {
         await FirebaseFirestore.instance
-            .collection('users')
-            .doc(widget.foresterId)
+            .collection('appointments')
+            .doc(widget.appointmentId)
             .collection('tree_inventory')
             .doc(newDocId)
             .update({'qr_url': qrDownloadUrl});
       }
+
+      // ✅ Set appointment status to 'In Progress' if there are tagged trees
+      await FirebaseFirestore.instance
+          .collection('appointments')
+          .doc(widget.appointmentId)
+          .update({'status': 'In Progress'});
 
       setState(() {
         lastSubmittedTreeId = newDocId;
         qrUrl = qrDownloadUrl;
       });
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("✅ Tree and QR successfully saved!")),
-      );
+      // Close the "Submitting" dialog
+      Navigator.of(context).pop();
+
+      _showDialog('Success', '✅ Tree and QR successfully saved!');
 
       _clearFields();
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text("❌ Submission failed: $e")),
-      );
+      // Close the "Submitting" dialog
+      Navigator.of(context).pop();
+
+      _showDialog('Error', '❌ Submission failed: $e');
     }
   }
 
@@ -243,16 +299,75 @@ Forester: ${data['forester_name']}
 
   Future<void> pickImage() async {
     try {
-      final picked = await _treeService.pickImage();
-      if (picked != null) {
+      final picker = ImagePicker();
+      final pickedFile = await picker.pickImage(source: ImageSource.gallery);
+      if (pickedFile != null) {
         setState(() {
-          imageFile = picked;
+          imageFile = pickedFile;
         });
       }
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text("⚠️ Failed to pick image: $e")),
+      _showDialog('Error', '⚠️ Failed to pick image: $e');
+    }
+  }
+
+  /// ✅ Mark tree tagging as completed by current forester
+  Future<void> _completeTreeTagging() async {
+    try {
+      final appointmentRef = FirebaseFirestore.instance
+          .collection('appointments')
+          .doc(widget.appointmentId);
+
+      final appointmentDoc = await appointmentRef.get();
+      if (!appointmentDoc.exists) {
+        _showDialog('Error', '❌ Appointment not found.');
+        return;
+      }
+
+      final appointmentData = appointmentDoc.data()!;
+      final foresterIds = List<String>.from(appointmentData['foresterIds'] ?? []);
+      
+      // Initialize completionStatus if it doesn't exist
+      Map<String, dynamic> completionStatus = 
+          Map<String, dynamic>.from(appointmentData['completionStatus'] ?? {});
+
+      // Mark current forester as completed
+      completionStatus[widget.foresterId] = {
+        'completed': true,
+        'completedAt': FieldValue.serverTimestamp(),
+      };
+
+      // Check if all foresters have completed
+      bool allCompleted = foresterIds.every(
+        (foresterId) => completionStatus[foresterId]?['completed'] == true,
       );
+
+      // Update appointment with completion status
+      if (allCompleted) {
+        // All foresters completed - set the overall completedAt
+        await appointmentRef.update({
+          'completionStatus': completionStatus,
+          'completedAt': FieldValue.serverTimestamp(),
+          'status': 'Completed',
+        });
+
+        _showDialog('Success', '✅ Tree tagging completed by all foresters!');
+      } else {
+        // Not all completed yet
+        final completedCount = completionStatus.values
+            .where((v) => v['completed'] == true)
+            .length;
+        final totalCount = foresterIds.length;
+
+        await appointmentRef.update({
+          'completionStatus': completionStatus,
+          'status': 'In Progress',
+        });
+
+        _showDialog('Info', '✅ Marked as completed. Waiting for other foresters ($completedCount/$totalCount)');
+      }
+    } catch (e) {
+      _showDialog('Error', '❌ Error completing tree tagging: $e');
     }
   }
 
@@ -271,8 +386,8 @@ Forester: ${data['forester_name']}
 
     if (lastSubmittedTreeId != null) {
       final doc = await FirebaseFirestore.instance
-          .collection('users')
-          .doc(widget.foresterId)
+          .collection('appointments')
+          .doc(widget.appointmentId)
           .collection('tree_inventory')
           .doc(lastSubmittedTreeId)
           .get();
@@ -285,7 +400,7 @@ Forester: ${data['forester_name']}
 
     showDialog(
       context: context,
-      builder: (_) => AlertDialog(
+      builder: (BuildContext dialogContext) => AlertDialog(
         title: const Text("🌳 Tree Data Summary"),
         content: SingleChildScrollView(
           child: Column(
@@ -314,7 +429,7 @@ Forester: ${data['forester_name']}
         ),
         actions: [
           TextButton(
-            onPressed: () => Navigator.of(context).pop(),
+            onPressed: () => Navigator.of(dialogContext).pop(),
             child: const Text("Close"),
           ),
         ],
@@ -403,6 +518,15 @@ Forester: ${data['forester_name']}
                   backgroundColor: Colors.green[800],
                   padding: const EdgeInsets.symmetric(vertical: 16)),
               child: const Text("View Summary",
+                  style: TextStyle(color: Colors.white, fontSize: 16)),
+            ),
+            const SizedBox(height: 15),
+            ElevatedButton(
+              onPressed: _completeTreeTagging,
+              style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.orange[700],
+                  padding: const EdgeInsets.symmetric(vertical: 16)),
+              child: const Text("Tree Tagging Completed",
                   style: TextStyle(color: Colors.white, fontSize: 16)),
             ),
           ],
