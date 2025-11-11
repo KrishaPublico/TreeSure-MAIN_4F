@@ -5,18 +5,41 @@
     "version": "0.2.0",
     "configurations": [
         {
-            "name": "TreeSure-main",
+            "name": "TreeSure-main-main",
+            "cwd": "TreeSure-main-main",
             "request": "launch",
             "type": "dart"
         },
         {
-            "name": "TreeSure-main (profile mode)",
+            "name": "TreeSure-main-main (profile mode)",
+            "cwd": "TreeSure-main-main",
             "request": "launch",
             "type": "dart",
             "flutterMode": "profile"
         },
         {
-            "name": "TreeSure-main (release mode)",
+            "name": "TreeSure-main-main (release mode)",
+            "cwd": "TreeSure-main-main",
+            "request": "launch",
+            "type": "dart",
+            "flutterMode": "release"
+        },
+        {
+            "name": "tree_sure_new",
+            "cwd": "tree_sure_new",
+            "request": "launch",
+            "type": "dart"
+        },
+        {
+            "name": "tree_sure_new (profile mode)",
+            "cwd": "tree_sure_new",
+            "request": "launch",
+            "type": "dart",
+            "flutterMode": "profile"
+        },
+        {
+            "name": "tree_sure_new (release mode)",
+            "cwd": "tree_sure_new",
             "request": "launch",
             "type": "dart",
             "flutterMode": "release"
