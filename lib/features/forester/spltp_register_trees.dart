@@ -1,10 +1,14 @@
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:firebase_storage/firebase_storage.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:qr_flutter/qr_flutter.dart';
 
 import 'tree_services.dart';
 
@@ -39,6 +43,7 @@ class _SpltpRegisterTreesPageState extends State<SpltpRegisterTreesPage> {
   final TreeService _treeService = TreeService();
   XFile? imageFile;
   String? lastSubmittedTreeId;
+  String? qrUrl;
   String? treeStatus = 'Not Yet'; // ✅ Tree cutting status
 
   /// ✅ Show notification dialog
@@ -98,6 +103,59 @@ class _SpltpRegisterTreesPageState extends State<SpltpRegisterTreesPage> {
     volumeController.text = volume > 0 ? volume.toStringAsFixed(2) : '';
   }
 
+  Future<String?> _generateAndUploadQr(String treeId, Map<String, dynamic> data) async {
+    try {
+      final buffer = StringBuffer()
+        ..writeln('tree_id: $treeId')
+        ..writeln('tree_no: ${data['tree_no']}')
+        ..writeln('appointment_id: ${data['appointment_id']}')
+        ..writeln('specie: ${data['specie']}')
+        ..writeln('diameter: ${data['diameter']}')
+        ..writeln('height: ${data['height']}')
+        ..writeln('volume: ${data['volume']}')
+        ..writeln('tree_status: ${data['tree_status'] ?? 'N/A'}')
+        ..writeln('latitude: ${data['latitude']}')
+        ..writeln('longitude: ${data['longitude']}')
+        ..writeln('forester_id: ${data['forester_id']}')
+        ..writeln('forester_name: ${data['forester_name']}')
+        ..writeln('photo_url: ${data['photo_url'] ?? 'N/A'}')
+        ..writeln('timestamp: ${data['timestamp']}');
+
+      final qrPainter = QrPainter(
+        data: buffer.toString(),
+        version: QrVersions.auto,
+        gapless: true,
+      );
+
+      final picData = await qrPainter.toImageData(300);
+      final Uint8List bytes = picData!.buffer.asUint8List();
+
+      final ref = FirebaseStorage.instance.ref().child('tree_qrcodes/$treeId.png');
+
+      UploadTask uploadTask;
+      if (kIsWeb) {
+        uploadTask = ref.putData(bytes);
+      } else {
+        final dir = await getTemporaryDirectory();
+        final file = File('${dir.path}/$treeId.png');
+        await file.writeAsBytes(bytes);
+        uploadTask = ref.putFile(file);
+      }
+
+      await uploadTask.then((snapshot) {
+        return snapshot;
+      }, onError: (error, stackTrace) {
+        print('❌ QR upload error: $error');
+        throw error;
+      });
+
+      return await ref.getDownloadURL();
+    } catch (e) {
+      print('❌ QR generation/upload failed: $e');
+      return null;
+    }
+  }
+
   /// ✅ Handle form submission
   Future<void> handleSubmit() async {
     final latitude = double.tryParse(latController.text);
@@ -154,6 +212,51 @@ class _SpltpRegisterTreesPageState extends State<SpltpRegisterTreesPage> {
         treeStatus: treeStatus,
       );
 
+      final treeDoc = await FirebaseFirestore.instance
+          .collection('appointments')
+          .doc(widget.appointmentId)
+          .collection('tree_inventory')
+          .doc(newDocId)
+          .get();
+
+      if (!treeDoc.exists) {
+        throw Exception('Failed to retrieve saved tree data');
+      }
+
+      final treeData = treeDoc.data()!;
+      final dynamic timestampValue = treeData['timestamp'];
+      final String timestampString = timestampValue is Timestamp
+          ? timestampValue.toDate().toString()
+          : (timestampValue?.toString() ?? DateTime.now().toString());
+
+      final qrPayload = {
+        'tree_id': treeData['tree_id'] ?? treeId,
+        'tree_no': treeData['tree_no'] ?? treeId,
+        'appointment_id': treeData['appointment_id'] ?? appointmentId,
+        'specie': treeData['specie'] ?? specie,
+        'diameter': treeData['diameter'] ?? diameter,
+        'height': treeData['height'] ?? height,
+        'volume': treeData['volume'] ?? volume,
+        'tree_status': treeData['tree_status'] ?? treeStatus,
+        'latitude': treeData['latitude'] ?? latitude,
+        'longitude': treeData['longitude'] ?? longitude,
+        'forester_id': treeData['forester_id'] ?? widget.foresterId,
+        'forester_name': treeData['forester_name'] ?? widget.foresterName,
+        'photo_url': treeData['photo_url'] ?? '',
+        'timestamp': timestampString,
+      };
+
+      final qrDownloadUrl = await _generateAndUploadQr(newDocId, qrPayload);
+
+      if (qrDownloadUrl != null) {
+        await FirebaseFirestore.instance
+            .collection('appointments')
+            .doc(widget.appointmentId)
+            .collection('tree_inventory')
+            .doc(newDocId)
+            .update({'qr_url': qrDownloadUrl});
+      }
+
       // ✅ Set appointment status to 'In Progress'
       await FirebaseFirestore.instance
           .collection('appointments')
@@ -162,12 +265,13 @@ class _SpltpRegisterTreesPageState extends State<SpltpRegisterTreesPage> {
 
       setState(() {
         lastSubmittedTreeId = newDocId;
+        qrUrl = qrDownloadUrl;
       });
 
       // Close the "Submitting" dialog
       Navigator.of(context).pop();
 
-      _showDialog('Success', '✅ Tree successfully saved!');
+    _showDialog('Success', '✅ Tree and QR successfully saved!');
 
       _clearFields();
     } catch (e) {
@@ -187,6 +291,7 @@ class _SpltpRegisterTreesPageState extends State<SpltpRegisterTreesPage> {
     longController.clear();
     setState(() {
       imageFile = null;
+      qrUrl = null;
       treeStatus = 'Not Yet'; // ✅ Reset status
     });
   }
@@ -279,6 +384,7 @@ class _SpltpRegisterTreesPageState extends State<SpltpRegisterTreesPage> {
     };
 
     String? photoUrl;
+    String? localQrUrl = qrUrl;
 
     if (lastSubmittedTreeId != null) {
       final doc = await FirebaseFirestore.instance
@@ -290,6 +396,7 @@ class _SpltpRegisterTreesPageState extends State<SpltpRegisterTreesPage> {
 
       if (doc.exists) {
         photoUrl = doc.data()?['photo_url'];
+        localQrUrl = doc.data()?['qr_url'] ?? localQrUrl;
       }
     }
 
@@ -312,6 +419,13 @@ class _SpltpRegisterTreesPageState extends State<SpltpRegisterTreesPage> {
                 Image.network(photoUrl, height: 200, fit: BoxFit.cover)
               else
                 const Text("No photo available"),
+              const SizedBox(height: 10),
+              const Text("QR Code",
+                  style: TextStyle(fontWeight: FontWeight.bold)),
+              if (localQrUrl != null && localQrUrl.isNotEmpty)
+                Image.network(localQrUrl, height: 200, fit: BoxFit.cover)
+              else
+                const Text("No QR available"),
             ],
           ),
         ),

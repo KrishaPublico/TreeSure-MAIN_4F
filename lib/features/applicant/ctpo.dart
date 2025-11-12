@@ -133,22 +133,34 @@ class _CTPOUploadPageState extends State<CTPOUploadPage> {
         final docData = entry.value as Map<String, dynamic>? ?? {};
         
         print("📄 Processing document: $docKey");
-        print("📄 Document data: $docData");
         
         // Get reuploadAllowed and comments from the document
         final reuploadAllowed = docData['reuploadAllowed'] as bool? ?? false;
         final commentsMap = docData['comments'] as Map<String, dynamic>? ?? {};
         
         print("📄 reuploadAllowed: $reuploadAllowed");
-        print("📄 commentsMap: $commentsMap");
+        print("📄 commentsMap keys: ${commentsMap.keys}");
         
-        // Extract the comment (there's typically one per document with the same key)
-        Map<String, dynamic>? commentData;
+        // Extract the most recent comment from the comments map
+        Map<String, dynamic>? mostRecentComment;
+        dynamic mostRecentTimestamp;
+        
         if (commentsMap.isNotEmpty) {
-          // Get the first (or matching) comment
-          final firstCommentKey = commentsMap.keys.first;
-          commentData = commentsMap[firstCommentKey] as Map<String, dynamic>?;
-          print("📄 Comment data: $commentData");
+          // Iterate through all comments to find the most recent one
+          for (final commentEntry in commentsMap.entries) {
+            final commentData = commentEntry.value as Map<String, dynamic>?;
+            if (commentData != null) {
+              final createdAt = commentData['createdAt'];
+              
+              // If this is the first comment or more recent than current most recent
+              if (mostRecentComment == null || 
+                  (createdAt != null && _isMoreRecent(createdAt, mostRecentTimestamp))) {
+                mostRecentComment = commentData;
+                mostRecentTimestamp = createdAt;
+              }
+            }
+          }
+          print("📄 Most recent comment: ${mostRecentComment?['message']}");
         }
         
         // Try exact match first
@@ -173,10 +185,10 @@ class _CTPOUploadPageState extends State<CTPOUploadPage> {
         if (matchingTitle != null) {
           _documentComments[matchingTitle] = {
             'reuploadAllowed': reuploadAllowed,
-            'comment': commentData,
-            'from': commentData?['from'] as String? ?? 'Admin',
-            'message': commentData?['message'] as String? ?? '',
-            'createdAt': commentData?['createdAt'] as Timestamp?,
+            'comment': mostRecentComment,
+            'from': mostRecentComment?['from'] as String? ?? 'Admin',
+            'message': mostRecentComment?['message'] as String? ?? '',
+            'createdAt': _parseCommentTimestamp(mostRecentComment?['createdAt']),
           };
           
           print("✅ Stored comment for $matchingTitle");
@@ -191,6 +203,45 @@ class _CTPOUploadPageState extends State<CTPOUploadPage> {
     } catch (e) {
       print("❌ Error loading document comments: $e");
     }
+  }
+
+  /// Parse comment timestamp (can be Timestamp or String)
+  Timestamp? _parseCommentTimestamp(dynamic timestamp) {
+    if (timestamp == null) return null;
+    
+    if (timestamp is Timestamp) {
+      return timestamp;
+    }
+    
+    // If it's a string like "November 11, 2025 at 10:55:18 AM UTC+8"
+    if (timestamp is String) {
+      try {
+        // Remove UTC timezone info and parse
+        final cleanedStr = timestamp
+            .replaceAll(RegExp(r'\s*at\s*'), ' ')
+            .replaceAll(RegExp(r'\s*UTC[+-]\d+$'), '');
+        final dateTime = DateTime.parse(cleanedStr);
+        return Timestamp.fromDate(dateTime);
+      } catch (e) {
+        print("Error parsing timestamp string: $e");
+        return null;
+      }
+    }
+    
+    return null;
+  }
+
+  /// Compare two timestamps to determine which is more recent
+  bool _isMoreRecent(dynamic timestamp1, dynamic timestamp2) {
+    if (timestamp2 == null) return true;
+    
+    final ts1 = _parseCommentTimestamp(timestamp1);
+    final ts2 = _parseCommentTimestamp(timestamp2);
+    
+    if (ts1 == null) return false;
+    if (ts2 == null) return true;
+    
+    return ts1.compareTo(ts2) > 0;
   }
 
   /// Selects a file for a particular requirement

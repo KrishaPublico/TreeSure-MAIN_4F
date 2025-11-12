@@ -158,9 +158,7 @@ class TreeService {
       'photo_url': photoUrl ?? '',
     };
 
-    // ✅ Generate and upload QR
-    final qrUrl = await generateAndUploadQr(treeId: treeId, treeData: treeData);
-    treeData['qr_url'] = qrUrl ?? '';
+    treeData['qr_url'] = '';
 
     // ✅ Save to Firestore
     await collectionRef.doc(treeId).set(treeData);

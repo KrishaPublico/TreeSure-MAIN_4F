@@ -6,12 +6,10 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:google_maps_flutter/google_maps_flutter.dart';
+import 'package:flutter_map/flutter_map.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:http/http.dart' as http;
-
-// 🗝️ Google Maps API key for Directions API
-const String googleAPIKey = 'AIzaSyC8E4EJ8h5H1Csre_oHjrMP9_XbVi7-Xz0';
+import 'package:latlong2/latlong.dart';
 
 class QrUploadScanner extends StatefulWidget {
   const QrUploadScanner({super.key});
@@ -34,11 +32,16 @@ class _QrUploadScannerState extends State<QrUploadScanner>
   bool isLoadingLocation = false;
   String? locationError;
   bool showMapView = false;
-  List<LatLng> routePoints = []; // Route polyline points
-  bool isLoadingRoute = false; // Loading state for route
-  Completer<GoogleMapController> _mapController = Completer();
-  Set<Marker> markers = {};
-  Set<Polyline> polylines = {};
+  List<LatLng> routePoints = [];
+  bool isLoadingRoute = false;
+  final MapController _mapController = MapController();
+  List<Marker> markers = [];
+  List<Polyline> polylines = [];
+  double? routeDistanceKm;
+  Duration? routeDuration;
+  
+  // Map type selection
+  String _mapType = 'street'; // 'street', 'satellite', 'terrain'
 
   // Animation controller for scanning line
   AnimationController? _animationController;
@@ -50,7 +53,6 @@ class _QrUploadScannerState extends State<QrUploadScanner>
     controller = MobileScannerController();
     _getCurrentLocation();
 
-    // Initialize animation controller
     _animationController = AnimationController(
       vsync: this,
       duration: const Duration(seconds: 2),
@@ -77,10 +79,7 @@ class _QrUploadScannerState extends State<QrUploadScanner>
           isScanning = false;
         });
         controller?.stop();
-
-        // Try to fetch tree data from Firestore
         _fetchTreeDataFromQR(barcode.rawValue!);
-
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('✅ QR Code scanned successfully!')),
         );
@@ -123,21 +122,21 @@ class _QrUploadScannerState extends State<QrUploadScanner>
     try {
       bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
       if (!serviceEnabled) {
-        throw Exception("Location services are disabled.");
+        throw Exception('Location services are disabled.');
       }
 
       LocationPermission permission = await Geolocator.checkPermission();
       if (permission == LocationPermission.denied) {
         permission = await Geolocator.requestPermission();
         if (permission == LocationPermission.denied) {
-          throw Exception("Location permissions are denied.");
+          throw Exception('Location permissions are denied.');
         }
       }
       if (permission == LocationPermission.deniedForever) {
-        throw Exception("Location permissions are permanently denied.");
+        throw Exception('Location permissions are permanently denied.');
       }
 
-      Position position = await Geolocator.getCurrentPosition(
+      final position = await Geolocator.getCurrentPosition(
         desiredAccuracy: LocationAccuracy.high,
       );
 
@@ -146,11 +145,9 @@ class _QrUploadScannerState extends State<QrUploadScanner>
         isLoadingLocation = false;
       });
 
-      // Update markers with new location
       _updateMarkers();
       _updatePolylines();
 
-      // If we have both current location and tree location, fetch route
       if (treeLocation != null) {
         await _fetchRoute();
       }
@@ -162,7 +159,7 @@ class _QrUploadScannerState extends State<QrUploadScanner>
     }
   }
 
-  /// 🗺️ Fetch route from Google Directions API
+  /// 🗺️ Fetch route using OpenStreetMap/OSRM service
   Future<void> _fetchRoute() async {
     if (currentLocation == null || treeLocation == null) {
       debugPrint('⚠️ Cannot fetch route: missing location data');
@@ -172,94 +169,97 @@ class _QrUploadScannerState extends State<QrUploadScanner>
     setState(() {
       isLoadingRoute = true;
       routePoints = [];
+      routeDistanceKm = null;
+      routeDuration = null;
     });
 
+    final url = Uri.parse(
+      'https://router.project-osrm.org/route/v1/driving/'
+      '${currentLocation!.longitude},${currentLocation!.latitude};'
+      '${treeLocation!.longitude},${treeLocation!.latitude}'
+      '?overview=full&geometries=polyline',
+    );
+
     try {
-      debugPrint('🌐 Fetching route from API...');
-      
-      final url = Uri.parse(
-        'https://maps.googleapis.com/maps/api/directions/json?'
-        'origin=${currentLocation!.latitude},${currentLocation!.longitude}&'
-        'destination=${treeLocation!.latitude},${treeLocation!.longitude}&'
-        'key=$googleAPIKey',
-      );
-
       final response = await http.get(url);
-      debugPrint('📡 API Response status: ${response.statusCode}');
+      if (response.statusCode != 200) {
+        throw Exception('OSRM request failed (${response.statusCode})');
+      }
 
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
-        debugPrint('📊 API Response status: ${data['status']}');
+      final data = jsonDecode(response.body) as Map<String, dynamic>;
+      final routes = data['routes'] as List<dynamic>?;
 
-        if (data['status'] == 'REQUEST_DENIED') {
-          debugPrint('❌ API Error: ${data['error_message']}');
-          throw Exception('API request denied: ${data['error_message']}');
-        }
+      if (routes == null || routes.isEmpty) {
+        throw Exception('No routes found for provided coordinates');
+      }
 
-        if (data['status'] == 'OK' && data['routes'] != null && (data['routes'] as List).isNotEmpty) {
-          // Get the overview polyline
-          final polylinePoints = data['routes'][0]['overview_polyline']['points'];
-          debugPrint('🔢 Encoded polyline received');
+      final route = routes.first as Map<String, dynamic>;
+      final geometry = route['geometry'] as String?;
+      final distanceMeters = (route['distance'] as num?)?.toDouble();
+      final durationSeconds = (route['duration'] as num?)?.toDouble();
 
-          // Decode the polyline
-          final decodedPoints = _decodePolyline(polylinePoints);
-          debugPrint('✅ Decoded ${decodedPoints.length} route points');
+      if (geometry == null) {
+        throw Exception('Route geometry missing in OSRM response');
+      }
 
-          setState(() {
-            routePoints = decodedPoints;
-            isLoadingRoute = false;
-          });
-          
-          // Update polylines on map
-          _updatePolylines();
-        } else {
-          debugPrint('❌ No routes found in response');
-          setState(() {
-            isLoadingRoute = false;
-          });
-        }
-      } else {
-        debugPrint('❌ HTTP Error: ${response.statusCode}');
+      final decodedPoints = _decodePolyline(geometry);
+
+      setState(() {
+        routePoints = decodedPoints;
+        polylines = [
+          Polyline(
+            points: decodedPoints,
+            color: Colors.blueAccent,
+            strokeWidth: 4,
+          ),
+        ];
+        routeDistanceKm = distanceMeters != null ? distanceMeters / 1000 : null;
+        routeDuration = durationSeconds != null
+            ? Duration(seconds: durationSeconds.round())
+            : null;
+      });
+
+      _fitCameraToPoints(decodedPoints);
+    } catch (e) {
+      debugPrint('❌ Error fetching route: $e');
+      if (mounted) {
+        setState(() {
+          polylines = [];
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Failed to fetch route. Please try again.'),
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
         setState(() {
           isLoadingRoute = false;
         });
       }
-    } catch (e) {
-      debugPrint('❌ Error fetching route: $e');
-      setState(() {
-        isLoadingRoute = false;
-      });
-      
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Unable to fetch route: $e'),
-            backgroundColor: Colors.orange,
-          ),
-        );
-      }
     }
   }
 
-  /// 📍 Decode Google Maps polyline format
+  /// 📍 Decode polyline format from OSRM (compatible with Google encoding)
   List<LatLng> _decodePolyline(String encoded) {
     List<LatLng> points = [];
     int index = 0;
-    int len = encoded.length;
     int lat = 0;
     int lng = 0;
 
-    while (index < len) {
+    while (index < encoded.length) {
       int b;
       int shift = 0;
       int result = 0;
+
       do {
         b = encoded.codeUnitAt(index++) - 63;
         result |= (b & 0x1f) << shift;
         shift += 5;
       } while (b >= 0x20);
-      int dlat = ((result & 1) != 0 ? ~(result >> 1) : (result >> 1));
-      lat += dlat;
+      final int deltaLat = (result & 1) != 0 ? ~(result >> 1) : (result >> 1);
+      lat += deltaLat;
 
       shift = 0;
       result = 0;
@@ -268,8 +268,8 @@ class _QrUploadScannerState extends State<QrUploadScanner>
         result |= (b & 0x1f) << shift;
         shift += 5;
       } while (b >= 0x20);
-      int dlng = ((result & 1) != 0 ? ~(result >> 1) : (result >> 1));
-      lng += dlng;
+      final int deltaLng = (result & 1) != 0 ? ~(result >> 1) : (result >> 1);
+      lng += deltaLng;
 
       points.add(LatLng(lat / 1E5, lng / 1E5));
     }
@@ -279,52 +279,121 @@ class _QrUploadScannerState extends State<QrUploadScanner>
 
   /// 🗺️ Update markers on the map
   void _updateMarkers() {
-    markers.clear();
-    
-    // Add current location marker
+    final updatedMarkers = <Marker>[];
+
     if (currentLocation != null) {
-      markers.add(Marker(
-        markerId: const MarkerId('current_location'),
-        position: currentLocation!,
-        infoWindow: const InfoWindow(title: 'Your Location'),
-        icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueBlue),
-      ));
+      updatedMarkers.add(
+        Marker(
+          point: currentLocation!,
+          width: 48,
+          height: 48,
+          alignment: Alignment.bottomCenter,
+          child: const Tooltip(
+            message: 'Your Location',
+            child: Icon(Icons.my_location, color: Colors.blueAccent, size: 30),
+          ),
+        ),
+      );
     }
 
-    // Add tree location marker
     if (treeLocation != null) {
-      markers.add(Marker(
-        markerId: const MarkerId('tree_location'),
-        position: treeLocation!,
-        infoWindow: const InfoWindow(title: 'Tree Location'),
-        icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueRed),
-      ));
+      updatedMarkers.add(
+        Marker(
+          point: treeLocation!,
+          width: 48,
+          height: 48,
+          alignment: Alignment.bottomCenter,
+          child: Tooltip(
+            message: 'Tree Location',
+            child: Icon(Icons.park, color: Colors.green.shade700, size: 32),
+          ),
+        ),
+      );
+    }
+
+    setState(() {
+      markers = updatedMarkers;
+    });
+
+    if (updatedMarkers.isNotEmpty) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _fitCameraToPoints(updatedMarkers.map((marker) => marker.point).toList());
+      });
     }
   }
 
   /// 📍 Update polylines on the map
   void _updatePolylines() {
-    polylines.clear();
-    
+    final updatedPolylines = <Polyline>[];
+
     if (routePoints.isNotEmpty) {
-      // Display route polyline if available
-      polylines.add(Polyline(
-        polylineId: const PolylineId('route'),
-        points: routePoints,
-        width: 5,
-        color: Colors.blue,
-        startCap: Cap.roundCap,
-        endCap: Cap.roundCap,
-      ));
+      updatedPolylines.add(
+        Polyline(
+          points: routePoints,
+          color: Colors.blueAccent,
+          strokeWidth: 4,
+        ),
+      );
     } else if (currentLocation != null && treeLocation != null) {
-      // Fallback: simple straight line if no route
-      polylines.add(Polyline(
-        polylineId: const PolylineId('straight_line'),
-        points: [currentLocation!, treeLocation!],
-        width: 3,
-        color: Colors.blue.withOpacity(0.5),
-        patterns: [PatternItem.dash(20), PatternItem.gap(10)],
-      ));
+      updatedPolylines.add(
+        Polyline(
+          points: [currentLocation!, treeLocation!],
+          color: Colors.blueGrey.withOpacity(0.6),
+          strokeWidth: 3,
+        ),
+      );
+    }
+
+    setState(() {
+      polylines = updatedPolylines;
+    });
+  }
+
+  /// 🗺️ Get tile layer configuration based on map type
+  TileLayer _getTileLayer() {
+    switch (_mapType) {
+      case 'satellite':
+        // Using ESRI World Imagery (satellite)
+        return TileLayer(
+          urlTemplate: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+          userAgentPackageName: 'com.treesure.app',
+          maxZoom: 19,
+        );
+      case 'terrain':
+        // Using OpenTopoMap (topographic/terrain)
+        return TileLayer(
+          urlTemplate: 'https://tile.opentopomap.org/{z}/{x}/{y}.png',
+          userAgentPackageName: 'com.treesure.app',
+          maxZoom: 17,
+        );
+      case 'street':
+      default:
+        // Using OpenStreetMap (street map)
+        return TileLayer(
+          urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+          userAgentPackageName: 'com.treesure.app',
+          maxZoom: 19,
+        );
+    }
+  }
+
+  void _fitCameraToPoints(List<LatLng> points) {
+    if (points.isEmpty) {
+      return;
+    }
+
+    if (points.length == 1) {
+      _mapController.move(points.first, 15);
+      return;
+    }
+
+    final bounds = LatLngBounds.fromPoints(points);
+    try {
+      _mapController.fitCamera(
+        CameraFit.bounds(bounds: bounds, padding: const EdgeInsets.all(40)),
+      );
+    } catch (e) {
+      debugPrint('⚠️ Failed to fit camera: $e');
     }
   }
 
@@ -341,17 +410,46 @@ class _QrUploadScannerState extends State<QrUploadScanner>
 
     try {
       String? qrData;
-
+      
       if (kIsWeb) {
-        // For web, we'll use a different approach
-        // For now, show a message that web image scanning is not fully supported
-        qrData =
-            "⚠️ Web image scanning is not fully supported. Please use live camera scanning.";
+        // Web platform: Use BarcodeCapture with the camera controller
+        // Since analyzeImage() doesn't work on web, we'll use a workaround
+        // Show a message to the user to use the scan tab instead
+        setState(() {
+          scannedData = "⚠️ Web Platform Limitation:\n\n"
+              "QR code scanning from uploaded images is not supported on web browsers.\n\n"
+              "Please use the 'Scan' tab to scan QR codes directly with your camera,\n"
+              "or use the mobile app for full image upload functionality.";
+          isUploading = false;
+        });
+        
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('⚠️ Image QR scanning not available on web. Please use the Scan tab or mobile app.'),
+              backgroundColor: Colors.orange,
+              duration: Duration(seconds: 4),
+            ),
+          );
+        }
+        return;
       } else {
-        // For mobile, use a different approach since QrCodeScanner.scanImage doesn't exist
-        // For now, show a message that mobile image scanning needs to be implemented
-        qrData =
-            "⚠️ Mobile image scanning needs to be implemented. Please use live camera scanning.";
+        // Mobile platform: Use analyzeImage
+        final imageController = MobileScannerController();
+        
+        try {
+          final result = await imageController.analyzeImage(pickedFile.path);
+          if (result != null && result.barcodes.isNotEmpty) {
+            qrData = result.barcodes.first.rawValue;
+          } else {
+            qrData = "❌ No QR code found in image. Please ensure the QR code is clear and try again.";
+          }
+        } catch (e) {
+          print('Scanning error: $e');
+          qrData = "❌ Error scanning image: $e";
+        } finally {
+          imageController.dispose();
+        }
       }
 
       setState(() {
@@ -359,29 +457,43 @@ class _QrUploadScannerState extends State<QrUploadScanner>
         isUploading = false;
       });
 
-      // If we got valid QR data, try to fetch tree information from Firestore
       if (scannedData != null &&
           !scannedData!.startsWith('❌') &&
           !scannedData!.startsWith('⚠️')) {
         await _fetchTreeDataFromQR(scannedData!);
+        
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('✅ QR code scanned from image successfully!'),
+              backgroundColor: Colors.green,
+            ),
+          );
+        }
+      } else if (!scannedData!.startsWith('⚠️')) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(scannedData!),
+              backgroundColor: scannedData!.startsWith('❌') ? Colors.red : Colors.orange,
+            ),
+          );
+        }
       }
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-              scannedData!.startsWith('❌') || scannedData!.startsWith('⚠️')
-                  ? scannedData!
-                  : '✅ QR code scanned from image!'),
-        ),
-      );
     } catch (e) {
       setState(() {
         scannedData = "❌ Error scanning image: $e";
         isUploading = false;
       });
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('❌ Failed to scan image: $e')),
-      );
+      
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('❌ Failed to scan image: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
     }
   }
 
@@ -390,7 +502,6 @@ class _QrUploadScannerState extends State<QrUploadScanner>
       String? treeId;
       String? appointmentId;
 
-      // Parse the new QR format (key: value format)
       final lines = qrData.split('\n');
       for (var line in lines) {
         line = line.trim();
@@ -403,7 +514,6 @@ class _QrUploadScannerState extends State<QrUploadScanner>
         }
       }
 
-      // Fallback: try old format or direct tree ID
       if (treeId == null) {
         final treeIdMatch = RegExp(r'Tree ID: (T\d+)').firstMatch(qrData);
         if (treeIdMatch != null) {
@@ -432,7 +542,6 @@ class _QrUploadScannerState extends State<QrUploadScanner>
     try {
       DocumentSnapshot? treeDoc;
 
-      // If appointment ID is provided, search directly in that appointment's tree_inventory
       if (appointmentId != null && appointmentId.isNotEmpty) {
         final doc = await FirebaseFirestore.instance
             .collection('appointments')
@@ -446,7 +555,6 @@ class _QrUploadScannerState extends State<QrUploadScanner>
         }
       }
 
-      // If not found or no appointmentId provided, search all appointments
       if (treeDoc == null) {
         final appointmentsSnapshot = await FirebaseFirestore.instance
             .collection('appointments')
@@ -480,33 +588,22 @@ Diameter: ${treeData['diameter']?.toString() ?? 'N/A'} cm
 Height: ${treeData['height']?.toString() ?? 'N/A'} m
 Volume: ${treeData['volume']?.toStringAsFixed(2) ?? 'N/A'} cu.m
 Forester: ${treeData['forester_name'] ?? 'N/A'}
+Tree Status: ${treeData['tree_status'] ?? 'N/A'}
 Location: ${lat != null ? '${lat.toStringAsFixed(6)}, ${lng!.toStringAsFixed(6)}' : 'N/A'}
 ''';
 
-          // Set tree location for map if coordinates are available
           if (lat != null && lng != null) {
             treeLocation = LatLng(lat, lng);
           }
         });
 
-        // Fetch route if we have both locations
-        if (lat != null && lng != null && currentLocation != null) {
+        _updateMarkers();
+        if (currentLocation != null && treeLocation != null) {
           await _fetchRoute();
-        } else if (lat != null && lng != null) {
-          // If only tree location is available, update markers
-          _updateMarkers();
-          _updatePolylines();
-        }
-
-        // Show map view if location is available
-        if (lat != null && lng != null) {
-          Future.delayed(const Duration(milliseconds: 600), () {
-            if (mounted) _showMapView();
-          });
         }
       } else {
         setState(() {
-          scannedData = "❌ Tree with ID '$treeId' not found in any appointment.";
+          scannedData = "❌ Tree not found in database. Tree ID: $treeId";
         });
       }
     } catch (e) {
@@ -519,426 +616,27 @@ Location: ${lat != null ? '${lat.toStringAsFixed(6)}, ${lng!.toStringAsFixed(6)}
 
   @override
   Widget build(BuildContext context) {
-    // If map view is shown, display full screen map
-    if (showMapView) {
-      return Scaffold(
-        appBar: AppBar(
-          title: const Text("Tree Location Map"),
-          backgroundColor: Colors.green[800],
-          foregroundColor: Colors.white,
-          leading: IconButton(
-            icon: const Icon(Icons.arrow_back),
-            onPressed: _hideMapView,
-          ),
-        ),
-        body: _buildMapView(),
-      );
-    }
-
     return DefaultTabController(
       length: 3,
       child: Scaffold(
         appBar: AppBar(
-          title: const Text("QR Code Scanner"),
+          title: const Text('QR Scanner & Tree Locator'),
           backgroundColor: Colors.green[800],
-          foregroundColor: Colors.white,
           bottom: const TabBar(
             tabs: [
-              Tab(icon: Icon(Icons.qr_code_scanner), text: "Live Scan"),
-              Tab(icon: Icon(Icons.upload_file), text: "Upload Image"),
-              Tab(icon: Icon(Icons.map), text: "Map View"),
+              Tab(icon: Icon(Icons.qr_code_scanner), text: "Scan"),
+              Tab(icon: Icon(Icons.upload_file), text: "Upload"),
+              Tab(icon: Icon(Icons.map), text: "Map"),
             ],
           ),
-          actions: [
-            if (isScanning)
-              IconButton(
-                icon: const Icon(Icons.stop),
-                onPressed: _stopScanning,
-              ),
-          ],
         ),
         body: TabBarView(
           children: [
-            // Live Scanning Tab
-            Column(
-              children: [
-                if (isScanning) ...[
-                  Expanded(
-                    child: Stack(
-                      children: [
-                        MobileScanner(
-                          controller: controller!,
-                          onDetect: _onDetect,
-                        ),
-                        // Overlay with scanning region
-                        Container(
-                          decoration: BoxDecoration(
-                            color: Colors.black.withOpacity(0.5),
-                          ),
-                          child: Center(
-                            child: Container(
-                              width: 250,
-                              height: 250,
-                              decoration: BoxDecoration(
-                                border: Border.all(
-                                  color: Colors.green,
-                                  width: 3,
-                                ),
-                                borderRadius: BorderRadius.circular(12),
-                              ),
-                              child: Stack(
-                                children: [
-                                  // Corner indicators
-                                  Positioned(
-                                    top: 0,
-                                    left: 0,
-                                    child: Container(
-                                      width: 30,
-                                      height: 30,
-                                      decoration: BoxDecoration(
-                                        border: Border(
-                                          top: BorderSide(
-                                              color: Colors.green, width: 5),
-                                          left: BorderSide(
-                                              color: Colors.green, width: 5),
-                                        ),
-                                      ),
-                                    ),
-                                  ),
-                                  Positioned(
-                                    top: 0,
-                                    right: 0,
-                                    child: Container(
-                                      width: 30,
-                                      height: 30,
-                                      decoration: BoxDecoration(
-                                        border: Border(
-                                          top: BorderSide(
-                                              color: Colors.green, width: 5),
-                                          right: BorderSide(
-                                              color: Colors.green, width: 5),
-                                        ),
-                                      ),
-                                    ),
-                                  ),
-                                  Positioned(
-                                    bottom: 0,
-                                    left: 0,
-                                    child: Container(
-                                      width: 30,
-                                      height: 30,
-                                      decoration: BoxDecoration(
-                                        border: Border(
-                                          bottom: BorderSide(
-                                              color: Colors.green, width: 5),
-                                          left: BorderSide(
-                                              color: Colors.green, width: 5),
-                                        ),
-                                      ),
-                                    ),
-                                  ),
-                                  Positioned(
-                                    bottom: 0,
-                                    right: 0,
-                                    child: Container(
-                                      width: 30,
-                                      height: 30,
-                                      decoration: BoxDecoration(
-                                        border: Border(
-                                          bottom: BorderSide(
-                                              color: Colors.green, width: 5),
-                                          right: BorderSide(
-                                              color: Colors.green, width: 5),
-                                        ),
-                                      ),
-                                    ),
-                                  ),
-                                  // Scanning line animation
-                                  AnimatedBuilder(
-                                    animation: _animation!,
-                                    builder: (context, child) {
-                                      return Positioned(
-                                        top: _animation!.value * 250,
-                                        left: 0,
-                                        right: 0,
-                                        child: Container(
-                                          height: 2,
-                                          decoration: BoxDecoration(
-                                            color: Colors.green,
-                                            boxShadow: [
-                                              BoxShadow(
-                                                color: Colors.green
-                                                    .withOpacity(0.5),
-                                                blurRadius: 8,
-                                                spreadRadius: 2,
-                                              ),
-                                            ],
-                                          ),
-                                        ),
-                                      );
-                                    },
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ),
-                        ),
-                        // Instruction text
-                        Positioned(
-                          bottom: 100,
-                          left: 0,
-                          right: 0,
-                          child: Container(
-                            padding: const EdgeInsets.all(16),
-                            child: Column(
-                              children: [
-                                Container(
-                                  padding: const EdgeInsets.symmetric(
-                                      horizontal: 24, vertical: 12),
-                                  decoration: BoxDecoration(
-                                    color: Colors.black.withOpacity(0.7),
-                                    borderRadius: BorderRadius.circular(20),
-                                  ),
-                                  child: const Text(
-                                    "📱 Position QR code within the frame",
-                                    style: TextStyle(
-                                      color: Colors.white,
-                                      fontSize: 16,
-                                      fontWeight: FontWeight.bold,
-                                    ),
-                                    textAlign: TextAlign.center,
-                                  ),
-                                ),
-                                const SizedBox(height: 8),
-                                Container(
-                                  padding: const EdgeInsets.symmetric(
-                                      horizontal: 20, vertical: 8),
-                                  decoration: BoxDecoration(
-                                    color: Colors.black.withOpacity(0.7),
-                                    borderRadius: BorderRadius.circular(16),
-                                  ),
-                                  child: const Text(
-                                    "Hold steady for automatic scanning",
-                                    style: TextStyle(
-                                      color: Colors.white70,
-                                      fontSize: 12,
-                                    ),
-                                    textAlign: TextAlign.center,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ] else ...[
-                  Expanded(
-                    child: Center(
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(
-                            Icons.qr_code_scanner,
-                            size: 100,
-                            color: Colors.grey[400],
-                          ),
-                          const SizedBox(height: 20),
-                          const Text(
-                            "Tap the scanner icon to start scanning QR codes",
-                            style: TextStyle(fontSize: 16),
-                            textAlign: TextAlign.center,
-                          ),
-                          const SizedBox(height: 20),
-                          ElevatedButton.icon(
-                            icon: const Icon(Icons.qr_code_scanner),
-                            label: const Text("Start Scanning"),
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: Colors.green[800],
-                              padding: const EdgeInsets.symmetric(
-                                  horizontal: 24, vertical: 16),
-                              shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(12)),
-                            ),
-                            onPressed: _startScanning,
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ],
-                if (scannedData != null) ...[
-                  Container(
-                    padding: const EdgeInsets.all(16),
-                    margin: const EdgeInsets.all(16),
-                    decoration: BoxDecoration(
-                      color: Colors.green[50],
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: Colors.green[200]!),
-                    ),
-                    child: Column(
-                      children: [
-                        const Text(
-                          "📄 Scanned Data:",
-                          style: TextStyle(
-                              fontSize: 16, fontWeight: FontWeight.bold),
-                        ),
-                        const SizedBox(height: 8),
-                        Text(
-                          scannedData!,
-                          textAlign: TextAlign.center,
-                          style: const TextStyle(fontSize: 14),
-                        ),
-                        if (treeLocation != null) ...[
-                          const SizedBox(height: 16),
-                          ElevatedButton.icon(
-                            icon: const Icon(Icons.map),
-                            label: const Text("View Tree Location"),
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: Colors.blue[600],
-                              foregroundColor: Colors.white,
-                              padding: const EdgeInsets.symmetric(
-                                  horizontal: 24, vertical: 12),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(8),
-                              ),
-                            ),
-                            onPressed: _showMapView,
-                          ),
-                        ],
-                      ],
-                    ),
-                  ),
-                ],
-              ],
-            ),
-            // Upload Image Tab
-            Column(
-              children: [
-                Expanded(
-                  child: Center(
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(
-                          Icons.upload_file,
-                          size: 100,
-                          color: Colors.grey[400],
-                        ),
-                        const SizedBox(height: 20),
-                        const Text(
-                          "Upload a QR code image to scan",
-                          style: TextStyle(fontSize: 16),
-                          textAlign: TextAlign.center,
-                        ),
-                        const SizedBox(height: 20),
-                        ElevatedButton.icon(
-                          icon: const Icon(Icons.upload_file),
-                          label: const Text("Upload QR Image"),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.green[800],
-                            padding: const EdgeInsets.symmetric(
-                                horizontal: 24, vertical: 16),
-                            shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(12)),
-                          ),
-                          onPressed: isUploading ? null : _uploadQrImage,
-                        ),
-                        if (isUploading) ...[
-                          const SizedBox(height: 20),
-                          const CircularProgressIndicator(),
-                          const SizedBox(height: 10),
-                          const Text("Processing image..."),
-                        ],
-                        if (uploadedImage != null) ...[
-                          const SizedBox(height: 20),
-                          Container(
-                            padding: const EdgeInsets.all(16),
-                            decoration: BoxDecoration(
-                              color: Colors.grey[100],
-                              borderRadius: BorderRadius.circular(12),
-                              border: Border.all(color: Colors.grey[300]!),
-                            ),
-                            child: Column(
-                              children: [
-                                const Text(
-                                  "📷 Uploaded Image:",
-                                  style: TextStyle(
-                                      fontSize: 14,
-                                      fontWeight: FontWeight.bold),
-                                ),
-                                const SizedBox(height: 8),
-                                ClipRRect(
-                                  borderRadius: BorderRadius.circular(8),
-                                  child: kIsWeb
-                                      ? Image.network(
-                                          uploadedImage!.path,
-                                          width: 200,
-                                          height: 200,
-                                          fit: BoxFit.cover,
-                                        )
-                                      : Image.file(
-                                          io.File(uploadedImage!.path),
-                                          width: 200,
-                                          height: 200,
-                                          fit: BoxFit.cover,
-                                        ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ],
-                      ],
-                    ),
-                  ),
-                ),
-                if (scannedData != null) ...[
-                  Container(
-                    padding: const EdgeInsets.all(16),
-                    margin: const EdgeInsets.all(16),
-                    decoration: BoxDecoration(
-                      color: Colors.green[50],
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: Colors.green[200]!),
-                    ),
-                    child: Column(
-                      children: [
-                        const Text(
-                          "📄 Scanned Data:",
-                          style: TextStyle(
-                              fontSize: 16, fontWeight: FontWeight.bold),
-                        ),
-                        const SizedBox(height: 8),
-                        Text(
-                          scannedData!,
-                          textAlign: TextAlign.center,
-                          style: const TextStyle(fontSize: 14),
-                        ),
-                        if (treeLocation != null) ...[
-                          const SizedBox(height: 16),
-                          ElevatedButton.icon(
-                            icon: const Icon(Icons.map),
-                            label: const Text("View Tree Location"),
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: Colors.blue[600],
-                              foregroundColor: Colors.white,
-                              padding: const EdgeInsets.symmetric(
-                                  horizontal: 24, vertical: 12),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(8),
-                              ),
-                            ),
-                            onPressed: _showMapView,
-                          ),
-                        ],
-                      ],
-                    ),
-                  ),
-                ],
-              ],
-            ),
-            // Map View Tab
+            // Scanner Tab
+            _buildScannerTab(),
+            // Upload Tab
+            _buildUploadTab(),
+            // Map Tab
             _buildMapView(),
           ],
         ),
@@ -946,91 +644,351 @@ Location: ${lat != null ? '${lat.toStringAsFixed(6)}, ${lng!.toStringAsFixed(6)}
     );
   }
 
-  Widget _buildMapView() {
+  Widget _buildScannerTab() {
     return Column(
       children: [
-        // Location status header
-        Container(
-          padding: const EdgeInsets.all(16),
-          color: Colors.grey[100],
-          child: Row(
-            children: [
-              Icon(
-                Icons.location_on,
-                color: currentLocation != null ? Colors.green : Colors.red,
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      currentLocation != null
-                          ? "Your Location: ${currentLocation!.latitude.toStringAsFixed(4)}, ${currentLocation!.longitude.toStringAsFixed(4)}"
-                          : "Location: ${locationError ?? 'Loading...'}",
-                      style: const TextStyle(fontSize: 12),
+        if (isScanning) ...[
+          Expanded(
+            child: Stack(
+              children: [
+                MobileScanner(
+                  controller: controller!,
+                  onDetect: _onDetect,
+                ),
+                _buildScannerOverlay(),
+              ],
+            ),
+          ),
+        ] else ...[
+          Expanded(
+            child: Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(Icons.qr_code_scanner, size: 100, color: Colors.grey[400]),
+                  const SizedBox(height: 20),
+                  const Text("Tap the scanner icon to start scanning QR codes", textAlign: TextAlign.center),
+                  const SizedBox(height: 20),
+                  ElevatedButton.icon(
+                    icon: const Icon(Icons.qr_code_scanner),
+                    label: const Text("Start Scanning"),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.green[800],
+                      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
                     ),
-                    if (treeLocation != null)
-                      Text(
-                        "Tree Location: ${treeLocation!.latitude.toStringAsFixed(4)}, ${treeLocation!.longitude.toStringAsFixed(4)}",
-                        style:
-                            const TextStyle(fontSize: 12, color: Colors.blue),
-                      ),
-                    if (isLoadingRoute)
-                      const Text(
-                        "🔄 Loading route...",
-                        style: TextStyle(fontSize: 11, color: Colors.orange, fontStyle: FontStyle.italic),
-                      )
-                    else if (routePoints.isNotEmpty)
-                      Text(
-                        "✅ Route displayed (${routePoints.length} points)",
-                        style: const TextStyle(fontSize: 11, color: Colors.green, fontStyle: FontStyle.italic),
-                      ),
-                  ],
-                ),
+                    onPressed: _startScanning,
+                  ),
+                ],
               ),
-              if (isLoadingLocation || isLoadingRoute)
-                const SizedBox(
-                  width: 16,
-                  height: 16,
-                  child: CircularProgressIndicator(strokeWidth: 2),
+            ),
+          ),
+        ],
+        if (scannedData != null) _buildScannedDataCard(),
+      ],
+    );
+  }
+
+  Widget _buildUploadTab() {
+    return Column(
+      children: [
+        Expanded(
+          child: Center(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(Icons.upload_file, size: 100, color: Colors.grey[400]),
+                const SizedBox(height: 20),
+                Text(
+                  kIsWeb
+                      ? "Upload QR images (Mobile Only)"
+                      : "Upload a QR code image to scan",
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: 16,
+                    color: kIsWeb ? Colors.orange[800] : Colors.black87,
+                  ),
                 ),
+                if (kIsWeb) ...[
+                  const SizedBox(height: 8),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 32),
+                    child: Text(
+                      "Image QR scanning is not supported on web browsers. Please use the 'Scan' tab or the mobile app.",
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        fontSize: 13,
+                        color: Colors.grey[600],
+                        fontStyle: FontStyle.italic,
+                      ),
+                    ),
+                  ),
+                ],
+                const SizedBox(height: 20),
+                ElevatedButton.icon(
+                  icon: const Icon(Icons.upload_file),
+                  label: Text(kIsWeb ? "Upload (Not Available)" : "Upload QR Image"),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: kIsWeb ? Colors.grey : Colors.green[800],
+                    padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+                  ),
+                  onPressed: (isUploading || kIsWeb) ? null : _uploadQrImage,
+                ),
+                if (isUploading) ...[
+                  const SizedBox(height: 20),
+                  const CircularProgressIndicator(),
+                  const SizedBox(height: 10),
+                  const Text("Processing image..."),
+                ],
+                if (uploadedImage != null) _buildUploadedImagePreview(),
+              ],
+            ),
+          ),
+        ),
+        if (scannedData != null) _buildScannedDataCard(),
+      ],
+    );
+  }
+
+  Widget _buildScannerOverlay() {
+    return Container(
+      decoration: BoxDecoration(color: Colors.black.withOpacity(0.5)),
+      child: Center(
+        child: Container(
+          width: 250,
+          height: 250,
+          decoration: BoxDecoration(
+            border: Border.all(color: Colors.green, width: 3),
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Stack(
+            children: [
+              _buildCornerIndicators(),
+              _buildScanningLine(),
             ],
           ),
         ),
-        // Map
-        Expanded(
-          child: _buildMap(),
-        ),
-        // Action buttons
-        Container(
-          padding: const EdgeInsets.all(16),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-            children: [
-              ElevatedButton.icon(
-                icon: const Icon(Icons.refresh),
-                label: const Text("Refresh Location"),
-                onPressed: _getCurrentLocation,
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.green[700],
-                  foregroundColor: Colors.white,
-                ),
+      ),
+    );
+  }
+
+  Widget _buildCornerIndicators() {
+    return Stack(
+      children: [
+        Positioned(
+          top: 0,
+          left: 0,
+          child: Container(
+            width: 30,
+            height: 30,
+            decoration: const BoxDecoration(
+              border: Border(
+                top: BorderSide(color: Colors.green, width: 5),
+                left: BorderSide(color: Colors.green, width: 5),
               ),
-              if (currentLocation != null && treeLocation != null)
-                ElevatedButton.icon(
-                  icon: const Icon(Icons.route),
-                  label: const Text("Show Route"),
-                  onPressed: isLoadingRoute ? null : _fetchRoute,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.blue[700],
-                    foregroundColor: Colors.white,
-                  ),
-                ),
-            ],
+            ),
+          ),
+        ),
+        Positioned(
+          top: 0,
+          right: 0,
+          child: Container(
+            width: 30,
+            height: 30,
+            decoration: const BoxDecoration(
+              border: Border(
+                top: BorderSide(color: Colors.green, width: 5),
+                right: BorderSide(color: Colors.green, width: 5),
+              ),
+            ),
+          ),
+        ),
+        Positioned(
+          bottom: 0,
+          left: 0,
+          child: Container(
+            width: 30,
+            height: 30,
+            decoration: const BoxDecoration(
+              border: Border(
+                bottom: BorderSide(color: Colors.green, width: 5),
+                left: BorderSide(color: Colors.green, width: 5),
+              ),
+            ),
+          ),
+        ),
+        Positioned(
+          bottom: 0,
+          right: 0,
+          child: Container(
+            width: 30,
+            height: 30,
+            decoration: const BoxDecoration(
+              border: Border(
+                bottom: BorderSide(color: Colors.green, width: 5),
+                right: BorderSide(color: Colors.green, width: 5),
+              ),
+            ),
           ),
         ),
       ],
+    );
+  }
+
+  Widget _buildScanningLine() {
+    return AnimatedBuilder(
+      animation: _animation!,
+      builder: (context, child) {
+        return Positioned(
+          top: _animation!.value * 250,
+          left: 0,
+          right: 0,
+          child: Container(
+            height: 2,
+            decoration: BoxDecoration(
+              color: Colors.green,
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.green.withOpacity(0.5),
+                  blurRadius: 8,
+                  spreadRadius: 2,
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildScannedDataCard() {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      margin: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.green[50],
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.green[200]!),
+      ),
+      child: Column(
+        children: [
+          const Text("📄 Scanned Data:", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+          const SizedBox(height: 8),
+          Text(scannedData!, textAlign: TextAlign.center, style: const TextStyle(fontSize: 14)),
+          if (treeLocation != null) ...[
+            const SizedBox(height: 16),
+            ElevatedButton.icon(
+              icon: const Icon(Icons.map),
+              label: const Text("View Tree Location"),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.blue[600],
+                foregroundColor: Colors.white,
+              ),
+              onPressed: _showMapView,
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildUploadedImagePreview() {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      margin: const EdgeInsets.only(top: 20),
+      decoration: BoxDecoration(
+        color: Colors.grey[100],
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.grey[300]!),
+      ),
+      child: Column(
+        children: [
+          const Text("📷 Uploaded Image:", style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
+          const SizedBox(height: 8),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(8),
+            child: kIsWeb
+                ? Image.network(uploadedImage!.path, width: 200, height: 200, fit: BoxFit.cover)
+                : Image.file(io.File(uploadedImage!.path), width: 200, height: 200, fit: BoxFit.cover),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildMapView() {
+    return Column(
+      children: [
+        _buildLocationHeader(),
+        Expanded(child: _buildMap()),
+        _buildMapActions(),
+      ],
+    );
+  }
+
+  Widget _buildLocationHeader() {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      color: Colors.grey[100],
+      child: Row(
+        children: [
+          Icon(Icons.location_on, color: currentLocation != null ? Colors.green : Colors.red),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  currentLocation != null
+                      ? "Your Location: ${currentLocation!.latitude.toStringAsFixed(4)}, ${currentLocation!.longitude.toStringAsFixed(4)}"
+                      : "Location: ${locationError ?? 'Loading...'}",
+                  style: const TextStyle(fontSize: 12),
+                ),
+                if (treeLocation != null)
+                  Text(
+                    "Tree Location: ${treeLocation!.latitude.toStringAsFixed(4)}, ${treeLocation!.longitude.toStringAsFixed(4)}",
+                    style: const TextStyle(fontSize: 12, color: Colors.blue),
+                  ),
+                if (isLoadingRoute)
+                  const Text("🔄 Loading route...", style: TextStyle(fontSize: 11, color: Colors.orange, fontStyle: FontStyle.italic))
+                else if (routePoints.isNotEmpty)
+                  Text("✅ Route displayed (${routePoints.length} points)", style: const TextStyle(fontSize: 11, color: Colors.green, fontStyle: FontStyle.italic)),
+              ],
+            ),
+          ),
+          if (isLoadingLocation || isLoadingRoute)
+            const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildMapActions() {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+        children: [
+          ElevatedButton.icon(
+            icon: const Icon(Icons.refresh),
+            label: const Text("Refresh Location"),
+            onPressed: _getCurrentLocation,
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.green[700],
+              foregroundColor: Colors.white,
+            ),
+          ),
+          if (currentLocation != null && treeLocation != null)
+            ElevatedButton.icon(
+              icon: const Icon(Icons.route),
+              label: const Text("Show Route"),
+              onPressed: isLoadingRoute ? null : _fetchRoute,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.blue[700],
+                foregroundColor: Colors.white,
+              ),
+            ),
+        ],
+      ),
     );
   }
 
@@ -1057,10 +1015,7 @@ Location: ${lat != null ? '${lat.toStringAsFixed(6)}, ${lng!.toStringAsFixed(6)}
             const SizedBox(height: 16),
             Text("Location Error: $locationError"),
             const SizedBox(height: 16),
-            ElevatedButton(
-              onPressed: _getCurrentLocation,
-              child: const Text("Retry"),
-            ),
+            ElevatedButton(onPressed: _getCurrentLocation, child: const Text("Retry")),
           ],
         ),
       );
@@ -1079,30 +1034,110 @@ Location: ${lat != null ? '${lat.toStringAsFixed(6)}, ${lng!.toStringAsFixed(6)}
       );
     }
 
-    // Update markers and polylines
-    _updateMarkers();
-    _updatePolylines();
+    final initialPosition = treeLocation ?? currentLocation!;
 
-    // Determine initial camera position
-    LatLng initialPosition = treeLocation ?? currentLocation!;
+    return Stack(
+      children: [
+        FlutterMap(
+          mapController: _mapController,
+          options: MapOptions(
+            initialCenter: initialPosition,
+            initialZoom: treeLocation != null ? 15 : 13,
+            interactionOptions: const InteractionOptions(
+              flags: InteractiveFlag.pinchZoom |
+                  InteractiveFlag.drag |
+                  InteractiveFlag.flingAnimation |
+                  InteractiveFlag.doubleTapZoom,
+            ),
+          ),
+          children: [
+            _getTileLayer(), // Dynamic tile layer based on map type
+            if (polylines.isNotEmpty) PolylineLayer(polylines: polylines),
+            if (markers.isNotEmpty) MarkerLayer(markers: markers),
+          ],
+        ),
+        // Map type selector
+        Positioned(
+          top: 16,
+          right: 16,
+          child: _buildMapTypeSelector(),
+        ),
+      ],
+    );
+  }
 
-    return GoogleMap(
-      mapType: MapType.normal,
-      initialCameraPosition: CameraPosition(
-        target: initialPosition,
-        zoom: treeLocation != null ? 15 : 13,
+  /// 🗺️ Build map type selector widget
+  Widget _buildMapTypeSelector() {
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(8),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.2),
+            blurRadius: 6,
+            offset: const Offset(0, 2),
+          ),
+        ],
       ),
-      onMapCreated: (GoogleMapController controller) {
-        if (!_mapController.isCompleted) {
-          _mapController.complete(controller);
-        }
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          _buildMapTypeButton('street', Icons.map, 'Street'),
+          const Divider(height: 1),
+          _buildMapTypeButton('satellite', Icons.satellite_alt, 'Satellite'),
+          const Divider(height: 1),
+          _buildMapTypeButton('terrain', Icons.terrain, 'Terrain'),
+        ],
+      ),
+    );
+  }
+
+  /// 🗺️ Build individual map type button
+  Widget _buildMapTypeButton(String type, IconData icon, String label) {
+    final isSelected = _mapType == type;
+    return InkWell(
+      onTap: () {
+        setState(() {
+          _mapType = type;
+        });
       },
-      markers: markers,
-      polylines: polylines,
-      myLocationEnabled: true,
-      myLocationButtonEnabled: true,
-      zoomControlsEnabled: true,
-      mapToolbarEnabled: true,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        decoration: BoxDecoration(
+          color: isSelected ? Colors.green[700] : Colors.transparent,
+          borderRadius: type == 'street'
+              ? const BorderRadius.only(
+                  topLeft: Radius.circular(8),
+                  topRight: Radius.circular(8),
+                )
+              : type == 'terrain'
+                  ? const BorderRadius.only(
+                      bottomLeft: Radius.circular(8),
+                      bottomRight: Radius.circular(8),
+                    )
+                  : null,
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              icon,
+              size: 20,
+              color: isSelected ? Colors.white : Colors.grey[700],
+            ),
+            const SizedBox(width: 8),
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                color: isSelected ? Colors.white : Colors.grey[700],
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

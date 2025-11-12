@@ -1,15 +1,13 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:math' as math;
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
-import 'package:google_maps_flutter/google_maps_flutter.dart';
+import 'package:flutter_map/flutter_map.dart';
+import 'package:latlong2/latlong.dart';
 import 'package:location/location.dart';
-import 'package:flutter_polyline_points/flutter_polyline_points.dart';
 import 'package:http/http.dart' as http;
 import 'package:cloud_firestore/cloud_firestore.dart';
-
-// 🗝️ Replace this with your own API key
-const String googleAPIKey = 'AIzaSyC8E4EJ8h5H1Csre_oHjrMP9_XbVi7-Xz0';
 
 class ForesterTreeMapping extends StatefulWidget {
   final String? appointmentId;
@@ -23,12 +21,12 @@ class ForesterTreeMapping extends StatefulWidget {
 }
 
 class _ForesterTreeMappingState extends State<ForesterTreeMapping> {
-  final Completer<GoogleMapController> _controller = Completer();
+  final MapController _controller = MapController();
   Location location = Location();
   LocationData? currentLocation;
 
-  Set<Marker> markers = {};
-  Set<Polyline> polylines = {};
+  List<Marker> markers = [];
+  List<Polyline> polylines = [];
   List<Map<String, dynamic>> taggedTrees = [];
   List<Map<String, dynamic>> appointments = [];
   String? selectedAppointmentId;
@@ -40,6 +38,9 @@ class _ForesterTreeMappingState extends State<ForesterTreeMapping> {
   Map<String, Map<String, dynamic>> treeDistanceData = {};
   Map<String, double?> treeElevationData = {};
   bool isLoadingDistanceElevation = false;
+  
+  // Map type selection
+  String _mapType = 'street'; // 'street', 'satellite', 'terrain'
 
   @override
   void initState() {
@@ -223,19 +224,23 @@ class _ForesterTreeMappingState extends State<ForesterTreeMapping> {
   }
 
   void _setMarkers() {
-    // Reset to avoid duplicate markers/polylines on refreshes
-    markers.clear();
-    polylines.clear();
+    final newMarkers = <Marker>[];
+    final newPolylines = <Polyline>[];
 
     // Add current location marker
     if (currentLocation != null) {
-      markers.add(Marker(
-        markerId: const MarkerId('current'),
-        position:
-            LatLng(currentLocation!.latitude!, currentLocation!.longitude!),
-        infoWindow: const InfoWindow(title: 'Current Location'),
-        icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueAzure),
-      ));
+      newMarkers.add(
+        Marker(
+          point: LatLng(currentLocation!.latitude!, currentLocation!.longitude!),
+          width: 48,
+          height: 48,
+          alignment: Alignment.bottomCenter,
+          child: const Tooltip(
+            message: 'Current Location',
+            child: Icon(Icons.my_location, color: Colors.blueAccent, size: 30),
+          ),
+        ),
+      );
     }
 
     // Add markers for each tagged tree
@@ -247,37 +252,44 @@ class _ForesterTreeMappingState extends State<ForesterTreeMapping> {
       final treeId = tree['tree_id'] ?? tree['tree_no'] ?? 'N/A';
 
       if (lat != null && lng != null) {
-        // Build info window snippet with distance and elevation
-        String snippet = 'ID: ${tree['tree_no'] ?? "N/A"}';
+        // Build tooltip text with distance and elevation
+        String tooltipText = 'Tree: $specie\nID: ${tree['tree_no'] ?? "N/A"}';
         
         final distanceInfo = treeDistanceData[treeId];
         if (distanceInfo != null) {
-          snippet += '\n🚗 ${distanceInfo['distance']} • ${distanceInfo['duration']}';
+          tooltipText += '\n🚗 ${distanceInfo['distance']} • ${distanceInfo['duration']}';
         }
         
         final elevation = treeElevationData[treeId];
         if (elevation != null) {
-          snippet += '\n⛰️ ${elevation.toStringAsFixed(1)}m above sea level';
+          tooltipText += '\n⛰️ ${elevation.toStringAsFixed(1)}m above sea level';
         }
         
-        markers.add(Marker(
-          markerId: MarkerId('tree_$i'),
-          position: LatLng(lat, lng),
-          infoWindow: InfoWindow(
-            title: 'Tree: $specie',
-            snippet: snippet,
+        newMarkers.add(
+          Marker(
+            point: LatLng(lat, lng),
+            width: 48,
+            height: 48,
+            alignment: Alignment.bottomCenter,
+            child: GestureDetector(
+              onTap: () => _onTreeMarkerTapped(treeId, lat, lng),
+              child: Tooltip(
+                message: tooltipText,
+                child: Icon(Icons.park, color: Colors.green.shade700, size: 32),
+              ),
+            ),
           ),
-          icon:
-              BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueGreen),
-          onTap: () => _onTreeMarkerTapped(treeId, lat, lng),
-        ));
+        );
       }
     }
+
+    setState(() {
+      markers = newMarkers;
+      polylines = newPolylines;
+    });
     
     // After adding markers, fit camera to show all points
     _fitMapToAllMarkers();
-
-    setState(() {});
   }
 
   void _onTreeMarkerTapped(String treeId, double lat, double lng) {
@@ -311,19 +323,16 @@ class _ForesterTreeMappingState extends State<ForesterTreeMapping> {
 
       if (result.isNotEmpty) {
         setState(() {
-          polylines.add(
+          polylines = [
             Polyline(
-              polylineId: const PolylineId('route_to_tree'),
-              color: Colors.blue,
-              width: 6,
               points: result,
-              startCap: Cap.roundCap,
-              endCap: Cap.roundCap,
-              geodesic: true,
+              color: Colors.blueAccent,
+              strokeWidth: 5,
             ),
-          );
+          ];
         });
         debugPrint('✅ Route polyline added successfully');
+        _fitCameraToRoute(result);
       } else {
         debugPrint('❌ No route points returned');
       }
@@ -334,40 +343,38 @@ class _ForesterTreeMappingState extends State<ForesterTreeMapping> {
 
   Future<List<LatLng>> _fetchDirections(LatLng origin, LatLng dest) async {
     final url = Uri.parse(
-        'https://maps.googleapis.com/maps/api/directions/json?origin=${origin.latitude},${origin.longitude}&destination=${dest.latitude},${dest.longitude}&key=$googleAPIKey');
+      'https://router.project-osrm.org/route/v1/driving/'
+      '${origin.longitude},${origin.latitude};'
+      '${dest.longitude},${dest.latitude}'
+      '?overview=full&geometries=polyline',
+    );
 
     try {
-      debugPrint('🌐 Fetching directions from API...');
+      debugPrint('🌐 Fetching directions from OSRM...');
       final response = await http.get(url);
       debugPrint('📡 API Response status: ${response.statusCode}');
       
       if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
-        debugPrint('📊 API Response status: ${data['status']}');
+        final data = jsonDecode(response.body) as Map<String, dynamic>;
+        final routes = data['routes'] as List<dynamic>?;
         
-        if (data['status'] == 'REQUEST_DENIED') {
-          debugPrint('❌ API Error: ${data['error_message']}');
-          return [];
-        }
-        
-        if ((data['routes'] as List).isEmpty) {
+        if (routes == null || routes.isEmpty) {
           debugPrint('❌ No routes found in response');
           return [];
         }
         
-        final points = data['routes'][0]['overview_polyline']['points'];
-        debugPrint('🔢 Encoded polyline length: ${points.length} characters');
+        final route = routes.first as Map<String, dynamic>;
+        final geometry = route['geometry'] as String?;
         
-        // Newer versions of flutter_polyline_points require an apiKey when constructing
-        // Use static decodePolyline (library's current signature) instead of instance method
-        final result = PolylinePoints.decodePolyline(points);
-        debugPrint('✅ Decoded ${result.length} polyline points');
-
-        List<LatLng> polylineCoordinates = [];
-        for (var point in result) {
-          polylineCoordinates.add(LatLng(point.latitude, point.longitude));
+        if (geometry == null) {
+          debugPrint('❌ No geometry in route');
+          return [];
         }
-        return polylineCoordinates;
+        
+        final points = _decodePolyline(geometry);
+        debugPrint('✅ Decoded ${points.length} polyline points');
+
+        return points;
       } else {
         debugPrint('❌ HTTP Error: ${response.statusCode}');
         throw Exception('Failed to get directions');
@@ -378,125 +385,132 @@ class _ForesterTreeMappingState extends State<ForesterTreeMapping> {
     }
   }
 
-  /// 🚗 Distance Matrix API - Get travel time and distance
+  List<LatLng> _decodePolyline(String encoded) {
+    List<LatLng> points = [];
+    int index = 0;
+    int lat = 0;
+    int lng = 0;
+
+    while (index < encoded.length) {
+      int b;
+      int shift = 0;
+      int result = 0;
+
+      do {
+        b = encoded.codeUnitAt(index++) - 63;
+        result |= (b & 0x1f) << shift;
+        shift += 5;
+      } while (b >= 0x20);
+      final int deltaLat = (result & 1) != 0 ? ~(result >> 1) : (result >> 1);
+      lat += deltaLat;
+
+      shift = 0;
+      result = 0;
+      do {
+        b = encoded.codeUnitAt(index++) - 63;
+        result |= (b & 0x1f) << shift;
+        shift += 5;
+      } while (b >= 0x20);
+      final int deltaLng = (result & 1) != 0 ? ~(result >> 1) : (result >> 1);
+      lng += deltaLng;
+
+      points.add(LatLng(lat / 1E5, lng / 1E5));
+    }
+
+    return points;
+  }
+
+  void _fitCameraToRoute(List<LatLng> routePoints) {
+    if (routePoints.isEmpty) return;
+    
+    try {
+      final bounds = LatLngBounds.fromPoints(routePoints);
+      _controller.fitCamera(
+        CameraFit.bounds(bounds: bounds, padding: const EdgeInsets.all(60)),
+      );
+    } catch (e) {
+      debugPrint('⚠️ Failed to fit camera to route: $e');
+    }
+  }
+
+  /// 🚗 Calculate straight-line distances from current location to trees
   Future<void> _fetchDistanceMatrix(LatLng origin, List<Map<String, dynamic>> trees) async {
     if (trees.isEmpty) return;
 
     try {
-      // Build destinations string (max 25 at a time per API limit)
-      List<String> destinations = [];
       for (var tree in trees) {
         final lat = (tree['latitude'] as num?)?.toDouble();
         final lng = (tree['longitude'] as num?)?.toDouble();
-        if (lat != null && lng != null) {
-          destinations.add('$lat,$lng');
-        }
-      }
-
-      if (destinations.isEmpty) return;
-
-      // Split into batches of 25 (API limit)
-      for (int i = 0; i < destinations.length; i += 25) {
-        final batch = destinations.skip(i).take(25).toList();
-        final destinationsStr = batch.join('|');
         
-        final url = Uri.parse(
-          'https://maps.googleapis.com/maps/api/distancematrix/json?origins=${origin.latitude},${origin.longitude}&destinations=$destinationsStr&key=$googleAPIKey&units=metric',
-        );
-
-        final response = await http.get(url);
-        if (response.statusCode == 200) {
-          final data = jsonDecode(response.body);
+        if (lat != null && lng != null) {
+          final treeId = tree['tree_id'] ?? tree['tree_no'] ?? 'unknown';
           
-          if (data['status'] == 'OK' && data['rows'] != null) {
-            final elements = data['rows'][0]['elements'] as List;
-            
-            for (int j = 0; j < elements.length && (i + j) < trees.length; j++) {
-              final element = elements[j];
-              final tree = trees[i + j];
-              final treeId = tree['tree_id'] ?? tree['tree_no'] ?? 'unknown_$i';
-              
-              if (element['status'] == 'OK') {
-                treeDistanceData[treeId] = {
-                  'distance': element['distance']['text'], // e.g., "5.2 km"
-                  'distance_value': element['distance']['value'], // in meters
-                  'duration': element['duration']['text'], // e.g., "12 mins"
-                  'duration_value': element['duration']['value'], // in seconds
-                };
-              }
-            }
-          }
+          // Calculate straight-line distance using Haversine formula
+          final distance = _calculateDistance(
+            origin.latitude,
+            origin.longitude,
+            lat,
+            lng,
+          );
+          
+          // Estimate driving time (assuming ~40 km/h average speed in forest terrain)
+          final durationMinutes = (distance / 40 * 60).round();
+          
+          treeDistanceData[treeId] = {
+            'distance': '${distance.toStringAsFixed(2)} km',
+            'distance_value': (distance * 1000).round(),
+            'duration': '$durationMinutes mins',
+            'duration_value': durationMinutes * 60,
+          };
         }
       }
 
       setState(() {});
     } catch (e) {
-      debugPrint('❌ Error fetching distance matrix: $e');
+      debugPrint('❌ Error calculating distances: $e');
     }
   }
 
-  /// ⛰️ Elevation API - Get elevation for each tree
+  /// Calculate distance between two points using Haversine formula (in km)
+  double _calculateDistance(double lat1, double lon1, double lat2, double lon2) {
+    const double earthRadius = 6371; // Earth's radius in km
+    
+    final dLat = _degreesToRadians(lat2 - lat1);
+    final dLon = _degreesToRadians(lon2 - lon1);
+    
+    final a = (math.sin(dLat / 2) * math.sin(dLat / 2)) +
+        (math.cos(_degreesToRadians(lat1)) *
+            math.cos(_degreesToRadians(lat2)) *
+            math.sin(dLon / 2) *
+            math.sin(dLon / 2));
+    
+    final c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a));
+    
+    return earthRadius * c;
+  }
+
+  double _degreesToRadians(double degrees) {
+    return degrees * math.pi / 180;
+  }
+
+  /// ⛰️ Note: Elevation data removed (was using Google Elevation API)
+  /// For elevation data, consider using open-source alternatives like:
+  /// - OpenTopoData API
+  /// - Mapbox Elevation API
+  /// - GeoNames API
   Future<void> _fetchElevations(List<Map<String, dynamic>> trees) async {
-    if (trees.isEmpty) return;
-
-    try {
-      // Build locations string (max 512 locations per request)
-      List<String> locations = [];
-      List<String> treeIds = [];
-      
-      for (var tree in trees) {
-        final lat = (tree['latitude'] as num?)?.toDouble();
-        final lng = (tree['longitude'] as num?)?.toDouble();
-        final treeId = tree['tree_id'] ?? tree['tree_no'] ?? 'unknown';
-        
-        if (lat != null && lng != null) {
-          locations.add('$lat,$lng');
-          treeIds.add(treeId);
-        }
-      }
-
-      if (locations.isEmpty) return;
-
-      // Process in batches of 512
-      for (int i = 0; i < locations.length; i += 512) {
-        final batch = locations.skip(i).take(512).toList();
-        final locationsStr = batch.join('|');
-        
-        final url = Uri.parse(
-          'https://maps.googleapis.com/maps/api/elevation/json?locations=$locationsStr&key=$googleAPIKey',
-        );
-
-        final response = await http.get(url);
-        if (response.statusCode == 200) {
-          final data = jsonDecode(response.body);
-          
-          if (data['status'] == 'OK' && data['results'] != null) {
-            final results = data['results'] as List;
-            
-            for (int j = 0; j < results.length && (i + j) < treeIds.length; j++) {
-              final result = results[j];
-              final treeId = treeIds[i + j];
-              
-              treeElevationData[treeId] = result['elevation']?.toDouble();
-            }
-          }
-        }
-      }
-
-      setState(() {});
-    } catch (e) {
-      debugPrint('❌ Error fetching elevations: $e');
-    }
+    // Elevation fetching disabled - requires API key from elevation service
+    debugPrint('ℹ️ Elevation data fetching is disabled (no API configured)');
+    return;
   }
 
   Future<void> _fitMapToAllMarkers() async {
     if (markers.isEmpty) return;
     try {
-      final controller = await _controller.future;
       double? minLat, maxLat, minLng, maxLng;
       for (final m in markers) {
-        final lat = m.position.latitude;
-        final lng = m.position.longitude;
+        final lat = m.point.latitude;
+        final lng = m.point.longitude;
         minLat = (minLat == null) ? lat : (lat < minLat ? lat : minLat);
         maxLat = (maxLat == null) ? lat : (lat > maxLat ? lat : maxLat);
         minLng = (minLng == null) ? lng : (lng < minLng ? lng : minLng);
@@ -507,24 +521,48 @@ class _ForesterTreeMappingState extends State<ForesterTreeMapping> {
 
       // If only one marker, just move camera to it
       if (minLat == maxLat && minLng == maxLng) {
-        await controller.animateCamera(
-          CameraUpdate.newCameraPosition(
-            CameraPosition(target: LatLng(minLat, minLng), zoom: 16),
-          ),
-        );
+        _controller.move(LatLng(minLat, minLng), 16);
         return;
       }
 
       final bounds = LatLngBounds(
-        southwest: LatLng(minLat, minLng),
-        northeast: LatLng(maxLat, maxLng),
+        LatLng(minLat, minLng),
+        LatLng(maxLat, maxLng),
       );
-      await controller.animateCamera(
-        CameraUpdate.newLatLngBounds(bounds, 60),
+      _controller.fitCamera(
+        CameraFit.bounds(bounds: bounds, padding: const EdgeInsets.all(60)),
       );
     } catch (e) {
       // Some platforms can throw if bounds are invalid or map not ready
       debugPrint('Could not fit map to markers: $e');
+    }
+  }
+
+  /// 🗺️ Get tile layer configuration based on map type
+  TileLayer _getTileLayer() {
+    switch (_mapType) {
+      case 'satellite':
+        // Using ESRI World Imagery (satellite)
+        return TileLayer(
+          urlTemplate: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+          userAgentPackageName: 'com.treesure.app',
+          maxZoom: 19,
+        );
+      case 'terrain':
+        // Using OpenTopoMap (topographic/terrain)
+        return TileLayer(
+          urlTemplate: 'https://tile.opentopomap.org/{z}/{x}/{y}.png',
+          userAgentPackageName: 'com.treesure.app',
+          maxZoom: 17,
+        );
+      case 'street':
+      default:
+        // Using OpenStreetMap (street map)
+        return TileLayer(
+          urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+          userAgentPackageName: 'com.treesure.app',
+          maxZoom: 19,
+        );
     }
   }
 
@@ -754,18 +792,29 @@ class _ForesterTreeMappingState extends State<ForesterTreeMapping> {
 
     return Stack(
       children: [
-        GoogleMap(
-          mapType: MapType.normal,
-          myLocationEnabled: currentLocation != null,
-          initialCameraPosition: CameraPosition(
-            target: initialCenter,
-            zoom: 14.5,
+        FlutterMap(
+          mapController: _controller,
+          options: MapOptions(
+            initialCenter: initialCenter,
+            initialZoom: 14.5,
+            interactionOptions: const InteractionOptions(
+              flags: InteractiveFlag.pinchZoom |
+                  InteractiveFlag.drag |
+                  InteractiveFlag.flingAnimation |
+                  InteractiveFlag.doubleTapZoom,
+            ),
           ),
-          onMapCreated: (GoogleMapController controller) {
-            _controller.complete(controller);
-          },
-          markers: markers,
-          polylines: polylines,
+          children: [
+            _getTileLayer(), // Dynamic tile layer based on map type
+            if (polylines.isNotEmpty) PolylineLayer(polylines: polylines),
+            if (markers.isNotEmpty) MarkerLayer(markers: markers),
+          ],
+        ),
+        // Map type selector
+        Positioned(
+          top: 16,
+          right: 16,
+          child: _buildMapTypeSelector(),
         ),
         // Info panel at bottom
         Positioned(
@@ -1051,6 +1100,81 @@ class _ForesterTreeMappingState extends State<ForesterTreeMapping> {
           ),
         ),
       ],
+    );
+  }
+
+  /// 🗺️ Build map type selector widget
+  Widget _buildMapTypeSelector() {
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(8),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.2),
+            blurRadius: 6,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          _buildMapTypeButton('street', Icons.map, 'Street'),
+          const Divider(height: 1),
+          _buildMapTypeButton('satellite', Icons.satellite_alt, 'Satellite'),
+          const Divider(height: 1),
+          _buildMapTypeButton('terrain', Icons.terrain, 'Terrain'),
+        ],
+      ),
+    );
+  }
+
+  /// 🗺️ Build individual map type button
+  Widget _buildMapTypeButton(String type, IconData icon, String label) {
+    final isSelected = _mapType == type;
+    return InkWell(
+      onTap: () {
+        setState(() {
+          _mapType = type;
+        });
+      },
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        decoration: BoxDecoration(
+          color: isSelected ? Colors.green[700] : Colors.transparent,
+          borderRadius: type == 'street'
+              ? const BorderRadius.only(
+                  topLeft: Radius.circular(8),
+                  topRight: Radius.circular(8),
+                )
+              : type == 'terrain'
+                  ? const BorderRadius.only(
+                      bottomLeft: Radius.circular(8),
+                      bottomRight: Radius.circular(8),
+                    )
+                  : null,
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              icon,
+              size: 20,
+              color: isSelected ? Colors.white : Colors.grey[700],
+            ),
+            const SizedBox(width: 8),
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                color: isSelected ? Colors.white : Colors.grey[700],
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

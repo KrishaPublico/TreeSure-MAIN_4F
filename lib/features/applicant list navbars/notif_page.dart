@@ -112,6 +112,8 @@ class _NotifPageState extends State<NotifPage> {
                       _buildFilterButton('In Progress'),
                       const SizedBox(width: 8),
                       _buildFilterButton('Completed'),
+                      const SizedBox(width: 8),
+                      _buildFilterButton('Walk-In'),
                     ],
                   ),
                 ),
@@ -173,15 +175,21 @@ class _NotifPageState extends State<NotifPage> {
 
                   final allAppointments = snapshot.data!.docs;
 
-                  // ✅ Filter appointments by status
+                  // ✅ Filter appointments by status or type
                   final filteredAppointments = _selectedStatus == 'All'
                       ? allAppointments
-                      : allAppointments.where((doc) {
-                          final status =
-                              (doc.data() as Map<String, dynamic>)['status'] ??
-                                  'Pending';
-                          return status == _selectedStatus;
-                        }).toList();
+                      : _selectedStatus == 'Walk-In'
+                          ? allAppointments.where((doc) {
+                              final appointmentType =
+                                  (doc.data() as Map<String, dynamic>)['appointmentType'] ?? '';
+                              return appointmentType == 'Walk-In';
+                            }).toList()
+                          : allAppointments.where((doc) {
+                              final status =
+                                  (doc.data() as Map<String, dynamic>)['status'] ??
+                                      'Pending';
+                              return status == _selectedStatus;
+                            }).toList();
 
                   // ✅ Sort appointments by createdAt
                   final sortedAppointments =
@@ -287,6 +295,9 @@ class _NotifPageState extends State<NotifPage> {
     Map<String, dynamic> appointment,
     dynamic completedAt,
   ) {
+    final appointmentType = appointment['appointmentType'] ?? '';
+    final isWalkIn = appointmentType == 'Walk-In';
+    
     showDialog(
       context: context,
       builder: (_) => AlertDialog(
@@ -303,7 +314,10 @@ class _NotifPageState extends State<NotifPage> {
                     ? appointment['permitType'] ?? 'N/A'
                     : appointment['appointmentType'] ?? 'N/A',
               ),
-              _buildDetail("Location", appointment['location'] ?? 'N/A'),
+              if (isWalkIn)
+                _buildDetail("Purpose", appointment['purpose'] ?? 'N/A'),
+              if (!isWalkIn)
+                _buildDetail("Location", appointment['location'] ?? 'N/A'),
               _buildDetail("Status", appointment['status'] ?? 'N/A'),
               _buildDetail(
                 "Remarks",

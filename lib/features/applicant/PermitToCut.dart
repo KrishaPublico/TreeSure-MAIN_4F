@@ -133,17 +133,33 @@ class _PermitToCutPageState extends State<PermitToCutPage> {
               documentData['reuploadAllowed'] as bool? ?? false;
           final commentsMap = documentData['comments'] as Map<String, dynamic>?;
 
+          // Extract the most recent comment from the comments map
+          Map<String, dynamic>? mostRecentComment;
+          dynamic mostRecentTimestamp;
+          
           if (commentsMap != null && commentsMap.isNotEmpty) {
-            final commentEntry = commentsMap.entries.first;
-            final commentData = commentEntry.value as Map<String, dynamic>?;
-
-            if (commentData != null) {
+            // Iterate through all comments to find the most recent one
+            for (final commentEntry in commentsMap.entries) {
+              final commentData = commentEntry.value as Map<String, dynamic>?;
+              if (commentData != null) {
+                final createdAt = commentData['createdAt'];
+                
+                // If this is the first comment or more recent than current most recent
+                if (mostRecentComment == null || 
+                    (createdAt != null && _isMoreRecent(createdAt, mostRecentTimestamp))) {
+                  mostRecentComment = commentData;
+                  mostRecentTimestamp = createdAt;
+                }
+              }
+            }
+            
+            if (mostRecentComment != null) {
               tempComments[matchingTitle] = {
                 'reuploadAllowed': reuploadAllowed,
                 'comment': {
-                  'message': commentData['message'] as String? ?? '',
-                  'from': commentData['from'] as String? ?? 'Admin',
-                  'createdAt': commentData['createdAt'] as Timestamp?,
+                  'message': mostRecentComment['message'] as String? ?? '',
+                  'from': mostRecentComment['from'] as String? ?? 'Admin',
+                  'createdAt': _parseCommentTimestamp(mostRecentComment['createdAt']),
                 },
               };
             }
@@ -162,6 +178,45 @@ class _PermitToCutPageState extends State<PermitToCutPage> {
     } catch (e) {
       print("Error loading document comments: $e");
     }
+  }
+
+  /// Parse comment timestamp (can be Timestamp or String)
+  Timestamp? _parseCommentTimestamp(dynamic timestamp) {
+    if (timestamp == null) return null;
+    
+    if (timestamp is Timestamp) {
+      return timestamp;
+    }
+    
+    // If it's a string like "November 11, 2025 at 10:55:18 AM UTC+8"
+    if (timestamp is String) {
+      try {
+        // Remove UTC timezone info and parse
+        final cleanedStr = timestamp
+            .replaceAll(RegExp(r'\s*at\s*'), ' ')
+            .replaceAll(RegExp(r'\s*UTC[+-]\d+$'), '');
+        final dateTime = DateTime.parse(cleanedStr);
+        return Timestamp.fromDate(dateTime);
+      } catch (e) {
+        print("Error parsing timestamp string: $e");
+        return null;
+      }
+    }
+    
+    return null;
+  }
+
+  /// Compare two timestamps to determine which is more recent
+  bool _isMoreRecent(dynamic timestamp1, dynamic timestamp2) {
+    if (timestamp2 == null) return true;
+    
+    final ts1 = _parseCommentTimestamp(timestamp1);
+    final ts2 = _parseCommentTimestamp(timestamp2);
+    
+    if (ts1 == null) return false;
+    if (ts2 == null) return true;
+    
+    return ts1.compareTo(ts2) > 0;
   }
 
   /// Pick a file

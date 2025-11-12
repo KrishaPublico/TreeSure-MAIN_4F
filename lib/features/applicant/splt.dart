@@ -154,17 +154,33 @@ class _SPLTFormPageState extends State<SPLTFormPage> {
           final reuploadAllowed = documentData['reuploadAllowed'] as bool? ?? false;
           final commentsMap = documentData['comments'] as Map<String, dynamic>?;
           
+          // Extract the most recent comment from the comments map
           if (commentsMap != null && commentsMap.isNotEmpty) {
-            final commentEntry = commentsMap.entries.first;
-            final commentData = commentEntry.value as Map<String, dynamic>?;
+            // Get all comment entries and sort by createdAt to find the most recent
+            Map<String, dynamic>? mostRecentComment;
+            dynamic mostRecentTimestamp;
             
-            if (commentData != null) {
+            for (final commentEntry in commentsMap.entries) {
+              final commentData = commentEntry.value as Map<String, dynamic>?;
+              if (commentData != null) {
+                final createdAt = commentData['createdAt'];
+                
+                // If this is the first comment or more recent than current most recent
+                if (mostRecentComment == null || 
+                    (createdAt != null && _isMoreRecent(createdAt, mostRecentTimestamp))) {
+                  mostRecentComment = commentData;
+                  mostRecentTimestamp = createdAt;
+                }
+              }
+            }
+            
+            if (mostRecentComment != null) {
               tempComments[matchingTitle] = {
                 'reuploadAllowed': reuploadAllowed,
                 'comment': {
-                  'message': commentData['message'] as String? ?? '',
-                  'from': commentData['from'] as String? ?? 'Admin',
-                  'createdAt': commentData['createdAt'] as Timestamp?,
+                  'message': mostRecentComment['message'] as String? ?? '',
+                  'from': mostRecentComment['from'] as String? ?? 'Admin',
+                  'createdAt': _parseCommentTimestamp(mostRecentComment['createdAt']),
                 },
               };
             }
@@ -183,6 +199,45 @@ class _SPLTFormPageState extends State<SPLTFormPage> {
     } catch (e) {
       print("Error loading document comments: $e");
     }
+  }
+
+  /// Parse comment timestamp (can be Timestamp or String)
+  Timestamp? _parseCommentTimestamp(dynamic timestamp) {
+    if (timestamp == null) return null;
+    
+    if (timestamp is Timestamp) {
+      return timestamp;
+    }
+    
+    // If it's a string like "November 11, 2025 at 10:55:18 AM UTC+8"
+    if (timestamp is String) {
+      try {
+        // Remove UTC timezone info and parse
+        final cleanedStr = timestamp
+            .replaceAll(RegExp(r'\s*at\s*'), ' ')
+            .replaceAll(RegExp(r'\s*UTC[+-]\d+$'), '');
+        final dateTime = DateTime.parse(cleanedStr);
+        return Timestamp.fromDate(dateTime);
+      } catch (e) {
+        print("Error parsing timestamp string: $e");
+        return null;
+      }
+    }
+    
+    return null;
+  }
+
+  /// Compare two timestamps to determine which is more recent
+  bool _isMoreRecent(dynamic timestamp1, dynamic timestamp2) {
+    if (timestamp2 == null) return true;
+    
+    final ts1 = _parseCommentTimestamp(timestamp1);
+    final ts2 = _parseCommentTimestamp(timestamp2);
+    
+    if (ts1 == null) return false;
+    if (ts2 == null) return true;
+    
+    return ts1.compareTo(ts2) > 0;
   }
 
   /// Pick PDF/DOC/DOCX file
@@ -279,13 +334,17 @@ class _SPLTFormPageState extends State<SPLTFormPage> {
         uploadsFieldUpdates['uploads.$safeTitle.reuploadAllowed'] = false;
 
         uploadedFiles[title]!["url"] = url;
+        uploadedFiles[title]!["file"] = null; // Clear the selected file
       }
 
       // Update applicant document with metadata and reset reuploadAllowed
+      if (uploadsFieldUpdates.isNotEmpty) {
+        await applicantDoc.update(uploadsFieldUpdates);
+      }
+      
       await applicantDoc.set({
         'applicantName': widget.applicantName,
         'uploadedAt': FieldValue.serverTimestamp(),
-        ...uploadsFieldUpdates,
       }, SetOptions(merge: true));
 
       // Update main summary document
@@ -297,8 +356,9 @@ class _SPLTFormPageState extends State<SPLTFormPage> {
         'lastUpdated': FieldValue.serverTimestamp(),
       }, SetOptions(merge: true));
 
-      // Reload document comments
+      // Reload document comments and existing uploads
       await _loadDocumentComments();
+      await _loadExistingUploads();
 
       if (mounted) {
         setState(() => _isUploading = false);
@@ -391,7 +451,7 @@ class _SPLTFormPageState extends State<SPLTFormPage> {
               ),
               const SizedBox(width: 12),
               ElevatedButton(
-                onPressed: () => pickFile(title),
+                onPressed: (isUploaded && !reuploadAllowed) ? null : () => pickFile(title),
                 style: ElevatedButton.styleFrom(
                   backgroundColor: isUploaded
                       ? (reuploadAllowed ? Colors.orange : Colors.grey[300])
