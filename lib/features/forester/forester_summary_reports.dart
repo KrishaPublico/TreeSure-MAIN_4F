@@ -6,7 +6,6 @@ import 'package:screenshot/screenshot.dart';
 import 'dart:io';
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
-import 'package:permission_handler/permission_handler.dart';
 
 class ForesterSummaryReports extends StatefulWidget {
   final String foresterId;
@@ -280,25 +279,14 @@ class _ForesterSummaryReportsState extends State<ForesterSummaryReports> {
     });
 
     try {
-      // Request storage permission for Android
-      if (Platform.isAndroid) {
-        var status = await Permission.storage.status;
-        if (!status.isGranted) {
-          status = await Permission.storage.request();
-          if (!status.isGranted) {
-            throw Exception('Storage permission denied');
-          }
-        }
-      }
-
-      // Capture the screenshot
+      // Capture the screenshot first
       final imageFile = await _screenshotController.capture();
       
       if (imageFile == null) {
         throw Exception('Failed to capture screenshot');
       }
 
-      // Get the documents directory
+      // Get the documents directory (no permission needed for app-specific storage)
       final directory = await getApplicationDocumentsDirectory();
       final timestamp = DateTime.now().millisecondsSinceEpoch;
       final fileName = 'tree_map_report_$timestamp.png';
@@ -326,6 +314,7 @@ class _ForesterSummaryReportsState extends State<ForesterSummaryReports> {
           SnackBar(
             content: Text('Error capturing screenshot: $e'),
             backgroundColor: Colors.red,
+            duration: const Duration(seconds: 5),
           ),
         );
       }

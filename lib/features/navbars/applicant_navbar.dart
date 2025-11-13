@@ -1,9 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:treesure_app/features/applicant%20list%20navbars/history_page.dart';
 import 'package:treesure_app/features/home/applicant_homepage.dart';
 import 'package:treesure_app/features/applicant%20list%20navbars/notif_page.dart';
 import 'package:treesure_app/features/applicant%20list%20navbars/profile_page.dart';
-
-import '../applicant list navbars/applicant_summary_reports.dart';
 
 class ApplicantNavbar extends StatefulWidget {
   final String applicantId; // comes from login
@@ -29,17 +28,13 @@ class ApplicantNavbarState extends State<ApplicantNavbar> {
         applicantId: widget.applicantId,
         applicantName: widget.applicantName,
       ),
-      ApplicantSummaryPage(
-        applicantName: widget.applicantName,
-        applicantId: widget.applicantId,
-      ),
+      const HistoryPage(),
       NotifPage(
         applicantName: widget.applicantName,
         applicantId: widget.applicantId,
       ),
       ProfilePage(
-        applicantId: widget.applicantId,
-        applicantName: widget.applicantName,
+       userId: widget.applicantId,
       ),
     ];
 
@@ -70,8 +65,8 @@ class ApplicantNavbarState extends State<ApplicantNavbar> {
               label: "Home",
             ),
             BottomNavigationBarItem(
-              icon: Icon(Icons.pages),
-              label: "Reports",
+              icon: Icon(Icons.history),
+              label: "History",
             ),
             BottomNavigationBarItem(
               icon: Icon(Icons.notifications),

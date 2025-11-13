@@ -161,7 +161,6 @@ class _ForesterHomepageState extends State<ForesterHomepage> {
                       MaterialPageRoute(
                           builder: (context) => ForesterTreeMapping(
                                 foresterId: widget.foresterId,
-                                
                               )),
                     );
                   },
@@ -176,7 +175,8 @@ class _ForesterHomepageState extends State<ForesterHomepage> {
                     Navigator.push(
                       context,
                       MaterialPageRoute(
-                          builder: (context) => ForesterSummaryReports(foresterId: widget.foresterId)),
+                          builder: (context) => ForesterSummaryReports(
+                              foresterId: widget.foresterId)),
                     );
                   },
                 ),

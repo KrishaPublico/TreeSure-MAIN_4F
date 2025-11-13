@@ -35,6 +35,7 @@ class ForesterNavbarState extends State<ForesterNavbar> {
       ),
       ProfilePage_Forester(
         foresterName: widget.foresterName,
+        foresterId: widget.foresterId,
       ),
     ];
   }
