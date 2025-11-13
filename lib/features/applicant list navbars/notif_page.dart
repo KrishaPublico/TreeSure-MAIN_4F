@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cloud_firestore/cloud_firestore.dart' show Timestamp;
+import 'dart:async';
 
 class NotifPage extends StatefulWidget {
   final String applicantId;
@@ -36,6 +37,26 @@ class _NotifPageState extends State<NotifPage> {
       return DateTime.now();
     } catch (e) {
       return DateTime.now();
+    }
+  }
+
+  /// ✅ Combine streams from appointments and notifications collections
+  Stream<List<QueryDocumentSnapshot>> _combineStreams() async* {
+    await for (final appointmentsSnapshot in _firestore
+        .collection('appointments')
+        .where('applicantId', isEqualTo: widget.applicantId)
+        .snapshots()) {
+      final notificationsSnapshot = await _firestore
+          .collection('notifications')
+          .where('recipientId', isEqualTo: widget.applicantId)
+          .get();
+
+      final combined = <QueryDocumentSnapshot>[
+        ...appointmentsSnapshot.docs,
+        ...notificationsSnapshot.docs,
+      ];
+
+      yield combined;
     }
   }
 
@@ -113,7 +134,9 @@ class _NotifPageState extends State<NotifPage> {
                       const SizedBox(width: 8),
                       _buildFilterButton('Completed'),
                       const SizedBox(width: 8),
-                      _buildFilterButton('Walk-In'),
+                      _buildFilterButton('Walk-In Appointment'),
+                      const SizedBox(width: 8),
+                      _buildFilterButton('Certificates'),
                     ],
                   ),
                 ),
@@ -153,13 +176,10 @@ class _NotifPageState extends State<NotifPage> {
 
             const SizedBox(height: 12),
 
-            // 🔹 Real-time Stream of Notifications
+            // 🔹 Real-time Stream of Notifications (Appointments + Certificate Notifications)
             Expanded(
-              child: StreamBuilder<QuerySnapshot>(
-                stream: _firestore
-                    .collection('appointments')
-                    .where('applicantId', isEqualTo: widget.applicantId)
-                    .snapshots(),
+              child: StreamBuilder<List<QueryDocumentSnapshot>>(
+                stream: _combineStreams(),
                 builder: (context, snapshot) {
                   if (snapshot.connectionState == ConnectionState.waiting) {
                     return const Center(child: CircularProgressIndicator());
@@ -169,94 +189,178 @@ class _NotifPageState extends State<NotifPage> {
                       child: Text("Error: ${snapshot.error}"),
                     );
                   }
-                  if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
-                    return const Center(child: Text("No appointments yet."));
+                  if (!snapshot.hasData || snapshot.data!.isEmpty) {
+                    return const Center(child: Text("No notifications yet."));
                   }
 
-                  final allAppointments = snapshot.data!.docs;
+                  final allItems = snapshot.data!;
 
                   // ✅ Filter appointments by status or type
-                  final filteredAppointments = _selectedStatus == 'All'
-                      ? allAppointments
-                      : _selectedStatus == 'Walk-In'
-                          ? allAppointments.where((doc) {
-                              final appointmentType =
-                                  (doc.data() as Map<String, dynamic>)['appointmentType'] ?? '';
-                              return appointmentType == 'Walk-In';
+                  if (allItems.isEmpty) {
+                    return const Center(child: Text("No notifications yet."));
+                  }
+
+                  // ✅ Filter items by status or type
+                  final filteredItems = _selectedStatus == 'All'
+                      ? allItems
+                      : _selectedStatus == 'Certificates'
+                          ? allItems.where((doc) {
+                              final data = doc.data() as Map<String, dynamic>;
+                              return data.containsKey('notificationType');
                             }).toList()
-                          : allAppointments.where((doc) {
-                              final status =
-                                  (doc.data() as Map<String, dynamic>)['status'] ??
-                                      'Pending';
-                              return status == _selectedStatus;
-                            }).toList();
+                          : _selectedStatus == 'Walk-In Appointment'
+                              ? allItems.where((doc) {
+                                  final data = doc.data() as Map<String, dynamic>;
+                                  final appointmentType =
+                                      data['appointmentType'] ?? '';
+                                  return appointmentType == 'Walk-in Appointment';
+                                }).toList()
+                              : allItems.where((doc) {
+                                  final data = doc.data() as Map<String, dynamic>;
+                                  // Check if it's a certificate notification
+                                  if (data.containsKey('notificationType')) {
+                                    return false; // Skip notifications for status filters
+                                  }
+                                  final appointmentType =
+                                      data['appointmentType'] ?? '';
+                                  // Skip walk-in appointments for status filters
+                                  if (appointmentType == 'Walk-in Appointment') return false;
+                                  final status = data['status'];
+                                  return status == _selectedStatus;
+                                }).toList();
 
-                  // ✅ Sort appointments by createdAt
-                  final sortedAppointments =
-                      _sortAppointments(filteredAppointments);
+                  // ✅ Sort items by createdAt
+                  final sortedItems = _sortAppointments(filteredItems);
 
-                  if (sortedAppointments.isEmpty) {
+                  if (sortedItems.isEmpty) {
                     return Center(
                       child: Text(
                         _selectedStatus == 'All'
-                            ? "No appointments found."
-                            : "No $_selectedStatus appointments.",
+                            ? "No notifications found."
+                            : _selectedStatus == 'Walk-In Appointment'
+                                ? "No Walk-In appointments."
+                                : _selectedStatus == 'Certificates'
+                                    ? "No certificate notifications."
+                                    : "No $_selectedStatus appointments.",
                         style: const TextStyle(color: Colors.grey),
                       ),
                     );
                   }
 
                   return ListView.builder(
-                    itemCount: sortedAppointments.length,
+                    itemCount: sortedItems.length,
                     itemBuilder: (context, index) {
-                      final apptDoc = sortedAppointments[index];
-                      final apptData = apptDoc.data() as Map<String, dynamic>;
-                      final appointmentType =
-                          apptData['appointmentType'] ?? 'Tree Tagging';
-                      final type = appointmentType == 'Cutting Assignment'
-                          ? apptData['permitType'] ?? 'Cutting Assignment'
-                          : appointmentType;
-                      final location = apptData['location'] ?? 'No location';
-                      final status = apptData['status'] ?? 'Pending';
-                      final completedAt = apptData['completedAt'];
+                      final itemDoc = sortedItems[index];
+                      final itemData = itemDoc.data() as Map<String, dynamic>;
+                      
+                      // Check if it's a certificate notification
+                      final isCertificateNotif = itemData.containsKey('notificationType');
+                      
+                      if (isCertificateNotif) {
+                        // Display certificate notification
+                        final title = itemData['title'] ?? 'Certificate Ready';
+                        final message = itemData['message'] ?? '';
+                        final notifStatus = itemData['status'] ?? 'unread';
+                        
+                        return Card(
+                          elevation: 2,
+                          margin: const EdgeInsets.symmetric(vertical: 8),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: ListTile(
+                            leading: CircleAvatar(
+                              backgroundColor: notifStatus == 'read' 
+                                  ? Colors.grey 
+                                  : Colors.green,
+                              child: Icon(
+                                Icons.file_present,
+                                color: Colors.white,
+                              ),
+                            ),
+                            title: Text(
+                              title,
+                              style: TextStyle(
+                                fontWeight: notifStatus == 'unread' 
+                                    ? FontWeight.bold 
+                                    : FontWeight.normal,
+                                color: Colors.black,
+                              ),
+                            ),
+                            subtitle: Text(
+                              message,
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(color: Colors.black54),
+                            ),
+                            trailing: const Icon(Icons.info, color: Colors.green),
+                            onTap: () => _showCertificateNotificationDetails(
+                              context,
+                              itemData,
+                              itemDoc.id,
+                            ),
+                          ),
+                        );
+                      } else {
+                        // Display appointment
+                        final appointmentType =
+                            itemData['appointmentType'] ?? 'Tree Tagging';
+                        final isWalkIn = appointmentType == 'Walk-in Appointment';
+                        final type = appointmentType == 'Cutting Assignment'
+                            ? itemData['permitType'] ?? 'Cutting Assignment'
+                            : appointmentType;
+                        final location = isWalkIn
+                            ? (itemData['location'] ?? 'DENR Office')
+                            : (itemData['location'] ?? 'No location');
+                        final status = isWalkIn
+                            ? 'Walk-In'
+                            : (itemData['status'] ?? 'Pending');
+                        final completedAt = itemData['completedAt'];
 
-                      return Card(
-                        elevation: 2,
-                        margin: const EdgeInsets.symmetric(vertical: 8),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        child: ListTile(
-                          leading: CircleAvatar(
-                            backgroundColor: status == 'Completed'
-                                ? Colors.green
-                                : Colors.orange,
-                            child: Icon(
-                              status == 'Completed'
-                                  ? Icons.check_circle
-                                  : Icons.hourglass_bottom,
-                              color: Colors.white,
+                        return Card(
+                          elevation: 2,
+                          margin: const EdgeInsets.symmetric(vertical: 8),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: ListTile(
+                            leading: CircleAvatar(
+                              backgroundColor: status == 'Completed'
+                                  ? Colors.green
+                                  : isWalkIn
+                                      ? Colors.blue
+                                      : Colors.orange,
+                              child: Icon(
+                                status == 'Completed'
+                                    ? Icons.check_circle
+                                    : isWalkIn
+                                        ? Icons.person_pin_circle
+                                        : Icons.hourglass_bottom,
+                                color: Colors.white,
+                              ),
+                            ),
+                            title: Text(
+                              isWalkIn ? type : "$type - $status",
+                              style: const TextStyle(
+                                fontWeight: FontWeight.bold,
+                                color: Colors.black,
+                              ),
+                            ),
+                            subtitle: Text(
+                              isWalkIn
+                                  ? "📍 $location | Purpose: ${itemData['purpose'] ?? 'N/A'}"
+                                  : "📍 $location",
+                              style: const TextStyle(color: Colors.black54),
+                            ),
+                            trailing: const Icon(Icons.info, color: Colors.green),
+                            onTap: () => _showAppointmentDetails(
+                              context,
+                              itemData,
+                              completedAt,
                             ),
                           ),
-                          title: Text(
-                            "$type - $status",
-                            style: const TextStyle(
-                              fontWeight: FontWeight.bold,
-                              color: Colors.black,
-                            ),
-                          ),
-                          subtitle: Text(
-                            "📍 $location",
-                            style: const TextStyle(color: Colors.black54),
-                          ),
-                          trailing: const Icon(Icons.info, color: Colors.green),
-                          onTap: () => _showAppointmentDetails(
-                            context,
-                            apptData,
-                            completedAt,
-                          ),
-                        ),
-                      );
+                        );
+                      }
                     },
                   );
                 },
@@ -289,6 +393,63 @@ class _NotifPageState extends State<NotifPage> {
     );
   }
 
+  /// ✅ Show certificate notification details
+  void _showCertificateNotificationDetails(
+    BuildContext context,
+    Map<String, dynamic> notification,
+    String notificationId,
+  ) {
+    // Mark notification as read
+    _firestore.collection('notifications').doc(notificationId).update({
+      'status': 'read',
+    });
+
+    showDialog(
+      context: context,
+      builder: (_) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Row(
+          children: [
+            Icon(Icons.file_present, color: Colors.green, size: 28),
+            SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                notification['title'] ?? 'Certificate Ready',
+                style: const TextStyle(fontSize: 18),
+              ),
+            ),
+          ],
+        ),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _buildDetail("Certificate Type", notification['certificateType'] ?? 'N/A'),
+              _buildDetail("Application Type", notification['applicationType'] ?? 'N/A'),
+              const SizedBox(height: 12),
+              Text(
+                notification['message'] ?? '',
+                style: const TextStyle(fontSize: 14, color: Colors.black87),
+              ),
+              if (notification['remarks'] != null && notification['remarks'] != '')
+                Padding(
+                  padding: const EdgeInsets.only(top: 12),
+                  child: _buildDetail("Remarks", notification['remarks']),
+                ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text("Close", style: TextStyle(color: Colors.green)),
+          ),
+        ],
+      ),
+    );
+  }
+
   /// ✅ Show appointment details
   void _showAppointmentDetails(
     BuildContext context,
@@ -296,8 +457,18 @@ class _NotifPageState extends State<NotifPage> {
     dynamic completedAt,
   ) {
     final appointmentType = appointment['appointmentType'] ?? '';
-    final isWalkIn = appointmentType == 'Walk-In';
-    
+    final isWalkIn = appointmentType == 'Walk-in Appointment';
+
+    // Format scheduled date and time for walk-in appointments
+    String? formattedSchedule;
+    if (isWalkIn) {
+      final scheduledDate = appointment['scheduledDate'];
+      final scheduledTime = appointment['scheduledTime'];
+      if (scheduledDate != null && scheduledTime != null) {
+        formattedSchedule = "$scheduledDate at $scheduledTime";
+      }
+    }
+
     showDialog(
       context: context,
       builder: (_) => AlertDialog(
@@ -314,11 +485,14 @@ class _NotifPageState extends State<NotifPage> {
                     ? appointment['permitType'] ?? 'N/A'
                     : appointment['appointmentType'] ?? 'N/A',
               ),
-              if (isWalkIn)
+              _buildDetail("Location", appointment['location'] ?? 'N/A'),
+              if (isWalkIn) ...[
                 _buildDetail("Purpose", appointment['purpose'] ?? 'N/A'),
+                if (formattedSchedule != null)
+                  _buildDetail("Scheduled", formattedSchedule),
+              ],
               if (!isWalkIn)
-                _buildDetail("Location", appointment['location'] ?? 'N/A'),
-              _buildDetail("Status", appointment['status'] ?? 'N/A'),
+                _buildDetail("Status", appointment['status'] ?? 'N/A'),
               _buildDetail(
                 "Remarks",
                 appointment['remarks'] ?? 'None',
