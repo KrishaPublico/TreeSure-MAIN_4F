@@ -47,6 +47,7 @@ class _PermitToCutPageState extends State<PermitToCutPage> {
   bool _isUploading = false;
   Map<String, Map<String, dynamic>> _documentComments =
       {}; // Per-document comments
+  List<Map<String, dynamic>> _availableTemplates = []; // ✅ Store all available templates
 
   @override
   void initState() {
@@ -56,6 +57,37 @@ class _PermitToCutPageState extends State<PermitToCutPage> {
     }
     _loadExistingUploads();
     _loadDocumentComments();
+    _loadApplicationTemplates(); // ✅ Load application-level templates
+  }
+
+  /// ✅ Load application-level templates from Firestore
+  Future<void> _loadApplicationTemplates() async {
+    try {
+      final templatesSnapshot = await FirebaseFirestore.instance
+          .collection('applications')
+          .doc('ptc')
+          .collection('templates')
+          .get();
+
+      if (templatesSnapshot.docs.isNotEmpty) {
+        setState(() {
+          _availableTemplates = templatesSnapshot.docs.map((doc) {
+            final data = doc.data();
+            return {
+              'documentType': data['documentType'] ?? doc.id,
+              'title': data['title'] ?? '',
+              'description': data['description'] ?? '',
+              'fileName': data['fileName'] ?? '',
+              'url': data['url'] ?? '',
+              'uploadedAt': data['uploadedAt'],
+            };
+          }).toList();
+        });
+        print("✅ Loaded ${_availableTemplates.length} templates for PTC");
+      }
+    } catch (e) {
+      print("❌ Error loading application templates: $e");
+    }
   }
 
   Future<void> _loadExistingUploads() async {
@@ -93,82 +125,69 @@ class _PermitToCutPageState extends State<PermitToCutPage> {
     setState(() {});
   }
 
-  /// Load document-specific comments from Firestore uploads field
+  /// Load document-specific comments from uploads subcollection
   Future<void> _loadDocumentComments() async {
     try {
-      final applicantRef = FirebaseFirestore.instance
+      final uploadsRef = FirebaseFirestore.instance
           .collection('applications')
           .doc('ptc')
           .collection('applicants')
-          .doc(widget.applicantId);
+          .doc(widget.applicantId)
+          .collection('uploads');
 
-      final snapshot = await applicantRef.get();
-      if (!snapshot.exists) return;
-
-      final data = snapshot.data();
-      final uploadsMap = data?['uploads'] as Map<String, dynamic>?;
-      if (uploadsMap == null) return;
-
+      final uploadsSnapshot = await uploadsRef.get();
+      
+      print("📄 Found ${uploadsSnapshot.docs.length} upload documents");
+      
       final Map<String, Map<String, dynamic>> tempComments = {};
 
-      for (final entry in uploadsMap.entries) {
-        final documentKey = entry.key;
-        final documentData = entry.value as Map<String, dynamic>?;
+      for (final uploadDoc in uploadsSnapshot.docs) {
+        final docKey = uploadDoc.id;
+        final docData = uploadDoc.data();
 
-        if (documentData == null) continue;
+        final reuploadAllowed = docData['reuploadAllowed'] as bool? ?? false;
+        
+        print("📄 Processing document: $docKey, reuploadAllowed: $reuploadAllowed");
 
-        // Find matching form title (exact match or sanitized)
+        // Get comments from the subcollection
+        final commentsSnapshot = await uploadDoc.reference
+            .collection('comments')
+            .orderBy('createdAt', descending: true)
+            .limit(1)
+            .get();
+
+        Map<String, dynamic>? mostRecentComment;
+        if (commentsSnapshot.docs.isNotEmpty) {
+          mostRecentComment = commentsSnapshot.docs.first.data();
+          print("📄 Most recent comment: ${mostRecentComment['message']}");
+        }
+
+        // Try exact match first
         String? matchingTitle;
-        for (final label in formLabels) {
-          final title = label["title"]!;
-          final sanitizedTitle = title.replaceAll(RegExp(r'[^\w\s]+'), '');
-          if (documentKey == title || documentKey == sanitizedTitle) {
-            matchingTitle = title;
-            break;
+        if (uploadedFiles.containsKey(docKey)) {
+          matchingTitle = docKey;
+        } else {
+          // Find matching form label title
+          for (final label in formLabels) {
+            final title = label["title"]!;
+            final safeTitle = title.replaceAll(RegExp(r'[.#$/\[\]]'), '-').trim();
+            
+            if (docKey == safeTitle) {
+              matchingTitle = title;
+              break;
+            }
           }
         }
 
         if (matchingTitle != null) {
-          final reuploadAllowed =
-              documentData['reuploadAllowed'] as bool? ?? false;
-          final commentsMap = documentData['comments'] as Map<String, dynamic>?;
-
-          // Extract the most recent comment from the comments map
-          Map<String, dynamic>? mostRecentComment;
-          dynamic mostRecentTimestamp;
-          
-          if (commentsMap != null && commentsMap.isNotEmpty) {
-            // Iterate through all comments to find the most recent one
-            for (final commentEntry in commentsMap.entries) {
-              final commentData = commentEntry.value as Map<String, dynamic>?;
-              if (commentData != null) {
-                final createdAt = commentData['createdAt'];
-                
-                // If this is the first comment or more recent than current most recent
-                if (mostRecentComment == null || 
-                    (createdAt != null && _isMoreRecent(createdAt, mostRecentTimestamp))) {
-                  mostRecentComment = commentData;
-                  mostRecentTimestamp = createdAt;
-                }
-              }
-            }
-            
-            if (mostRecentComment != null) {
-              tempComments[matchingTitle] = {
-                'reuploadAllowed': reuploadAllowed,
-                'comment': {
-                  'message': mostRecentComment['message'] as String? ?? '',
-                  'from': mostRecentComment['from'] as String? ?? 'Admin',
-                  'createdAt': _parseCommentTimestamp(mostRecentComment['createdAt']),
-                },
-              };
-            }
-          } else if (reuploadAllowed) {
-            tempComments[matchingTitle] = {
-              'reuploadAllowed': true,
-              'comment': null,
-            };
-          }
+          tempComments[matchingTitle] = {
+            'reuploadAllowed': reuploadAllowed,
+            'comment': mostRecentComment != null ? {
+              'message': mostRecentComment['message'] as String? ?? '',
+              'from': mostRecentComment['from'] as String? ?? 'Admin',
+              'createdAt': _parseCommentTimestamp(mostRecentComment['createdAt']),
+            } : null,
+          };
         }
       }
 
@@ -206,20 +225,7 @@ class _PermitToCutPageState extends State<PermitToCutPage> {
     return null;
   }
 
-  /// Compare two timestamps to determine which is more recent
-  bool _isMoreRecent(dynamic timestamp1, dynamic timestamp2) {
-    if (timestamp2 == null) return true;
-    
-    final ts1 = _parseCommentTimestamp(timestamp1);
-    final ts2 = _parseCommentTimestamp(timestamp2);
-    
-    if (ts1 == null) return false;
-    if (ts2 == null) return true;
-    
-    return ts1.compareTo(ts2) > 0;
-  }
-
-  /// Pick a file
+  /// Selects a file and automatically uploads it (for reupload scenario)
   Future<void> pickFile(String title) async {
     try {
       FilePickerResult? result = await FilePicker.platform.pickFiles(
@@ -239,13 +245,99 @@ class _PermitToCutPageState extends State<PermitToCutPage> {
         return;
       }
 
-      setState(() {
-        uploadedFiles[title]!["file"] = file;
-      });
+      // Check if this is a reupload (file already uploaded)
+      final isReupload = uploadedFiles[title]!["url"] != null;
+      
+      if (isReupload) {
+        // Auto-upload immediately for reuploads
+        await uploadSingleFile(title, file);
+      } else {
+        // For initial uploads, just store the file
+        setState(() {
+          uploadedFiles[title]!["file"] = file;
+        });
+      }
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text("Error selecting file: $e")),
       );
+    }
+  }
+
+  /// Upload a single file immediately
+  Future<void> uploadSingleFile(String title, PlatformFile file) async {
+    setState(() => _isUploading = true);
+
+    try {
+      final firestore = FirebaseFirestore.instance;
+      final storage = FirebaseStorage.instance;
+
+      // References
+      final appDoc = firestore.collection('applications').doc('ptc');
+      final applicantDoc = appDoc.collection('applicants').doc(widget.applicantId);
+      final userUploadsRef = firestore
+          .collection('users')
+          .doc(widget.applicantId)
+          .collection('ptc_uploads');
+      final applicantUploadsRef = applicantDoc.collection('uploads');
+
+      final safeTitle = title.replaceAll(RegExp(r'[.#$/\[\]]'), '-').trim();
+      final fileName = "${DateTime.now().millisecondsSinceEpoch}_${file.name}";
+      final ref = storage.ref().child("ptc_uploads/$fileName");
+
+      // Upload file
+      UploadTask uploadTask;
+      if (kIsWeb) {
+        final bytes = file.bytes;
+        if (bytes == null) throw Exception("File bytes missing");
+        uploadTask = ref.putData(bytes);
+      } else {
+        final pathStr = file.path;
+        if (pathStr == null) throw Exception("File path missing");
+        uploadTask = ref.putFile(File(pathStr));
+      }
+
+      await uploadTask.whenComplete(() {});
+      final url = await ref.getDownloadURL();
+
+      // Save data structure
+      final uploadData = {
+        'title': title,
+        'fileName': file.name,
+        'url': url,
+        'uploadedAt': FieldValue.serverTimestamp(),
+      };
+
+      // Save to all locations
+      await userUploadsRef.doc(safeTitle).set(uploadData);
+      await applicantUploadsRef.doc(safeTitle).set(uploadData, SetOptions(merge: true));
+
+      // Reset reuploadAllowed flag
+      await applicantDoc.set({
+        'uploads.$safeTitle.reuploadAllowed': false,
+      }, SetOptions(merge: true));
+
+      // Update local state
+      uploadedFiles[title]!["url"] = url;
+      uploadedFiles[title]!["file"] = null;
+
+      // Reload comments and uploads
+      await _loadDocumentComments();
+      await _loadExistingUploads();
+
+      if (mounted) {
+        setState(() => _isUploading = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text("$title uploaded successfully!")),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _isUploading = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text("Error uploading file: $e")),
+        );
+      }
     }
   }
 
@@ -313,6 +405,7 @@ class _PermitToCutPageState extends State<PermitToCutPage> {
         uploadsFieldUpdates['uploads.$safeTitle.reuploadAllowed'] = false;
 
         uploadedFiles[title]!["url"] = url;
+        uploadedFiles[title]!["file"] = null; // ✅ Clear selected file after upload
       }
 
       // Update applicant document with metadata and reset reuploadAllowed
@@ -331,8 +424,9 @@ class _PermitToCutPageState extends State<PermitToCutPage> {
         'lastUpdated': FieldValue.serverTimestamp(),
       }, SetOptions(merge: true));
 
-      // Reload document comments
+      // ✅ Reload comments and existing uploads to update UI
       await _loadDocumentComments();
+      await _loadExistingUploads();
 
       if (mounted) {
         setState(() => _isUploading = false);
@@ -399,6 +493,7 @@ class _PermitToCutPageState extends State<PermitToCutPage> {
                       style:
                           const TextStyle(fontSize: 13, color: Colors.black87),
                     ),
+                    
                     if (isUploaded)
                       TextButton(
                         onPressed: () async {
@@ -427,7 +522,10 @@ class _PermitToCutPageState extends State<PermitToCutPage> {
               ),
               const SizedBox(width: 12),
               ElevatedButton(
-                onPressed: () => pickFile(title),
+                // ✅ Disable button if uploaded and reupload NOT allowed, or if currently uploading
+                onPressed: (isUploaded && !reuploadAllowed) || _isUploading 
+                    ? null 
+                    : () => pickFile(title),
                 style: ElevatedButton.styleFrom(
                   backgroundColor: isUploaded
                       ? (reuploadAllowed ? Colors.orange : Colors.grey[300])
@@ -532,6 +630,83 @@ class _PermitToCutPageState extends State<PermitToCutPage> {
     return '';
   }
 
+  /// ✅ Build template card widget
+  Widget _buildTemplateCard(Map<String, dynamic> template) {
+    return Card(
+      margin: const EdgeInsets.only(bottom: 8),
+      elevation: 2,
+      child: ListTile(
+        leading: Icon(Icons.description, color: Colors.blue[700], size: 32),
+        title: Text(
+          template['documentType'] ?? 'Template',
+          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
+        ),
+        subtitle: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            if (template['title']?.isNotEmpty == true)
+              Text(
+                template['title'],
+                style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500),
+              ),
+            if (template['description']?.isNotEmpty == true)
+              Text(
+                template['description'],
+                style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+              ),
+            const SizedBox(height: 4),
+            Row(
+              children: [
+                Icon(Icons.insert_drive_file, size: 14, color: Colors.grey[600]),
+                const SizedBox(width: 4),
+                Expanded(
+                  child: Text(
+                    template['fileName'] ?? '',
+                    style: TextStyle(fontSize: 11, color: Colors.grey[600]),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+        trailing: ElevatedButton.icon(
+          onPressed: () async {
+            final url = template['url'] as String?;
+            if (url != null && url.isNotEmpty) {
+              try {
+                final uri = Uri.parse(url);
+                if (await canLaunchUrl(uri)) {
+                  await launchUrl(uri, mode: LaunchMode.externalApplication);
+                } else {
+                  if (mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text("Cannot open template")),
+                    );
+                  }
+                }
+              } catch (e) {
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text("Error opening template: $e")),
+                  );
+                }
+              }
+            }
+          },
+          icon: const Icon(Icons.download, size: 16),
+          label: const Text("Download", style: TextStyle(fontSize: 12)),
+          style: ElevatedButton.styleFrom(
+            backgroundColor: Colors.blue[700],
+            foregroundColor: Colors.white,
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          ),
+        ),
+        isThreeLine: true,
+      ),
+    );
+  }
+
   /// UI
   @override
   Widget build(BuildContext context) {
@@ -546,6 +721,45 @@ class _PermitToCutPageState extends State<PermitToCutPage> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            // ✅ Available Templates Section
+            if (_availableTemplates.isNotEmpty) ...[
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: Colors.blue[50],
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: Colors.blue[200]!),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Icon(Icons.folder_special, color: Colors.blue[700], size: 24),
+                        const SizedBox(width: 8),
+                        Text(
+                          'Available Templates',
+                          style: TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.blue[900],
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      'Download these templates before preparing your documents',
+                      style: TextStyle(fontSize: 13, color: Colors.blue[800]),
+                    ),
+                    const Divider(height: 16),
+                    ..._availableTemplates.map((template) => _buildTemplateCard(template)),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 24),
+            ],
+            
             const Text(
               'ISSUANCE OF TREE CUTTING PERMIT WITHIN TITLED LOT/PRIVATE LOT',
               style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),

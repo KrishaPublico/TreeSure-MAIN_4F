@@ -176,7 +176,7 @@ class _ForesterHomepageState extends State<ForesterHomepage> {
                     Navigator.push(
                       context,
                       MaterialPageRoute(
-                          builder: (context) => const ForesterSummaryReports()),
+                          builder: (context) => ForesterSummaryReports(foresterId: widget.foresterId)),
                     );
                   },
                 ),

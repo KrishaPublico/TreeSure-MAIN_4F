@@ -69,6 +69,7 @@ class _SPLTFormPageState extends State<SPLTFormPage> {
   final Map<String, Map<String, dynamic>> uploadedFiles = {};
   bool _isUploading = false;
   Map<String, Map<String, dynamic>> _documentComments = {}; // Per-document comments
+  List<Map<String, dynamic>> _availableTemplates = []; // ✅ Store all available templates
 
   @override
   void initState() {
@@ -78,6 +79,37 @@ class _SPLTFormPageState extends State<SPLTFormPage> {
     }
     _loadExistingUploads();
     _loadDocumentComments();
+    _loadApplicationTemplates(); // ✅ Load application-level templates
+  }
+
+  /// ✅ Load application-level templates from Firestore
+  Future<void> _loadApplicationTemplates() async {
+    try {
+      final templatesSnapshot = await FirebaseFirestore.instance
+          .collection('applications')
+          .doc('splt')
+          .collection('templates')
+          .get();
+
+      if (templatesSnapshot.docs.isNotEmpty) {
+        setState(() {
+          _availableTemplates = templatesSnapshot.docs.map((doc) {
+            final data = doc.data();
+            return {
+              'documentType': data['documentType'] ?? doc.id,
+              'title': data['title'] ?? '',
+              'description': data['description'] ?? '',
+              'fileName': data['fileName'] ?? '',
+              'url': data['url'] ?? '',
+              'uploadedAt': data['uploadedAt'],
+            };
+          }).toList();
+        });
+        print("✅ Loaded ${_availableTemplates.length} templates for SPLT");
+      }
+    } catch (e) {
+      print("❌ Error loading application templates: $e");
+    }
   }
 
   Future<void> _loadExistingUploads() async {
@@ -115,81 +147,63 @@ class _SPLTFormPageState extends State<SPLTFormPage> {
     setState(() {});
   }
 
-  /// Load document-specific comments from Firestore uploads field
+  /// Load document-specific comments from uploads subcollection
   Future<void> _loadDocumentComments() async {
     try {
-      final applicantRef = FirebaseFirestore.instance
+      final uploadsRef = FirebaseFirestore.instance
           .collection('applications')
           .doc('splt')
           .collection('applicants')
-          .doc(widget.applicantId);
+          .doc(widget.applicantId)
+          .collection('uploads');
 
-      final snapshot = await applicantRef.get();
-      if (!snapshot.exists) return;
-
-      final data = snapshot.data();
-      final uploadsMap = data?['uploads'] as Map<String, dynamic>?;
-      if (uploadsMap == null) return;
-
+      final uploadsSnapshot = await uploadsRef.get();
+      
+      print("📄 Found ${uploadsSnapshot.docs.length} upload documents");
+      
       final Map<String, Map<String, dynamic>> tempComments = {};
 
-      for (final entry in uploadsMap.entries) {
-        final documentKey = entry.key;
-        final documentData = entry.value as Map<String, dynamic>?;
+      for (final uploadDoc in uploadsSnapshot.docs) {
+        final docKey = uploadDoc.id;
+        final docData = uploadDoc.data();
+
+        final reuploadAllowed = docData['reuploadAllowed'] as bool? ?? false;
         
-        if (documentData == null) continue;
+        print("📄 Processing document: $docKey, reuploadAllowed: $reuploadAllowed");
+
+        // Get comments from the subcollection
+        final commentsSnapshot = await uploadDoc.reference
+            .collection('comments')
+            .orderBy('createdAt', descending: true)
+            .limit(1)
+            .get();
+
+        Map<String, dynamic>? mostRecentComment;
+        if (commentsSnapshot.docs.isNotEmpty) {
+          mostRecentComment = commentsSnapshot.docs.first.data();
+          print("📄 Most recent comment: ${mostRecentComment['message']}");
+        }
 
         // Find matching form title (exact match or sanitized)
         String? matchingTitle;
         for (final label in formLabels) {
           final title = label["title"]!;
           final sanitizedTitle = title.replaceAll(RegExp(r'[^\w\s]+'), '');
-          if (documentKey == title || documentKey == sanitizedTitle) {
+          if (docKey == title || docKey == sanitizedTitle) {
             matchingTitle = title;
             break;
           }
         }
 
         if (matchingTitle != null) {
-          final reuploadAllowed = documentData['reuploadAllowed'] as bool? ?? false;
-          final commentsMap = documentData['comments'] as Map<String, dynamic>?;
-          
-          // Extract the most recent comment from the comments map
-          if (commentsMap != null && commentsMap.isNotEmpty) {
-            // Get all comment entries and sort by createdAt to find the most recent
-            Map<String, dynamic>? mostRecentComment;
-            dynamic mostRecentTimestamp;
-            
-            for (final commentEntry in commentsMap.entries) {
-              final commentData = commentEntry.value as Map<String, dynamic>?;
-              if (commentData != null) {
-                final createdAt = commentData['createdAt'];
-                
-                // If this is the first comment or more recent than current most recent
-                if (mostRecentComment == null || 
-                    (createdAt != null && _isMoreRecent(createdAt, mostRecentTimestamp))) {
-                  mostRecentComment = commentData;
-                  mostRecentTimestamp = createdAt;
-                }
-              }
-            }
-            
-            if (mostRecentComment != null) {
-              tempComments[matchingTitle] = {
-                'reuploadAllowed': reuploadAllowed,
-                'comment': {
-                  'message': mostRecentComment['message'] as String? ?? '',
-                  'from': mostRecentComment['from'] as String? ?? 'Admin',
-                  'createdAt': _parseCommentTimestamp(mostRecentComment['createdAt']),
-                },
-              };
-            }
-          } else if (reuploadAllowed) {
-            tempComments[matchingTitle] = {
-              'reuploadAllowed': true,
-              'comment': null,
-            };
-          }
+          tempComments[matchingTitle] = {
+            'reuploadAllowed': reuploadAllowed,
+            'comment': mostRecentComment != null ? {
+              'message': mostRecentComment['message'] as String? ?? '',
+              'from': mostRecentComment['from'] as String? ?? 'Admin',
+              'createdAt': _parseCommentTimestamp(mostRecentComment['createdAt']),
+            } : null,
+          };
         }
       }
 
@@ -227,20 +241,7 @@ class _SPLTFormPageState extends State<SPLTFormPage> {
     return null;
   }
 
-  /// Compare two timestamps to determine which is more recent
-  bool _isMoreRecent(dynamic timestamp1, dynamic timestamp2) {
-    if (timestamp2 == null) return true;
-    
-    final ts1 = _parseCommentTimestamp(timestamp1);
-    final ts2 = _parseCommentTimestamp(timestamp2);
-    
-    if (ts1 == null) return false;
-    if (ts2 == null) return true;
-    
-    return ts1.compareTo(ts2) > 0;
-  }
-
-  /// Pick PDF/DOC/DOCX file
+  /// Selects a file and automatically uploads it (for reupload scenario)
   Future<void> pickFile(String title) async {
     try {
       FilePickerResult? result = await FilePicker.platform.pickFiles(
@@ -260,13 +261,99 @@ class _SPLTFormPageState extends State<SPLTFormPage> {
         return;
       }
 
-      setState(() {
-        uploadedFiles[title]!["file"] = file;
-      });
+      // Check if this is a reupload (file already uploaded)
+      final isReupload = uploadedFiles[title]!["url"] != null;
+      
+      if (isReupload) {
+        // Auto-upload immediately for reuploads
+        await uploadSingleFile(title, file);
+      } else {
+        // For initial uploads, just store the file
+        setState(() {
+          uploadedFiles[title]!["file"] = file;
+        });
+      }
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text("Error selecting file: $e")),
       );
+    }
+  }
+
+  /// Upload a single file immediately
+  Future<void> uploadSingleFile(String title, PlatformFile file) async {
+    setState(() => _isUploading = true);
+
+    try {
+      final firestore = FirebaseFirestore.instance;
+      final storage = FirebaseStorage.instance;
+
+      // References
+      final appDoc = firestore.collection('applications').doc('splt');
+      final applicantDoc = appDoc.collection('applicants').doc(widget.applicantId);
+      final userUploadsRef = firestore
+          .collection('users')
+          .doc(widget.applicantId)
+          .collection('splt_uploads');
+      final applicantUploadsRef = applicantDoc.collection('uploads');
+
+      final safeTitle = title.replaceAll(RegExp(r'[.#$/\[\]]'), '-').trim();
+      final fileName = "${DateTime.now().millisecondsSinceEpoch}_${file.name}";
+      final ref = storage.ref().child("splt_uploads/$fileName");
+
+      // Upload file
+      UploadTask uploadTask;
+      if (kIsWeb) {
+        final bytes = file.bytes;
+        if (bytes == null) throw Exception("File bytes missing");
+        uploadTask = ref.putData(bytes);
+      } else {
+        final pathStr = file.path;
+        if (pathStr == null) throw Exception("File path missing");
+        uploadTask = ref.putFile(File(pathStr));
+      }
+
+      await uploadTask.whenComplete(() {});
+      final url = await ref.getDownloadURL();
+
+      // Save data structure
+      final uploadData = {
+        'title': title,
+        'fileName': file.name,
+        'url': url,
+        'uploadedAt': FieldValue.serverTimestamp(),
+      };
+
+      // Save to all locations
+      await userUploadsRef.doc(safeTitle).set(uploadData);
+      await applicantUploadsRef.doc(safeTitle).set(uploadData, SetOptions(merge: true));
+
+      // Reset reuploadAllowed flag
+      await applicantDoc.set({
+        'uploads.$safeTitle.reuploadAllowed': false,
+      }, SetOptions(merge: true));
+
+      // Update local state
+      uploadedFiles[title]!["url"] = url;
+      uploadedFiles[title]!["file"] = null;
+
+      // Reload comments and uploads
+      await _loadDocumentComments();
+      await _loadExistingUploads();
+
+      if (mounted) {
+        setState(() => _isUploading = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text("$title uploaded successfully!")),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _isUploading = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text("Error uploading file: $e")),
+        );
+      }
     }
   }
 
@@ -423,6 +510,7 @@ class _SPLTFormPageState extends State<SPLTFormPage> {
                       description,
                       style: const TextStyle(fontSize: 13, color: Colors.black87),
                     ),
+                    
                     if (isUploaded)
                       TextButton(
                         onPressed: () async {
@@ -451,7 +539,10 @@ class _SPLTFormPageState extends State<SPLTFormPage> {
               ),
               const SizedBox(width: 12),
               ElevatedButton(
-                onPressed: (isUploaded && !reuploadAllowed) ? null : () => pickFile(title),
+                // ✅ Disable button if uploaded and reupload NOT allowed, or if currently uploading
+                onPressed: (isUploaded && !reuploadAllowed) || _isUploading 
+                    ? null 
+                    : () => pickFile(title),
                 style: ElevatedButton.styleFrom(
                   backgroundColor: isUploaded
                       ? (reuploadAllowed ? Colors.orange : Colors.grey[300])

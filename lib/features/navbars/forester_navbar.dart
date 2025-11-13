@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import 'package:treesure_app/features/forester%20list%20of%20navbars/history_page.dart';
+import 'package:treesure_app/features/forester/forester_summary_reports.dart';
 import 'package:treesure_app/features/forester%20list%20of%20navbars/notif_page.dart';
 import 'package:treesure_app/features/forester%20list%20of%20navbars/profile_page.dart';
 import 'package:treesure_app/features/home/forester_homepage.dart';
@@ -27,7 +27,7 @@ class ForesterNavbarState extends State<ForesterNavbar> {
         foresterId: widget.foresterId,
         foresterName: widget.foresterName,
       ),
-      const HistoryPage_Forester(),
+      ForesterSummaryReports(foresterId: widget.foresterId),
       NotifPage_Forester(
         applicantName: widget.foresterName,
         foresterId: widget.foresterId,
@@ -70,8 +70,8 @@ class ForesterNavbarState extends State<ForesterNavbar> {
               label: "Home",
             ),
             BottomNavigationBarItem(
-              icon: Icon(Icons.history),
-              label: "History",
+              icon: Icon(Icons.pages),
+              label: "Reports",
             ),
             BottomNavigationBarItem(
               icon: Icon(Icons.notifications),

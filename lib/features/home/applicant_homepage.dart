@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:treesure_app/features/applicant/ctpo.dart';
 import 'package:treesure_app/features/applicant/CuttingPermit.dart';
-import 'package:treesure_app/features/applicant/summary_Reports.dart';
 
 class ApplicantHomepage extends StatelessWidget {
   final String applicantId; // comes from login
@@ -50,7 +49,7 @@ class ApplicantHomepage extends StatelessWidget {
                           color: Colors.white,
                         ),
                       ),
-                       Text(
+                      Text(
                         applicantId,
                         style: TextStyle(
                           fontSize: 14,
@@ -229,23 +228,6 @@ class ApplicantHomepage extends StatelessWidget {
                         const SnackBar(
                             content:
                                 Text("Access Chainsaw Permit information.")),
-                      );
-                    },
-                  ),
-                  const SizedBox(height: 8),
-                  _buildApplicantPermitButton(
-                    context,
-                    "Reports",
-                    Icons.description,
-                    () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (context) => SummaryReportsPage(
-                            applicantId: applicantId,
-                            applicantName: applicantName,
-                          ),
-                        ),
                       );
                     },
                   ),
