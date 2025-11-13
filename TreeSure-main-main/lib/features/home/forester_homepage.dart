@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:treesure_app/features/forester/forester_summary_reports.dart';
 import 'package:treesure_app/features/forester/forester_tree_mapping.dart';
 import 'package:treesure_app/features/forester/testQr_screen.dart';
 
@@ -18,24 +19,23 @@ class ForesterHomepage extends StatefulWidget {
 class _ForesterHomepageState extends State<ForesterHomepage> {
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Colors.white,
-      body: SingleChildScrollView(
-        child: Column(
-          children: [
-            const SizedBox(height: 20),
+    return SingleChildScrollView(
+      child: Column(
+        children: [
+          const SizedBox(height: 20),
 
-            // Profile Header with QR icon
-            Stack(
-              clipBehavior: Clip.none,
-              children: [
-                Container(
-                  width: MediaQuery.of(context).size.width * 0.9,
-                  decoration: BoxDecoration(
-                    color: Colors.green,
-                    borderRadius: BorderRadius.circular(20),
-                  ),
-                  padding: const EdgeInsets.all(12),
+          // Header Stack with QR
+          Stack(
+            clipBehavior: Clip.none,
+            children: [
+              Container(
+                width: 350,
+                decoration: BoxDecoration(
+                  color: Colors.green,
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: Padding(
+                  padding: const EdgeInsets.all(12.0),
                   child: Column(
                     children: [
                       Image.asset("assets/treesure_leaf.png", height: 50),
@@ -43,7 +43,8 @@ class _ForesterHomepageState extends State<ForesterHomepage> {
                       const CircleAvatar(
                         radius: 30,
                         backgroundColor: Colors.white,
-                        child: Icon(Icons.person, size: 40, color: Colors.green),
+                        child:
+                            Icon(Icons.person, size: 40, color: Colors.green),
                       ),
                       const SizedBox(height: 8),
                       Text(
@@ -62,103 +63,164 @@ class _ForesterHomepageState extends State<ForesterHomepage> {
                     ],
                   ),
                 ),
-                Positioned(
-                  bottom: -25,
-                  left: 0,
-                  right: 0,
-                  child: Center(
-                    child: GestureDetector(
-                      onTap: () {
-                        // Open QR Scanner immediately when the QR icon is tapped
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (context) => const QrUploadScanner(),
-                          ),
-                        );
-                      },
-                      child: Container(
-                        decoration: BoxDecoration(
-                          color: Colors.green,
-                          borderRadius: BorderRadius.circular(50),
-                        ),
-                        padding: const EdgeInsets.all(4.0),
-                        child: const CircleAvatar(
-                          radius: 25,
-                          backgroundColor: Colors.white,
-                          child: Icon(Icons.qr_code, size: 30, color: Colors.green),
-                        ),
+              ),
+              Positioned(
+                bottom: -25,
+                left: 0,
+                right: 0,
+                child: Center(
+                  child: Container(
+                    decoration: BoxDecoration(
+                      color: Colors.green,
+                      borderRadius: BorderRadius.circular(50),
+                    ),
+                    child: const Padding(
+                      padding: EdgeInsets.all(4.0),
+                      child: CircleAvatar(
+                        radius: 25,
+                        backgroundColor: Colors.white,
+                        child:
+                            Icon(Icons.qr_code, size: 30, color: Colors.green),
                       ),
                     ),
                   ),
                 ),
+              ),
+            ],
+          ),
+
+          const SizedBox(height: 60),
+
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 30.0),
+            child: Column(
+              children: [
+                // _buildMenuButton(
+                //   context,
+                //   "50 Registered Trees",
+                //   Icons.check_circle,
+                //   Colors.green[800]!,
+                //   () {
+                //     Navigator.push(
+                //       context,
+                //       MaterialPageRoute(
+                //           builder: (context) => RegisterTreesPage(
+                //                 foresterId: widget.foresterId,
+                //                 foresterName: widget.foresterName,
+                //                 appointmentId: appointmentId,
+                //               )),
+                //     );
+                //   },
+                //   textStyle: const TextStyle(
+                //     fontSize: 20,
+                //     fontWeight: FontWeight.bold,
+                //     color: Colors.white,
+                //   ),
+                // ),
+                const SizedBox(height: 15), // keep spacing above Tree Inventory
+                _buildMenuButton(
+                  context,
+                  "Test QR",
+                  Icons.forest,
+                  Colors.green[800]!,
+                  () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                          builder: (context) => const QrUploadScanner()),
+                    );
+                  },
+                ),
+                const SizedBox(height: 15), // keep spacing above Tree Inventory
+                // _buildMenuButton(
+                //   context,
+                //   "Tree Inventory",
+                //   Icons.forest,
+                //   Colors.green[800]!,
+                //   () {
+                //     Navigator.push(
+                //       context,
+                //       MaterialPageRoute(
+                //           builder: (context) => RegisterTreesPage(
+                //                 foresterId: widget.foresterId,
+                //                 foresterName: widget.foresterName,
+                //                 appointmentId: widget.appointmentId,
+                //               )),
+                //     );
+                //   },
+                // ),
+                const SizedBox(height: 8), // reduced spacing
+                _buildMenuButton(
+                  context,
+                  "Tree Mapping",
+                  Icons.forest,
+                  Colors.green[800]!,
+                  () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                          builder: (context) => ForesterTreeMapping(
+                                foresterId: widget.foresterId,
+                              )),
+                    );
+                  },
+                ),
+                const SizedBox(height: 8), // reduced spacing
+                _buildMenuButton(
+                  context,
+                  "Reports",
+                  Icons.insert_chart_outlined,
+                  Colors.green[800]!,
+                  () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                          builder: (context) => const ForesterSummaryReports()),
+                    );
+                  },
+                ),
               ],
             ),
+          ),
 
-            const SizedBox(height: 40),
+          const SizedBox(height: 30),
 
-            // Features section (only Tree Mapping remains)
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 20.0),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    "Features",
-                    style: TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.green.shade800,
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  _buildFeatureButton(
-                    "Tree Mapping",
-                    Icons.forest,
-                    () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(builder: (context) => const ForesterTreeMapping()),
-                      );
-                    },
-                  ),
-                  const SizedBox(height: 30),
-                ],
-              ),
+          SizedBox(
+            height: 110,
+            child: ListView(
+              scrollDirection: Axis.horizontal,
+              padding: const EdgeInsets.symmetric(horizontal: 20),
+              children: [
+                _buildImageBox("assets/tree1.jpg"),
+                _buildImageBox("assets/tree2.jpg"),
+                _buildImageBox("assets/tree3.jpg"),
+              ],
             ),
+          ),
 
-            // Horizontal Tree Images
-            SizedBox(
-              height: 110,
-              child: ListView(
-                scrollDirection: Axis.horizontal,
-                padding: const EdgeInsets.symmetric(horizontal: 20),
-                children: [
-                  _buildImageBox("assets/tree1.jpg"),
-                  _buildImageBox("assets/tree2.jpg"),
-                  _buildImageBox("assets/tree3.jpg"),
-                ],
-              ),
-            ),
-
-            const SizedBox(height: 30),
-          ],
-        ),
+          const SizedBox(height: 30),
+        ],
       ),
     );
   }
 
-  // Feature Button (like ApplicantHomepage)
-  Widget _buildFeatureButton(String title, IconData icon, VoidCallback onPressed) {
+  Widget _buildMenuButton(
+    BuildContext context,
+    String title,
+    IconData icon,
+    Color color,
+    VoidCallback onPressed, {
+    TextStyle? textStyle,
+  }) {
     return SizedBox(
       width: double.infinity,
       child: ElevatedButton(
         onPressed: onPressed,
         style: ElevatedButton.styleFrom(
-          backgroundColor: Colors.green.shade800,
-          padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 20),
+          backgroundColor: color,
+          padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 20),
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12),
+            borderRadius: BorderRadius.circular(15),
           ),
         ),
         child: Row(
@@ -168,7 +230,8 @@ class _ForesterHomepageState extends State<ForesterHomepage> {
             Expanded(
               child: Text(
                 title,
-                style: const TextStyle(fontSize: 14, color: Colors.white),
+                style: textStyle ??
+                    const TextStyle(fontSize: 16, color: Colors.white),
               ),
             ),
           ],
@@ -177,7 +240,6 @@ class _ForesterHomepageState extends State<ForesterHomepage> {
     );
   }
 
-  // Tree image box
   Widget _buildImageBox(String imagePath) {
     return Container(
       width: 100,

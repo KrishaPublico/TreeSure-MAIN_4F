@@ -35,7 +35,7 @@ android {
 
     ndkVersion = "27.0.12077973"
 
-    compileSdk = 35   // (keep your compileSdk updated)
+    compileSdk = 36   // (keep your compileSdk updated)
     defaultConfig {
         applicationId = "com.Capstone2.treesure_app"
         minSdk = 23

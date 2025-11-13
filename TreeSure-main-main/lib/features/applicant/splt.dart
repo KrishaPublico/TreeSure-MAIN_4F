@@ -68,8 +68,7 @@ class _SPLTFormPageState extends State<SPLTFormPage> {
 
   final Map<String, Map<String, dynamic>> uploadedFiles = {};
   bool _isUploading = false;
-  bool _reuploadAllowed = false; // ✅ Track reuploadAllowed status
-  List<Map<String, dynamic>> _adminComments = []; // ✅ Store admin comments
+  Map<String, Map<String, dynamic>> _documentComments = {}; // Per-document comments
 
   @override
   void initState() {
@@ -78,31 +77,46 @@ class _SPLTFormPageState extends State<SPLTFormPage> {
       uploadedFiles[label["title"]!] = {"file": null, "url": null};
     }
     _loadExistingUploads();
-    _loadReuploadStatus(); // ✅ Load reuploadAllowed status
-    _loadAdminComments(); // ✅ Load admin comments
+    _loadDocumentComments();
   }
 
   Future<void> _loadExistingUploads() async {
     final uploadsRef = FirebaseFirestore.instance
-        .collection('users')
+        .collection('applications')
+        .doc('splt')
+        .collection('applicants')
         .doc(widget.applicantId)
-        .collection('sltp_uploads');
+        .collection('uploads');
 
     final snapshot = await uploadsRef.get();
+    
     for (final doc in snapshot.docs) {
       final data = doc.data();
-      final title = data['title'] as String?;
+      final docId = doc.id; // Document ID (e.g., "Letter of Application")
       final url = data['url'] as String?;
-      if (title != null && uploadedFiles.containsKey(title)) {
-        uploadedFiles[title]!["url"] = url;
+      
+      // Try exact match first
+      if (uploadedFiles.containsKey(docId)) {
+        uploadedFiles[docId]!["url"] = url;
+        continue;
+      }
+      
+      // Match document ID to form label titles
+      for (final label in formLabels) {
+        final title = label["title"]!;
+        final safeTitle = title.replaceAll(RegExp(r'[.#$/\[\]]'), '-').trim();
+        
+        if (docId == safeTitle || docId == title) {
+          uploadedFiles[title]!["url"] = url;
+          break;
+        }
       }
     }
-
-    setState(() {}); // Refresh UI
+    setState(() {});
   }
 
-  /// ✅ Load reuploadAllowed status from Firestore
-  Future<void> _loadReuploadStatus() async {
+  /// Load document-specific comments from Firestore uploads field
+  Future<void> _loadDocumentComments() async {
     try {
       final applicantRef = FirebaseFirestore.instance
           .collection('applications')
@@ -111,41 +125,63 @@ class _SPLTFormPageState extends State<SPLTFormPage> {
           .doc(widget.applicantId);
 
       final snapshot = await applicantRef.get();
-      if (snapshot.exists) {
-        final reuploadAllowed = snapshot.data()?['reuploadAllowed'] as bool? ?? false;
-        setState(() {
-          _reuploadAllowed = reuploadAllowed;
-        });
+      if (!snapshot.exists) return;
+
+      final data = snapshot.data();
+      final uploadsMap = data?['uploads'] as Map<String, dynamic>?;
+      if (uploadsMap == null) return;
+
+      final Map<String, Map<String, dynamic>> tempComments = {};
+
+      for (final entry in uploadsMap.entries) {
+        final documentKey = entry.key;
+        final documentData = entry.value as Map<String, dynamic>?;
+        
+        if (documentData == null) continue;
+
+        // Find matching form title (exact match or sanitized)
+        String? matchingTitle;
+        for (final label in formLabels) {
+          final title = label["title"]!;
+          final sanitizedTitle = title.replaceAll(RegExp(r'[^\w\s]+'), '');
+          if (documentKey == title || documentKey == sanitizedTitle) {
+            matchingTitle = title;
+            break;
+          }
+        }
+
+        if (matchingTitle != null) {
+          final reuploadAllowed = documentData['reuploadAllowed'] as bool? ?? false;
+          final commentsMap = documentData['comments'] as Map<String, dynamic>?;
+          
+          if (commentsMap != null && commentsMap.isNotEmpty) {
+            final commentEntry = commentsMap.entries.first;
+            final commentData = commentEntry.value as Map<String, dynamic>?;
+            
+            if (commentData != null) {
+              tempComments[matchingTitle] = {
+                'reuploadAllowed': reuploadAllowed,
+                'comment': {
+                  'message': commentData['message'] as String? ?? '',
+                  'from': commentData['from'] as String? ?? 'Admin',
+                  'createdAt': commentData['createdAt'] as Timestamp?,
+                },
+              };
+            }
+          } else if (reuploadAllowed) {
+            tempComments[matchingTitle] = {
+              'reuploadAllowed': true,
+              'comment': null,
+            };
+          }
+        }
       }
-    } catch (e) {
-      print("Error loading reupload status: $e");
-    }
-  }
-
-  /// ✅ Load admin comments from Firestore
-  Future<void> _loadAdminComments() async {
-    try {
-      final applicantRef = FirebaseFirestore.instance
-          .collection('applications')
-          .doc('splt')
-          .collection('applicants')
-          .doc(widget.applicantId);
-
-      final commentsSnapshot = await applicantRef.collection('comments').orderBy('createdAt', descending: true).get();
-      
-      final comments = commentsSnapshot.docs.map((doc) {
-        return {
-          'message': doc.data()['message'] as String? ?? '',
-          'from': doc.data()['from'] as String? ?? 'Admin',
-          'createdAt': doc.data()['createdAt'] as Timestamp?,
-        };
-      }).toList();
 
       setState(() {
-        _adminComments = comments;
+        _documentComments = tempComments;
       });
     } catch (e) {
-      print("Error loading admin comments: $e");
+      print("Error loading document comments: $e");
     }
   }
 
@@ -197,6 +233,9 @@ class _SPLTFormPageState extends State<SPLTFormPage> {
           .collection('splt_uploads');
       final applicantUploadsRef = applicantDoc.collection('uploads');
 
+      // Prepare updates map for uploads field
+      Map<String, dynamic> uploadsFieldUpdates = {};
+
       // Upload files one by one
       for (final entry in uploadedFiles.entries) {
         final title = entry.key;
@@ -233,16 +272,20 @@ class _SPLTFormPageState extends State<SPLTFormPage> {
         // 1️⃣ Save inside user → splt_uploads
         await userUploadsRef.doc(safeTitle).set(uploadData);
 
-        // 2️⃣ Save inside applications → splt → applicants → uploads
-        await applicantUploadsRef.doc(safeTitle).set(uploadData);
+        // 2️⃣ Save inside applications → splt → applicants → uploads (subcollection)
+        await applicantUploadsRef.doc(safeTitle).set(uploadData, SetOptions(merge: true));
+
+        // 3️⃣ Reset reuploadAllowed in uploads field
+        uploadsFieldUpdates['uploads.$safeTitle.reuploadAllowed'] = false;
 
         uploadedFiles[title]!["url"] = url;
       }
 
-      // Ensure applicant metadata exists
+      // Update applicant document with metadata and reset reuploadAllowed
       await applicantDoc.set({
         'applicantName': widget.applicantName,
         'uploadedAt': FieldValue.serverTimestamp(),
+        ...uploadsFieldUpdates,
       }, SetOptions(merge: true));
 
       // Update main summary document
@@ -253,6 +296,9 @@ class _SPLTFormPageState extends State<SPLTFormPage> {
         'uploadedCount': uploadedCount,
         'lastUpdated': FieldValue.serverTimestamp(),
       }, SetOptions(merge: true));
+
+      // Reload document comments
+      await _loadDocumentComments();
 
       if (mounted) {
         setState(() => _isUploading = false);
@@ -278,62 +324,162 @@ class _SPLTFormPageState extends State<SPLTFormPage> {
 
     final isUploaded = url != null;
 
+    // Get per-document comment data
+    final documentData = _documentComments[title];
+    final reuploadAllowed = documentData?['reuploadAllowed'] as bool? ?? false;
+    final comment = documentData?['comment'] as Map<String, dynamic>?;
+
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 8),
-      child: Row(
+      child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  title +
-                      (isUploaded
-                          ? " ✅ (Uploaded)"
-                          : file != null
-                              ? " (Ready)"
-                              : ""),
-                  style: TextStyle(
-                    fontSize: 15,
-                    fontWeight: FontWeight.bold,
-                    color: isUploaded
-                        ? Colors.green
-                        : file != null
-                            ? Colors.orange
-                            : Colors.black,
-                  ),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title +
+                          (isUploaded
+                              ? " ✅ (Uploaded)"
+                              : file != null
+                                  ? " (Ready)"
+                                  : ""),
+                      style: TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.bold,
+                        color: isUploaded
+                            ? Colors.green
+                            : file != null
+                                ? Colors.orange
+                                : Colors.black,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      description,
+                      style: const TextStyle(fontSize: 13, color: Colors.black87),
+                    ),
+                    if (isUploaded)
+                      TextButton(
+                        onPressed: () async {
+                          final Uri uri = Uri.parse(url);
+                          if (!await launchUrl(uri,
+                              mode: LaunchMode.externalApplication)) {
+                            if (mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                    content: Text("Could not open the file")),
+                              );
+                            }
+                          }
+                        },
+                        child: const Text(
+                          'View Uploaded File',
+                          style: TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.bold,
+                            decoration: TextDecoration.underline,
+                          ),
+                        ),
+                      ),
+                  ],
                 ),
-                const SizedBox(height: 4),
-                Text(
-                  description,
-                  style: const TextStyle(fontSize: 13, color: Colors.black87),
+              ),
+              const SizedBox(width: 12),
+              ElevatedButton(
+                onPressed: () => pickFile(title),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: isUploaded
+                      ? (reuploadAllowed ? Colors.orange : Colors.grey[300])
+                      : Colors.green[700],
+                  foregroundColor: isUploaded
+                      ? (reuploadAllowed ? Colors.white : Colors.grey[600])
+                      : Colors.white,
                 ),
-                if (isUploaded)
-                  TextButton(
-                    onPressed: () async {
-                      // Optional: Allow viewing the file in browser
-                      await launchUrl(Uri.parse(url));
-                    },
-                    child: const Text("View Uploaded File"),
+                child: Text(
+                  isUploaded
+                      ? (reuploadAllowed ? 'Re-upload' : 'Uploaded')
+                      : file != null
+                          ? 'Change'
+                          : 'Choose File',
+                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12),
+                ),
+              ),
+            ],
+          ),
+          // Show comment inline if exists
+          if (comment != null) ...[
+            const SizedBox(height: 8),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.orange[50],
+                border: Border.all(color: Colors.orange, width: 1.5),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      const Icon(Icons.comment, color: Colors.orange, size: 18),
+                      const SizedBox(width: 8),
+                      Text(
+                        'Admin Comment',
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 13,
+                          color: Colors.orange[800],
+                        ),
+                      ),
+                    ],
                   ),
-              ],
+                  const SizedBox(height: 8),
+                  Text(
+                    comment['message'] as String? ?? '',
+                    style: const TextStyle(fontSize: 13, color: Colors.black87),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    'From: ${comment['from'] ?? 'Admin'} ${comment['createdAt'] != null ? '• ${_formatTimestamp(comment['createdAt'])}' : ''}',
+                    style: TextStyle(fontSize: 11, color: Colors.grey[600]),
+                  ),
+                ],
+              ),
             ),
-          ),
-          ElevatedButton(
-            onPressed: isUploaded
-                ? null
-                : () => pickFile(title), // 🔹 Disable if already uploaded
-            style: ElevatedButton.styleFrom(
-              backgroundColor: isUploaded
-                  ? Colors.grey
-                  : (file != null ? Colors.orange : Colors.green[700]),
-              foregroundColor: Colors.white,
+          ],
+          // Show reupload permission indicator
+          if (reuploadAllowed && comment == null) ...[
+            const SizedBox(height: 8),
+            Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: Colors.green[50],
+                border: Border.all(color: Colors.green, width: 1),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Row(
+                children: [
+                  Icon(Icons.check_circle, color: Colors.green[600], size: 18),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'Re-upload allowed for this document',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Colors.green[700],
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
             ),
-            child: Text(isUploaded
-                ? "Uploaded"
-                : (file != null ? "Change File" : "Select File")),
-          ),
+          ],
         ],
       ),
     );
@@ -342,15 +488,6 @@ class _SPLTFormPageState extends State<SPLTFormPage> {
   /// UI
   @override
   Widget build(BuildContext context) {
-    // ✅ Determine button state
-    final isButtonDisabled = _isUploading || (!_reuploadAllowed && _adminComments.isNotEmpty);
-    final buttonColor = (_reuploadAllowed || _adminComments.isEmpty)
-        ? Colors.green[700]
-        : Colors.grey[400];
-    final buttonText = (_reuploadAllowed || _adminComments.isEmpty)
-        ? 'Submit (Upload All Files)'
-        : 'Submit Disabled - Waiting for Approval';
-
     return Scaffold(
       appBar: AppBar(
         title: const Text('SPLTP Application Form'),
@@ -368,107 +505,15 @@ class _SPLTFormPageState extends State<SPLTFormPage> {
             ),
             const SizedBox(height: 16),
             
-            // ✅ Admin Comments Section
-            if (_adminComments.isNotEmpty)
-              Padding(
-                padding: const EdgeInsets.only(bottom: 16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text(
-                      '💬 Admin Comments',
-                      style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
-                    ),
-                    const SizedBox(height: 8),
-                    Container(
-                      padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(
-                        color: Colors.blue[50],
-                        border: Border.all(color: Colors.blue, width: 1),
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: _adminComments.map((comment) {
-                          return Padding(
-                            padding: const EdgeInsets.only(bottom: 8),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  comment['message'] ?? '',
-                                  style: const TextStyle(fontSize: 14),
-                                ),
-                                const SizedBox(height: 4),
-                                Text(
-                                  'From: ${comment['from'] ?? 'Admin'} • ${_formatTimestamp(comment['createdAt'])}',
-                                  style: TextStyle(fontSize: 12, color: Colors.grey[600]),
-                                ),
-                              ],
-                            ),
-                          );
-                        }).toList(),
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    
-                    // ✅ Status Notification
-                    if (_reuploadAllowed)
-                      Container(
-                        padding: const EdgeInsets.all(12),
-                        decoration: BoxDecoration(
-                          color: Colors.green[50],
-                          border: Border.all(color: Colors.green, width: 1),
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: const Row(
-                          children: [
-                            Icon(Icons.check_circle, color: Colors.green),
-                            SizedBox(width: 12),
-                            Expanded(
-                              child: Text(
-                                'You can re-upload files now.\nPlease correct the issues above.',
-                                style: TextStyle(color: Colors.green, fontSize: 13),
-                              ),
-                            ),
-                          ],
-                        ),
-                      )
-                    else
-                      Container(
-                        padding: const EdgeInsets.all(12),
-                        decoration: BoxDecoration(
-                          color: Colors.red[50],
-                          border: Border.all(color: Colors.red, width: 1),
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: const Row(
-                          children: [
-                            Icon(Icons.cancel, color: Colors.red),
-                            SizedBox(width: 12),
-                            Expanded(
-                              child: Text(
-                                'You cannot re-upload files yet.\nPlease wait for admin approval.',
-                                style: TextStyle(color: Colors.red, fontSize: 13),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    const SizedBox(height: 16),
-                  ],
-                ),
-              ),
-            
             for (final label in formLabels) buildUploadField(label),
             const SizedBox(height: 32),
             Center(
               child: SizedBox(
                 width: double.infinity,
                 child: ElevatedButton(
-                  onPressed: isButtonDisabled ? null : handleSubmit,
+                  onPressed: _isUploading ? null : handleSubmit,
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: buttonColor,
+                    backgroundColor: Colors.green[700],
                     foregroundColor: Colors.white,
                     padding: const EdgeInsets.symmetric(vertical: 20),
                     textStyle: const TextStyle(
@@ -479,7 +524,7 @@ class _SPLTFormPageState extends State<SPLTFormPage> {
                   ),
                   child: _isUploading
                       ? const CircularProgressIndicator(color: Colors.white)
-                      : Text(buttonText),
+                      : const Text('Submit (Upload All Files)'),
                 ),
               ),
             ),

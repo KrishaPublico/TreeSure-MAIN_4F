@@ -46,7 +46,7 @@ class _CtpoRegisterTreesPageState extends State<CtpoRegisterTreesPage> {
   String? qrUrl;
 
   /// ✅ Show notification dialog
-  void _showDialog(String title, String message, {bool isError = false}) {
+  void _showDialog(String title, String message) {
     showDialog(
       context: context,
       builder: (BuildContext dialogContext) => AlertDialog(
@@ -106,16 +106,21 @@ class _CtpoRegisterTreesPageState extends State<CtpoRegisterTreesPage> {
   Future<String?> _generateAndUploadQr(
       String treeId, Map<String, dynamic> data) async {
     try {
-      // Generate QR data text
+      // Generate QR data text with all tree_inventory fields (except qr_url)
       final qrData = '''
-Tree ID: $treeId
-Tree No: ${data['tree_no']}
-Specie: ${data['specie']}
-Diameter: ${data['diameter']}
-Height: ${data['height']}
-Volume: ${data['volume']}
-Location: (${data['latitude']}, ${data['longitude']})
-Forester: ${data['forester_name']}
+tree_id: $treeId
+tree_no: ${data['tree_no']}
+appointment_id: ${data['appointment_id']}
+specie: ${data['specie']}
+diameter: ${data['diameter']}
+height: ${data['height']}
+volume: ${data['volume']}
+latitude: ${data['latitude']}
+longitude: ${data['longitude']}
+forester_id: ${data['forester_id']}
+forester_name: ${data['forester_name']}
+photo_url: ${data['photo_url'] ?? 'N/A'}
+timestamp: ${data['timestamp']}
 ''';
 
       // Generate QR image as bytes
@@ -211,17 +216,34 @@ Forester: ${data['forester_name']}
         imageFile: imageFile, appointmentId: appointmentId,
       );
 
-      // ✅ Prepare QR data
+      // ✅ Fetch the complete tree document to get all fields including photo_url and timestamp
+      final treeDoc = await FirebaseFirestore.instance
+          .collection('appointments')
+          .doc(widget.appointmentId)
+          .collection('tree_inventory')
+          .doc(newDocId)
+          .get();
+
+      if (!treeDoc.exists) {
+        throw Exception('Failed to retrieve saved tree data');
+      }
+
+      // ✅ Prepare QR data with all fields from the saved document
+      final treeData = treeDoc.data()!;
       final data = {
-        'tree_id': treeId,
-        'tree_no': treeId, // Use the same ID as tree number
-        'specie': specie,
-        'diameter': diameter,
-        'height': height,
-        'volume': volume,
-        'latitude': latitude,
-        'longitude': longitude,
-        'forester_name': widget.foresterName,
+        'tree_id': treeData['tree_id'] ?? treeId,
+        'tree_no': treeData['tree_no'] ?? treeId,
+        'appointment_id': treeData['appointment_id'] ?? appointmentId,
+        'specie': treeData['specie'] ?? specie,
+        'diameter': treeData['diameter'] ?? diameter,
+        'height': treeData['height'] ?? height,
+        'volume': treeData['volume'] ?? volume,
+        'latitude': treeData['latitude'] ?? latitude,
+        'longitude': treeData['longitude'] ?? longitude,
+        'forester_id': treeData['forester_id'] ?? widget.foresterId,
+        'forester_name': treeData['forester_name'] ?? widget.foresterName,
+        'photo_url': treeData['photo_url'] ?? '',
+        'timestamp': treeData['timestamp']?.toDate().toString() ?? DateTime.now().toString(),
       };
 
       // ✅ Generate and upload QR

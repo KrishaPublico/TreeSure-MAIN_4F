@@ -44,8 +44,9 @@ class _PermitToCutPageState extends State<PermitToCutPage> {
   ];
 
   final Map<String, Map<String, dynamic>> uploadedFiles = {};
-
   bool _isUploading = false;
+  Map<String, Map<String, dynamic>> _documentComments =
+      {}; // Per-document comments
 
   @override
   void initState() {
@@ -54,25 +55,113 @@ class _PermitToCutPageState extends State<PermitToCutPage> {
       uploadedFiles[label["title"]!] = {"file": null, "url": null};
     }
     _loadExistingUploads();
+    _loadDocumentComments();
   }
 
   Future<void> _loadExistingUploads() async {
     final uploadsRef = FirebaseFirestore.instance
-        .collection('users')
+        .collection('applications')
+        .doc('ptc')
+        .collection('applicants')
         .doc(widget.applicantId)
-        .collection('ptc_uploads');
+        .collection('uploads');
 
     final snapshot = await uploadsRef.get();
+
     for (final doc in snapshot.docs) {
       final data = doc.data();
-      final title = data['title'] as String?;
+      final docId = doc.id; // Document ID (e.g., "Letter of Application")
       final url = data['url'] as String?;
-      if (title != null && uploadedFiles.containsKey(title)) {
-        uploadedFiles[title]!["url"] = url;
+
+      // Try exact match first
+      if (uploadedFiles.containsKey(docId)) {
+        uploadedFiles[docId]!["url"] = url;
+        continue;
+      }
+
+      // Match document ID to form label titles
+      for (final label in formLabels) {
+        final title = label["title"]!;
+        final safeTitle = title.replaceAll(RegExp(r'[.#$/\[\]]'), '-').trim();
+
+        if (docId == safeTitle || docId == title) {
+          uploadedFiles[title]!["url"] = url;
+          break;
+        }
       }
     }
+    setState(() {});
+  }
 
-    setState(() {}); // Refresh UI
+  /// Load document-specific comments from Firestore uploads field
+  Future<void> _loadDocumentComments() async {
+    try {
+      final applicantRef = FirebaseFirestore.instance
+          .collection('applications')
+          .doc('ptc')
+          .collection('applicants')
+          .doc(widget.applicantId);
+
+      final snapshot = await applicantRef.get();
+      if (!snapshot.exists) return;
+
+      final data = snapshot.data();
+      final uploadsMap = data?['uploads'] as Map<String, dynamic>?;
+      if (uploadsMap == null) return;
+
+      final Map<String, Map<String, dynamic>> tempComments = {};
+
+      for (final entry in uploadsMap.entries) {
+        final documentKey = entry.key;
+        final documentData = entry.value as Map<String, dynamic>?;
+
+        if (documentData == null) continue;
+
+        // Find matching form title (exact match or sanitized)
+        String? matchingTitle;
+        for (final label in formLabels) {
+          final title = label["title"]!;
+          final sanitizedTitle = title.replaceAll(RegExp(r'[^\w\s]+'), '');
+          if (documentKey == title || documentKey == sanitizedTitle) {
+            matchingTitle = title;
+            break;
+          }
+        }
+
+        if (matchingTitle != null) {
+          final reuploadAllowed =
+              documentData['reuploadAllowed'] as bool? ?? false;
+          final commentsMap = documentData['comments'] as Map<String, dynamic>?;
+
+          if (commentsMap != null && commentsMap.isNotEmpty) {
+            final commentEntry = commentsMap.entries.first;
+            final commentData = commentEntry.value as Map<String, dynamic>?;
+
+            if (commentData != null) {
+              tempComments[matchingTitle] = {
+                'reuploadAllowed': reuploadAllowed,
+                'comment': {
+                  'message': commentData['message'] as String? ?? '',
+                  'from': commentData['from'] as String? ?? 'Admin',
+                  'createdAt': commentData['createdAt'] as Timestamp?,
+                },
+              };
+            }
+          } else if (reuploadAllowed) {
+            tempComments[matchingTitle] = {
+              'reuploadAllowed': true,
+              'comment': null,
+            };
+          }
+        }
+      }
+
+      setState(() {
+        _documentComments = tempComments;
+      });
+    } catch (e) {
+      print("Error loading document comments: $e");
+    }
   }
 
   /// Pick a file
@@ -105,7 +194,6 @@ class _PermitToCutPageState extends State<PermitToCutPage> {
     }
   }
 
-  /// Handle uploads
   /// Upload all selected files
   Future<void> handleSubmit() async {
     setState(() => _isUploading = true);
@@ -123,6 +211,9 @@ class _PermitToCutPageState extends State<PermitToCutPage> {
           .doc(widget.applicantId)
           .collection('ptc_uploads');
       final applicantUploadsRef = applicantDoc.collection('uploads');
+
+      // Prepare updates map for uploads field
+      Map<String, dynamic> uploadsFieldUpdates = {};
 
       // Upload files one by one
       for (final entry in uploadedFiles.entries) {
@@ -160,16 +251,20 @@ class _PermitToCutPageState extends State<PermitToCutPage> {
         // 1️⃣ Save inside user → ptc_uploads
         await userUploadsRef.doc(safeTitle).set(uploadData);
 
-        // 2️⃣ Save inside applications → ptc → applicants → uploads
-        await applicantUploadsRef.doc(safeTitle).set(uploadData);
+        // 2️⃣ Save inside applications → ptc → applicants → uploads (subcollection)
+        await applicantUploadsRef.doc(safeTitle).set(uploadData, SetOptions(merge: true));
+
+        // 3️⃣ Reset reuploadAllowed in uploads field
+        uploadsFieldUpdates['uploads.$safeTitle.reuploadAllowed'] = false;
 
         uploadedFiles[title]!["url"] = url;
       }
 
-      // Ensure applicant metadata exists
+      // Update applicant document with metadata and reset reuploadAllowed
       await applicantDoc.set({
         'applicantName': widget.applicantName,
         'uploadedAt': FieldValue.serverTimestamp(),
+        ...uploadsFieldUpdates,
       }, SetOptions(merge: true));
 
       // Update main summary document
@@ -180,6 +275,9 @@ class _PermitToCutPageState extends State<PermitToCutPage> {
         'uploadedCount': uploadedCount,
         'lastUpdated': FieldValue.serverTimestamp(),
       }, SetOptions(merge: true));
+
+      // Reload document comments
+      await _loadDocumentComments();
 
       if (mounted) {
         setState(() => _isUploading = false);
@@ -206,65 +304,177 @@ class _PermitToCutPageState extends State<PermitToCutPage> {
 
     final isUploaded = url != null;
 
+    // Get per-document comment data
+    final documentData = _documentComments[title];
+    final reuploadAllowed = documentData?['reuploadAllowed'] as bool? ?? false;
+    final comment = documentData?['comment'] as Map<String, dynamic>?;
+
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 8),
-      child: Row(
+      child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  title +
-                      (isUploaded
-                          ? " ✅ (Uploaded)"
-                          : file != null
-                              ? " (Ready)"
-                              : ""),
-                  style: TextStyle(
-                    fontSize: 15,
-                    fontWeight: FontWeight.bold,
-                    color: isUploaded
-                        ? Colors.green
-                        : file != null
-                            ? Colors.orange
-                            : Colors.black,
-                  ),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title +
+                          (isUploaded
+                              ? " ✅ (Uploaded)"
+                              : file != null
+                                  ? " (Ready)"
+                                  : ""),
+                      style: TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.bold,
+                        color: isUploaded
+                            ? Colors.green
+                            : file != null
+                                ? Colors.orange
+                                : Colors.black,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      description,
+                      style:
+                          const TextStyle(fontSize: 13, color: Colors.black87),
+                    ),
+                    if (isUploaded)
+                      TextButton(
+                        onPressed: () async {
+                          final Uri uri = Uri.parse(url);
+                          if (!await launchUrl(uri,
+                              mode: LaunchMode.externalApplication)) {
+                            if (mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                    content: Text("Could not open the file")),
+                              );
+                            }
+                          }
+                        },
+                        child: const Text(
+                          'View Uploaded File',
+                          style: TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.bold,
+                            decoration: TextDecoration.underline,
+                          ),
+                        ),
+                      ),
+                  ],
                 ),
-                const SizedBox(height: 4),
-                Text(
-                  description,
-                  style: const TextStyle(fontSize: 13, color: Colors.black87),
+              ),
+              const SizedBox(width: 12),
+              ElevatedButton(
+                onPressed: () => pickFile(title),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: isUploaded
+                      ? (reuploadAllowed ? Colors.orange : Colors.grey[300])
+                      : Colors.green[700],
+                  foregroundColor: isUploaded
+                      ? (reuploadAllowed ? Colors.white : Colors.grey[600])
+                      : Colors.white,
                 ),
-                if (isUploaded)
-                  TextButton(
-                    onPressed: () async {
-                      // Optional: Allow viewing the file in browser
-                      await launchUrl(Uri.parse(url));
-                    },
-                    child: const Text("View Uploaded File"),
+                child: Text(
+                  isUploaded
+                      ? (reuploadAllowed ? 'Re-upload' : 'Uploaded')
+                      : file != null
+                          ? 'Change'
+                          : 'Choose File',
+                  style: const TextStyle(
+                      fontWeight: FontWeight.bold, fontSize: 12),
+                ),
+              ),
+            ],
+          ),
+          // Show comment inline if exists
+          if (comment != null) ...[
+            const SizedBox(height: 8),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.orange[50],
+                border: Border.all(color: Colors.orange, width: 1.5),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      const Icon(Icons.comment, color: Colors.orange, size: 18),
+                      const SizedBox(width: 8),
+                      Text(
+                        'Admin Comment',
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 13,
+                          color: Colors.orange[800],
+                        ),
+                      ),
+                    ],
                   ),
-              ],
+                  const SizedBox(height: 8),
+                  Text(
+                    comment['message'] as String? ?? '',
+                    style: const TextStyle(fontSize: 13, color: Colors.black87),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    'From: ${comment['from'] ?? 'Admin'} ${comment['createdAt'] != null ? '• ${_formatTimestamp(comment['createdAt'])}' : ''}',
+                    style: TextStyle(fontSize: 11, color: Colors.grey[600]),
+                  ),
+                ],
+              ),
             ),
-          ),
-          ElevatedButton(
-            onPressed: isUploaded
-                ? null
-                : () => pickFile(title), // 🔹 Disable if already uploaded
-            style: ElevatedButton.styleFrom(
-              backgroundColor: isUploaded
-                  ? Colors.grey
-                  : (file != null ? Colors.orange : Colors.green[700]),
-              foregroundColor: Colors.white,
+          ],
+          // Show reupload permission indicator
+          if (reuploadAllowed && comment == null) ...[
+            const SizedBox(height: 8),
+            Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: Colors.green[50],
+                border: Border.all(color: Colors.green, width: 1),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Row(
+                children: [
+                  Icon(Icons.check_circle, color: Colors.green[600], size: 18),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'Re-upload allowed for this document',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Colors.green[700],
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
             ),
-            child: Text(isUploaded
-                ? "Uploaded"
-                : (file != null ? "Change File" : "Select File")),
-          ),
+          ],
         ],
       ),
     );
+  }
+
+  /// Format timestamp to readable string
+  String _formatTimestamp(dynamic timestamp) {
+    if (timestamp == null) return '';
+    if (timestamp is Timestamp) {
+      final DateTime dateTime = timestamp.toDate();
+      return '${dateTime.month}/${dateTime.day}/${dateTime.year}';
+    }
+    return '';
   }
 
   /// UI

@@ -19,7 +19,7 @@ class SpltpRegisterTreesPage extends StatefulWidget {
     required this.foresterName,
     required this.appointmentId,
   });
-
+ 
   @override
   State<SpltpRegisterTreesPage> createState() => _SpltpRegisterTreesPageState();
 }

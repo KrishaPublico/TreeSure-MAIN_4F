@@ -57,8 +57,7 @@ class _CTPOUploadPageState extends State<CTPOUploadPage> {
 
   final Map<String, Map<String, dynamic>> uploadedFiles = {};
   bool _isUploading = false;
-  bool _reuploadAllowed = false; // ✅ Track reuploadAllowed status
-  List<Map<String, dynamic>> _adminComments = []; // ✅ Store admin comments
+  Map<String, Map<String, dynamic>> _documentComments = {}; // ✅ Store comments per document
 
   @override
   void initState() {
@@ -67,8 +66,7 @@ class _CTPOUploadPageState extends State<CTPOUploadPage> {
       uploadedFiles[label["title"]!] = {"file": null, "url": null};
     }
     _loadExistingUploads();
-    _loadReuploadStatus(); // ✅ Load reuploadAllowed status
-    _loadAdminComments(); // ✅ Load admin comments
+    _loadDocumentComments(); // ✅ Load comments per document
   }
 
   /// Load already uploaded files (from applications → ctpo → applicants → uploads)
@@ -81,62 +79,117 @@ class _CTPOUploadPageState extends State<CTPOUploadPage> {
         .collection('uploads');
 
     final snapshot = await uploadsRef.get();
+    
     for (final doc in snapshot.docs) {
       final data = doc.data();
-      final title = data['title'] as String?;
+      final docId = doc.id; // Document ID (e.g., "Letter of Application")
       final url = data['url'] as String?;
-      if (title != null && uploadedFiles.containsKey(title)) {
-        uploadedFiles[title]!["url"] = url;
+      
+      // Try exact match first
+      if (uploadedFiles.containsKey(docId)) {
+        uploadedFiles[docId]!["url"] = url;
+        continue;
+      }
+      
+      // Match document ID to form label titles
+      for (final label in formLabels) {
+        final title = label["title"]!;
+        final safeTitle = title.replaceAll(RegExp(r'[.#$/\[\]]'), '-').trim();
+        
+        if (docId == safeTitle || docId == title) {
+          uploadedFiles[title]!["url"] = url;
+          break;
+        }
       }
     }
     setState(() {});
   }
 
-  /// ✅ Load reuploadAllowed status from Firestore
-  Future<void> _loadReuploadStatus() async {
+  /// ✅ Load comments per document from applicant level, then check uploads for reuploadAllowed
+  Future<void> _loadDocumentComments() async {
     try {
-      final applicantRef = FirebaseFirestore.instance
+      final applicantDoc = FirebaseFirestore.instance
           .collection('applications')
           .doc('ctpo')
           .collection('applicants')
           .doc(widget.applicantId);
 
-      final snapshot = await applicantRef.get();
-      if (snapshot.exists) {
-        final reuploadAllowed = snapshot.data()?['reuploadAllowed'] as bool? ?? false;
-        setState(() {
-          _reuploadAllowed = reuploadAllowed;
-        });
-      }
-    } catch (e) {
-      print("Error loading reupload status: $e");
-    }
-  }
-
-  /// ✅ Load admin comments from Firestore
-  Future<void> _loadAdminComments() async {
-    try {
-      final applicantRef = FirebaseFirestore.instance
-          .collection('applications')
-          .doc('ctpo')
-          .collection('applicants')
-          .doc(widget.applicantId);
-
-      final commentsSnapshot = await applicantRef.collection('comments').orderBy('createdAt', descending: true).get();
+      // Get the applicant document to check for uploads field
+      final applicantSnapshot = await applicantDoc.get();
       
-      final comments = commentsSnapshot.docs.map((doc) {
-        return {
-          'message': doc.data()['message'] as String? ?? '',
-          'from': doc.data()['from'] as String? ?? 'Admin',
-          'createdAt': doc.data()['createdAt'] as Timestamp?,
-        };
-      }).toList();
+      if (!applicantSnapshot.exists) {
+        print("❌ Applicant document does not exist");
+        return;
+      }
+      
+      final applicantData = applicantSnapshot.data();
+      final uploadsMap = applicantData?['uploads'] as Map<String, dynamic>? ?? {};
+      
+      print("📄 Found uploads map with ${uploadsMap.length} entries");
+      
+      // Iterate through each document in uploads
+      for (final entry in uploadsMap.entries) {
+        final docKey = entry.key; // e.g., "Letter of Application"
+        final docData = entry.value as Map<String, dynamic>? ?? {};
+        
+        print("📄 Processing document: $docKey");
+        print("📄 Document data: $docData");
+        
+        // Get reuploadAllowed and comments from the document
+        final reuploadAllowed = docData['reuploadAllowed'] as bool? ?? false;
+        final commentsMap = docData['comments'] as Map<String, dynamic>? ?? {};
+        
+        print("📄 reuploadAllowed: $reuploadAllowed");
+        print("📄 commentsMap: $commentsMap");
+        
+        // Extract the comment (there's typically one per document with the same key)
+        Map<String, dynamic>? commentData;
+        if (commentsMap.isNotEmpty) {
+          // Get the first (or matching) comment
+          final firstCommentKey = commentsMap.keys.first;
+          commentData = commentsMap[firstCommentKey] as Map<String, dynamic>?;
+          print("📄 Comment data: $commentData");
+        }
+        
+        // Try exact match first
+        String? matchingTitle;
+        if (uploadedFiles.containsKey(docKey)) {
+          matchingTitle = docKey;
+          print("✅ Exact match found: $docKey");
+        } else {
+          // Find matching form label title
+          for (final label in formLabels) {
+            final title = label["title"]!;
+            final safeTitle = title.replaceAll(RegExp(r'[.#$/\[\]]'), '-').trim();
+            
+            if (docKey == safeTitle) {
+              matchingTitle = title;
+              print("✅ Safe title match: $docKey -> $title");
+              break;
+            }
+          }
+        }
+        
+        if (matchingTitle != null) {
+          _documentComments[matchingTitle] = {
+            'reuploadAllowed': reuploadAllowed,
+            'comment': commentData,
+            'from': commentData?['from'] as String? ?? 'Admin',
+            'message': commentData?['message'] as String? ?? '',
+            'createdAt': commentData?['createdAt'] as Timestamp?,
+          };
+          
+          print("✅ Stored comment for $matchingTitle");
+        } else {
+          print("❌ No matching title found for docKey: $docKey");
+        }
+      }
 
-      setState(() {
-        _adminComments = comments;
-      });
+      print("📄 Final _documentComments: $_documentComments");
+
+      setState(() {});
     } catch (e) {
-      print("Error loading admin comments: $e");
+      print("❌ Error loading document comments: $e");
     }
   }
 
@@ -187,6 +240,9 @@ class _CTPOUploadPageState extends State<CTPOUploadPage> {
           .collection('ctpo_uploads');
       final applicantUploadsRef = applicantDoc.collection('uploads');
 
+      // Prepare updates for the uploads field in applicant document
+      Map<String, dynamic> uploadsFieldUpdates = {};
+
       // Upload files one by one
       for (final entry in uploadedFiles.entries) {
         final title = entry.key;
@@ -222,11 +278,24 @@ class _CTPOUploadPageState extends State<CTPOUploadPage> {
         // 1️⃣ Save inside user → ctpo_uploads
         await userUploadsRef.doc(safeTitle).set(uploadData);
 
-        // 2️⃣ Save inside applications → ctpo → applicants → uploads
-        await applicantUploadsRef.doc(safeTitle).set(uploadData);
+        // 2️⃣ Save inside applications → ctpo → applicants → uploads (subcollection)
+        await applicantUploadsRef.doc(safeTitle).set(uploadData, SetOptions(merge: true));
+
+        // 3️⃣ Reset reuploadAllowed in the uploads field (where comments are stored)
+        uploadsFieldUpdates['uploads.$safeTitle.reuploadAllowed'] = false;
 
         uploadedFiles[title]!["url"] = url;
+        uploadedFiles[title]!["file"] = null; // ✅ Clear selected file after upload
       }
+
+      // Update the applicant document with reset reuploadAllowed flags
+      if (uploadsFieldUpdates.isNotEmpty) {
+        await applicantDoc.set(uploadsFieldUpdates, SetOptions(merge: true));
+      }
+
+      // ✅ Reload comments to update UI with new reuploadAllowed status
+      await _loadDocumentComments();
+      await _loadExistingUploads();
 
       // Ensure applicant metadata exists
       await applicantDoc.set({
@@ -265,60 +334,141 @@ class _CTPOUploadPageState extends State<CTPOUploadPage> {
     final file = uploadedFiles[title]!["file"] as PlatformFile?;
     final url = uploadedFiles[title]!["url"] as String?;
     final isUploaded = url != null;
+    
+    // ✅ Get per-document reuploadAllowed flag and comments
+    final docData = _documentComments[title];
+    final reuploadAllowed = docData?['reuploadAllowed'] as bool? ?? false;
+    final hasComments = docData?['message'] != null && (docData?['message'] as String?)?.isNotEmpty == true;
+    final comment = docData;
 
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 8),
-      child: Row(
+      child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  title +
-                      (isUploaded
-                          ? " ✅ (Uploaded)"
-                          : file != null
-                              ? " (Ready)"
-                              : ""),
-                  style: TextStyle(
-                    fontSize: 15,
-                    fontWeight: FontWeight.bold,
-                    color: isUploaded
-                        ? Colors.green
-                        : file != null
-                            ? Colors.orange
-                            : Colors.black,
-                  ),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title +
+                          (isUploaded
+                              ? " ✅ (Uploaded)"
+                              : file != null
+                                  ? " (Ready)"
+                                  : ""),
+                      style: TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.bold,
+                        color: isUploaded
+                            ? Colors.green
+                            : file != null
+                                ? Colors.orange
+                                : Colors.black,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(description,
+                        style: const TextStyle(fontSize: 13, color: Colors.black87)),
+                    if (isUploaded)
+                      TextButton(
+                        onPressed: () async {
+                          await launchUrl(Uri.parse(url));
+                        },
+                        child: const Text("View Uploaded File"),
+                      ),
+                  ],
                 ),
-                const SizedBox(height: 4),
-                Text(description,
-                    style: const TextStyle(fontSize: 13, color: Colors.black87)),
-                if (isUploaded)
-                  TextButton(
-                    onPressed: () async {
-                      await launchUrl(Uri.parse(url));
-                    },
-                    child: const Text("View Uploaded File"),
-                  ),
-              ],
-            ),
+              ),
+              ElevatedButton(
+                // ✅ Button disabled if already uploaded and reupload not allowed, or if there are unresolved comments
+                onPressed: (isUploaded && !reuploadAllowed) || _isUploading ? null : () => pickFile(title),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: (isUploaded && !reuploadAllowed)
+                      ? Colors.grey
+                      : (isUploaded
+                          ? Colors.orange
+                          : Colors.green[700]),
+                  foregroundColor: Colors.white,
+                ),
+                child: Text(
+                  isUploaded
+                      ? (reuploadAllowed ? "Re-upload" : "Uploaded")
+                      : (file != null ? "Change File" : "Select File"),
+                ),
+              ),
+            ],
           ),
-          ElevatedButton(
-            onPressed: isUploaded ? null : () => pickFile(title),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: isUploaded
-                  ? Colors.grey
-                  : (file != null ? Colors.orange : Colors.green[700]),
-              foregroundColor: Colors.white,
+          
+          // ✅ Show admin comment if exists
+          if (hasComments && comment != null)
+            Padding(
+              padding: const EdgeInsets.only(top: 12),
+              child: Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.orange[50],
+                  border: Border.all(color: Colors.orange, width: 1),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        const Icon(Icons.comment, color: Colors.orange, size: 18),
+                        const SizedBox(width: 8),
+                        Text(
+                          'Admin Comment',
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.orange[700],
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      comment['message'] ?? '',
+                      style: const TextStyle(fontSize: 13, color: Colors.black87),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      'From: ${comment['from'] ?? 'Admin'} • ${_formatTimestamp(comment['createdAt'])}',
+                      style: TextStyle(fontSize: 11, color: Colors.grey[600]),
+                    ),
+                    if (reuploadAllowed)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 8),
+                        child: Container(
+                          padding: const EdgeInsets.all(8),
+                          decoration: BoxDecoration(
+                            color: Colors.green[50],
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                          child: const Row(
+                            children: [
+                              Icon(Icons.check_circle, color: Colors.green, size: 16),
+                              SizedBox(width: 8),
+                              Expanded(
+                                child: Text(
+                                  'You can re-upload this file',
+                                  style: TextStyle(fontSize: 12, color: Colors.green),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
             ),
-            child: Text(
-              isUploaded
-                  ? "Uploaded"
-                  : (file != null ? "Change File" : "Select File"),
-            ),
-          ),
+          const SizedBox(height: 8),
         ],
       ),
     );
@@ -326,15 +476,6 @@ class _CTPOUploadPageState extends State<CTPOUploadPage> {
 
   @override
   Widget build(BuildContext context) {
-    // ✅ Determine button state
-    final isButtonDisabled = _isUploading || (!_reuploadAllowed && _adminComments.isNotEmpty);
-    final buttonColor = (_reuploadAllowed || _adminComments.isEmpty)
-        ? Colors.green[700]
-        : Colors.grey[400];
-    final buttonText = (_reuploadAllowed || _adminComments.isEmpty)
-        ? 'Submit (Upload All Files)'
-        : 'Submit Disabled - Waiting for Approval';
-
     return Scaffold(
       appBar: AppBar(
         backgroundColor: Colors.green[700],
@@ -364,98 +505,6 @@ class _CTPOUploadPageState extends State<CTPOUploadPage> {
             ),
             const Divider(thickness: 1, height: 24),
             
-            // ✅ Admin Comments Section
-            if (_adminComments.isNotEmpty)
-              Padding(
-                padding: const EdgeInsets.only(bottom: 16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text(
-                      '💬 Admin Comments',
-                      style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
-                    ),
-                    const SizedBox(height: 8),
-                    Container(
-                      padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(
-                        color: Colors.blue[50],
-                        border: Border.all(color: Colors.blue, width: 1),
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: _adminComments.map((comment) {
-                          return Padding(
-                            padding: const EdgeInsets.only(bottom: 8),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  comment['message'] ?? '',
-                                  style: const TextStyle(fontSize: 14),
-                                ),
-                                const SizedBox(height: 4),
-                                Text(
-                                  'From: ${comment['from'] ?? 'Admin'} • ${_formatTimestamp(comment['createdAt'])}',
-                                  style: TextStyle(fontSize: 12, color: Colors.grey[600]),
-                                ),
-                              ],
-                            ),
-                          );
-                        }).toList(),
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    
-                    // ✅ Status Notification
-                    if (_reuploadAllowed)
-                      Container(
-                        padding: const EdgeInsets.all(12),
-                        decoration: BoxDecoration(
-                          color: Colors.green[50],
-                          border: Border.all(color: Colors.green, width: 1),
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: const Row(
-                          children: [
-                            Icon(Icons.check_circle, color: Colors.green),
-                            SizedBox(width: 12),
-                            Expanded(
-                              child: Text(
-                                'You can re-upload files now.\nPlease correct the issues above.',
-                                style: TextStyle(color: Colors.green, fontSize: 13),
-                              ),
-                            ),
-                          ],
-                        ),
-                      )
-                    else
-                      Container(
-                        padding: const EdgeInsets.all(12),
-                        decoration: BoxDecoration(
-                          color: Colors.red[50],
-                          border: Border.all(color: Colors.red, width: 1),
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: const Row(
-                          children: [
-                            Icon(Icons.cancel, color: Colors.red),
-                            SizedBox(width: 12),
-                            Expanded(
-                              child: Text(
-                                'You cannot re-upload files yet.\nPlease wait for admin approval.',
-                                style: TextStyle(color: Colors.red, fontSize: 13),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    const SizedBox(height: 16),
-                  ],
-                ),
-              ),
-            
             const Text(
               'Upload Documents for Certificate of Tree Plantation Ownership (CTPO)',
               style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
@@ -467,9 +516,9 @@ class _CTPOUploadPageState extends State<CTPOUploadPage> {
               child: SizedBox(
                 width: double.infinity,
                 child: ElevatedButton(
-                  onPressed: isButtonDisabled ? null : handleSubmit,
+                  onPressed: _isUploading ? null : handleSubmit,
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: buttonColor,
+                    backgroundColor: Colors.green[700],
                     foregroundColor: Colors.white,
                     padding: const EdgeInsets.symmetric(vertical: 20),
                     shape: RoundedRectangleBorder(
@@ -478,9 +527,9 @@ class _CTPOUploadPageState extends State<CTPOUploadPage> {
                   ),
                   child: _isUploading
                       ? const CircularProgressIndicator(color: Colors.white)
-                      : Text(
-                          buttonText,
-                          style: const TextStyle(
+                      : const Text(
+                          'Submit (Upload All Files)',
+                          style: TextStyle(
                             fontSize: 14,
                             fontWeight: FontWeight.bold,
                           ),
