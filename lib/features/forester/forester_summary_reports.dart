@@ -4,12 +4,13 @@ import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:screenshot/screenshot.dart';
 import 'dart:io';
+import 'dart:typed_data';
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 
 class ForesterSummaryReports extends StatefulWidget {
   final String foresterId;
-  
+
   const ForesterSummaryReports({super.key, required this.foresterId});
 
   @override
@@ -20,13 +21,13 @@ class _ForesterSummaryReportsState extends State<ForesterSummaryReports> {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final MapController _mapController = MapController();
   final ScreenshotController _screenshotController = ScreenshotController();
-  
+
   String _filterType = 'All'; // 'All', 'Appointment', 'Applicant'
   String _selectedAppointmentId = 'All';
   String _selectedApplicantId = 'All';
   String _selectedTreeStatus = 'All';
   String _mapType = 'street'; // 'street', 'satellite', 'terrain'
-  
+
   List<Map<String, dynamic>> _appointments = [];
   List<Map<String, dynamic>> _applicants = [];
   bool _isLoading = true;
@@ -64,7 +65,7 @@ class _ForesterSummaryReportsState extends State<ForesterSummaryReports> {
           'status': data['status'] ?? 'Pending',
           'createdAt': data['createdAt'],
         });
-        
+
         if (data['applicantId'] != null) {
           applicantIdsSet.add(data['applicantId']);
         }
@@ -75,7 +76,7 @@ class _ForesterSummaryReportsState extends State<ForesterSummaryReports> {
       for (var applicantId in applicantIdsSet) {
         // Try to get applicant name from different collections
         String applicantName = applicantId;
-        
+
         // Check in applications/ctpo/applicants
         for (var appType in ['ctpo', 'ptc', 'pltp', 'splt']) {
           try {
@@ -85,17 +86,18 @@ class _ForesterSummaryReportsState extends State<ForesterSummaryReports> {
                 .collection('applicants')
                 .doc(applicantId)
                 .get();
-            
+
             if (applicantDoc.exists) {
               final data = applicantDoc.data();
-              applicantName = data?['applicantName'] ?? data?['name'] ?? applicantId;
+              applicantName =
+                  data?['applicantName'] ?? data?['name'] ?? applicantId;
               break;
             }
           } catch (e) {
             // Continue to next app type
           }
         }
-        
+
         applicants.add({
           'id': applicantId,
           'name': applicantName,
@@ -122,7 +124,7 @@ class _ForesterSummaryReportsState extends State<ForesterSummaryReports> {
     try {
       // Filter appointments based on selection
       var filteredAppointments = _appointments;
-      
+
       if (_filterType == 'Appointment' && _selectedAppointmentId != 'All') {
         filteredAppointments = _appointments
             .where((a) => a['id'] == _selectedAppointmentId)
@@ -159,11 +161,10 @@ class _ForesterSummaryReportsState extends State<ForesterSummaryReports> {
             'appointment_location': appointment['location'],
             'appointment_type': appointment['appointmentType'],
             'applicant_id': appointment['applicantId'],
-            'applicant_name': _applicants
-                .firstWhere(
-                  (a) => a['id'] == appointment['applicantId'],
-                  orElse: () => {'name': 'Unknown'},
-                )['name'],
+            'applicant_name': _applicants.firstWhere(
+              (a) => a['id'] == appointment['applicantId'],
+              orElse: () => {'name': 'Unknown'},
+            )['name'],
           });
         }
       }
@@ -191,7 +192,7 @@ class _ForesterSummaryReportsState extends State<ForesterSummaryReports> {
     }).map((tree) {
       final lat = (tree['latitude'] as num).toDouble();
       final lng = (tree['longitude'] as num).toDouble();
-      
+
       Color markerColor = Colors.green;
       final status = tree['tree_status'] ?? 'Not Yet Ready';
       if (status == 'Ready to Cut') {
@@ -225,7 +226,7 @@ class _ForesterSummaryReportsState extends State<ForesterSummaryReports> {
   /// Fit map to show all markers
   void _fitMapToMarkers(List<Marker> markers) {
     if (markers.isEmpty) return;
-    
+
     try {
       if (markers.length == 1) {
         _mapController.move(markers.first.point, 15);
@@ -235,7 +236,7 @@ class _ForesterSummaryReportsState extends State<ForesterSummaryReports> {
       final bounds = LatLngBounds.fromPoints(
         markers.map((m) => m.point).toList(),
       );
-      
+
       _mapController.fitCamera(
         CameraFit.bounds(
           bounds: bounds,
@@ -252,7 +253,8 @@ class _ForesterSummaryReportsState extends State<ForesterSummaryReports> {
     switch (_mapType) {
       case 'satellite':
         return TileLayer(
-          urlTemplate: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+          urlTemplate:
+              'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
           userAgentPackageName: 'com.treesure.app',
           maxZoom: 19,
         );
@@ -274,16 +276,39 @@ class _ForesterSummaryReportsState extends State<ForesterSummaryReports> {
 
   /// Capture screenshot of the map
   Future<void> _captureMapScreenshot() async {
+    if (_isCapturingScreenshot) return;
+
     setState(() {
       _isCapturingScreenshot = true;
     });
 
     try {
-      // Capture the screenshot first
-      final imageFile = await _screenshotController.capture();
-      
+      // Wait longer for the UI to fully render and map tiles to load
+      await Future.delayed(const Duration(milliseconds: 800));
+
+      // Try multiple capture attempts with different parameters
+      Uint8List? imageFile;
+
+      // First attempt with default settings
+      imageFile = await _screenshotController.capture();
+
+      // If first attempt fails, try with explicit pixel ratio
       if (imageFile == null) {
-        throw Exception('Failed to capture screenshot');
+        print('First capture attempt failed, retrying with pixel ratio...');
+        await Future.delayed(const Duration(milliseconds: 300));
+        imageFile = await _screenshotController.capture(pixelRatio: 1.5);
+      }
+
+      // If still null, try one more time with delay
+      if (imageFile == null) {
+        print('Second capture attempt failed, retrying after longer delay...');
+        await Future.delayed(const Duration(milliseconds: 500));
+        imageFile = await _screenshotController.capture(pixelRatio: 1.0);
+      }
+
+      if (imageFile == null) {
+        throw Exception(
+            'Failed to capture screenshot after multiple attempts. The map may not be fully loaded yet. Please wait a moment and try again.');
       }
 
       // Get the documents directory (no permission needed for app-specific storage)
@@ -291,10 +316,15 @@ class _ForesterSummaryReportsState extends State<ForesterSummaryReports> {
       final timestamp = DateTime.now().millisecondsSinceEpoch;
       final fileName = 'tree_map_report_$timestamp.png';
       final filePath = '${directory.path}/$fileName';
-      
+
       // Save the file
       final file = File(filePath);
       await file.writeAsBytes(imageFile);
+
+      // Verify file was created
+      if (!await file.exists()) {
+        throw Exception('File was not saved successfully');
+      }
 
       setState(() {
         _isCapturingScreenshot = false;
@@ -304,17 +334,25 @@ class _ForesterSummaryReportsState extends State<ForesterSummaryReports> {
       if (mounted) {
         _showScreenshotSuccessDialog(filePath);
       }
-    } catch (e) {
+    } catch (e, stackTrace) {
+      print('Screenshot error: $e');
+      print('Stack trace: $stackTrace');
+
       setState(() {
         _isCapturingScreenshot = false;
       });
-      
+
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Error capturing screenshot: $e'),
+            content: Text('Error: ${e.toString().split('Exception: ').last}'),
             backgroundColor: Colors.red,
-            duration: const Duration(seconds: 5),
+            duration: const Duration(seconds: 6),
+            action: SnackBarAction(
+              label: 'Retry',
+              textColor: Colors.white,
+              onPressed: _captureMapScreenshot,
+            ),
           ),
         );
       }
@@ -356,7 +394,8 @@ class _ForesterSummaryReportsState extends State<ForesterSummaryReports> {
               Navigator.pop(context);
               await Share.shareXFiles(
                 [XFile(filePath)],
-                text: 'Tree Mapping Report - ${DateTime.now().toString().split(' ')[0]}',
+                text:
+                    'Tree Mapping Report - ${DateTime.now().toString().split(' ')[0]}',
               );
             },
             style: ElevatedButton.styleFrom(
@@ -365,6 +404,372 @@ class _ForesterSummaryReportsState extends State<ForesterSummaryReports> {
             ),
             icon: const Icon(Icons.share),
             label: const Text('Share'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Show detailed summary report in a scrollable dialog
+  Future<void> _showSummaryDetailsDialog() async {
+    // Get the current filtered trees
+    final trees = await _getTreesStream().first;
+
+    if (!mounted) return;
+
+    if (trees.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('No trees to display. Please adjust your filters.'),
+          backgroundColor: Colors.orange,
+        ),
+      );
+      return;
+    }
+
+    showDialog(
+      context: context,
+      builder: (context) => Dialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        child: Container(
+          width: MediaQuery.of(context).size.width * 0.9,
+          height: MediaQuery.of(context).size.height * 0.8,
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            children: [
+              // Header
+              Row(
+                children: [
+                  Icon(Icons.summarize, color: Colors.green[700], size: 28),
+                  const SizedBox(width: 12),
+                  const Expanded(
+                    child: Text(
+                      'Summary Report Details',
+                      style: TextStyle(
+                        fontSize: 20,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.close),
+                    onPressed: () => Navigator.pop(context),
+                  ),
+                ],
+              ),
+              const Divider(height: 24),
+
+              // Summary Info
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.green[50],
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Column(
+                  children: [
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceAround,
+                      children: [
+                        _buildSummaryChip(
+                          'Total Trees',
+                          trees.length.toString(),
+                          Icons.park,
+                        ),
+                        _buildSummaryChip(
+                          'Total Volume',
+                          '${trees.fold<double>(0, (sum, tree) => sum + (tree['volume'] ?? 0)).toStringAsFixed(2)} m³',
+                          Icons.straighten,
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 16),
+
+              // Trees Table Header
+              Container(
+                padding:
+                    const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
+                decoration: BoxDecoration(
+                  color: Colors.green[700],
+                  borderRadius: const BorderRadius.only(
+                    topLeft: Radius.circular(8),
+                    topRight: Radius.circular(8),
+                  ),
+                ),
+                child: const Row(
+                  children: [
+                    SizedBox(
+                      width: 40,
+                      child: Text(
+                        '#',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 12,
+                        ),
+                      ),
+                    ),
+                    Expanded(
+                      flex: 2,
+                      child: Text(
+                        'Species',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 12,
+                        ),
+                      ),
+                    ),
+                    Expanded(
+                      child: Text(
+                        'Dia.(cm)',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 12,
+                        ),
+                      ),
+                    ),
+                    Expanded(
+                      child: Text(
+                        'Ht.(m)',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 12,
+                        ),
+                      ),
+                    ),
+                    Expanded(
+                      child: Text(
+                        'Vol.(m³)',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 12,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+
+              // Trees List
+              Expanded(
+                child: Container(
+                  decoration: BoxDecoration(
+                    border: Border.all(color: Colors.grey.shade300),
+                    borderRadius: const BorderRadius.only(
+                      bottomLeft: Radius.circular(8),
+                      bottomRight: Radius.circular(8),
+                    ),
+                  ),
+                  child: ListView.separated(
+                    itemCount: trees.length,
+                    separatorBuilder: (context, index) => Divider(
+                      height: 1,
+                      color: Colors.grey.shade200,
+                    ),
+                    itemBuilder: (context, index) {
+                      final tree = trees[index];
+                      return InkWell(
+                        onTap: () => _showTreeDetailsInDialog(tree),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                            vertical: 12,
+                            horizontal: 12,
+                          ),
+                          child: Row(
+                            children: [
+                              SizedBox(
+                                width: 40,
+                                child: Text(
+                                  tree['tree_no']?.toString() ?? 'N/A',
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.bold,
+                                    color: Colors.green[700],
+                                  ),
+                                ),
+                              ),
+                              Expanded(
+                                flex: 2,
+                                child: Text(
+                                  tree['species'] ?? 'Unknown',
+                                  style: const TextStyle(fontSize: 12),
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                              Expanded(
+                                child: Text(
+                                  tree['diameter']?.toString() ?? '0',
+                                  style: const TextStyle(fontSize: 12),
+                                ),
+                              ),
+                              Expanded(
+                                child: Text(
+                                  tree['height']?.toString() ?? '0',
+                                  style: const TextStyle(fontSize: 12),
+                                ),
+                              ),
+                              Expanded(
+                                child: Text(
+                                  (tree['volume'] ?? 0).toStringAsFixed(2),
+                                  style: const TextStyle(fontSize: 12),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                ),
+              ),
+
+              const SizedBox(height: 12),
+
+              // Note
+              Text(
+                'Tap any row to view full details including GPS coordinates',
+                style: TextStyle(
+                  fontSize: 11,
+                  color: Colors.grey[600],
+                  fontStyle: FontStyle.italic,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// Show individual tree details in a dialog
+  void _showTreeDetailsInDialog(Map<String, dynamic> tree) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Row(
+          children: [
+            Icon(Icons.info_outline, color: Colors.green[700], size: 24),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                'Tree #${tree['tree_no']}',
+                style: const TextStyle(fontSize: 18),
+              ),
+            ),
+          ],
+        ),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _buildDetailItem(
+                  'Tree Number', tree['tree_no']?.toString() ?? 'N/A'),
+              _buildDetailItem('Species', tree['species'] ?? 'Unknown'),
+              _buildDetailItem('Diameter', '${tree['diameter'] ?? 0} cm'),
+              _buildDetailItem('Height', '${tree['height'] ?? 0} m'),
+              _buildDetailItem(
+                  'Volume', '${(tree['volume'] ?? 0).toStringAsFixed(2)} m³'),
+              _buildDetailItem(
+                  'Status', tree['tree_status'] ?? 'Not Yet Ready'),
+              if (tree['latitude'] != null && tree['longitude'] != null) ...[
+                const Divider(height: 24),
+                const Text(
+                  'GPS Location',
+                  style: TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 14,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                _buildDetailItem(
+                  'Latitude',
+                  tree['latitude'].toStringAsFixed(6),
+                ),
+                _buildDetailItem(
+                  'Longitude',
+                  tree['longitude'].toStringAsFixed(6),
+                ),
+              ],
+              if (tree['appointment_location'] != null) ...[
+                const Divider(height: 24),
+                _buildDetailItem('Appointment', tree['appointment_location']),
+              ],
+              if (tree['applicant_name'] != null) ...[
+                _buildDetailItem('Applicant', tree['applicant_name']),
+              ],
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: Text('Close', style: TextStyle(color: Colors.green[700])),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSummaryChip(String label, String value, IconData icon) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(icon, size: 20, color: Colors.green[700]),
+        const SizedBox(width: 8),
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              label,
+              style: const TextStyle(
+                fontSize: 11,
+                color: Colors.grey,
+              ),
+            ),
+            Text(
+              value,
+              style: TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.bold,
+                color: Colors.green[700],
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  Widget _buildDetailItem(String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: 90,
+            child: Text(
+              '$label:',
+              style: const TextStyle(
+                fontWeight: FontWeight.w600,
+                fontSize: 13,
+              ),
+            ),
+          ),
+          Expanded(
+            child: Text(
+              value,
+              style: const TextStyle(fontSize: 13),
+            ),
           ),
         ],
       ),
@@ -386,6 +791,12 @@ class _ForesterSummaryReportsState extends State<ForesterSummaryReports> {
         ),
         iconTheme: const IconThemeData(color: Colors.white),
         actions: [
+          if (!_isLoading)
+            IconButton(
+              icon: const Icon(Icons.list_alt),
+              onPressed: _showSummaryDetailsDialog,
+              tooltip: 'View Summary Details',
+            ),
           if (!_isLoading)
             IconButton(
               icon: _isCapturingScreenshot
@@ -444,7 +855,7 @@ class _ForesterSummaryReportsState extends State<ForesterSummaryReports> {
                         ],
                       ),
                       const SizedBox(height: 12),
-                      
+
                       // Conditional Dropdowns
                       if (_filterType == 'Appointment')
                         DropdownButtonFormField<String>(
@@ -476,7 +887,7 @@ class _ForesterSummaryReportsState extends State<ForesterSummaryReports> {
                             });
                           },
                         ),
-                      
+
                       if (_filterType == 'Applicant')
                         DropdownButtonFormField<String>(
                           value: _selectedApplicantId,
@@ -507,9 +918,9 @@ class _ForesterSummaryReportsState extends State<ForesterSummaryReports> {
                             });
                           },
                         ),
-                      
+
                       const SizedBox(height: 12),
-                      
+
                       // Tree Status Filter
                       SingleChildScrollView(
                         scrollDirection: Axis.horizontal,
@@ -530,7 +941,7 @@ class _ForesterSummaryReportsState extends State<ForesterSummaryReports> {
                     ],
                   ),
                 ),
-                
+
                 // Content Area
                 Expanded(
                   child: StreamBuilder<List<Map<String, dynamic>>>(
@@ -662,7 +1073,7 @@ class _ForesterSummaryReportsState extends State<ForesterSummaryReports> {
                                     } else if (entry.key == 'Paid') {
                                       statusColor = Colors.green;
                                     }
-                                    
+
                                     return Chip(
                                       avatar: CircleAvatar(
                                         backgroundColor: statusColor,
@@ -676,140 +1087,180 @@ class _ForesterSummaryReportsState extends State<ForesterSummaryReports> {
                                         ),
                                       ),
                                       label: Text(entry.key),
-                                      backgroundColor: statusColor.withOpacity(0.1),
+                                      backgroundColor:
+                                          statusColor.withOpacity(0.1),
                                     );
                                   }).toList(),
                                 ),
                               ],
                             ),
                           ),
-                          
+
                           // Map View
                           Expanded(
                             child: Stack(
                               children: [
-                                Screenshot(
-                                  controller: _screenshotController,
-                                  child: Stack(
-                                    children: [
-                                      FlutterMap(
-                                        mapController: _mapController,
-                                        options: MapOptions(
-                                          initialCenter: markers.isEmpty
-                                              ? const LatLng(8.4542, 124.6319) // Cagayan de Oro
-                                              : markers.first.point,
-                                          initialZoom: 13,
-                                        ),
-                                        children: [
-                                          _getTileLayer(),
-                                          if (markers.isNotEmpty)
-                                            MarkerLayer(markers: markers),
-                                        ],
-                                      ),
-                                      
-                                      // Tree Count Badge
-                                      Positioned(
-                                        top: 16,
-                                        left: 16,
+                                LayoutBuilder(
+                                  builder: (context, constraints) {
+                                    return Container(
+                                      color: Colors.white,
+                                      width: constraints.maxWidth,
+                                      height: constraints.maxHeight,
+                                      child: Screenshot(
+                                        controller: _screenshotController,
                                         child: Container(
-                                          padding: const EdgeInsets.symmetric(
-                                            horizontal: 12,
-                                            vertical: 8,
-                                          ),
-                                          decoration: BoxDecoration(
-                                            color: Colors.white,
-                                            borderRadius: BorderRadius.circular(20),
-                                            boxShadow: [
-                                              BoxShadow(
-                                                color: Colors.black.withOpacity(0.2),
-                                                blurRadius: 6,
-                                                offset: const Offset(0, 2),
-                                              ),
-                                            ],
-                                          ),
-                                          child: Row(
-                                            mainAxisSize: MainAxisSize.min,
+                                          color: Colors.grey[100],
+                                          child: Stack(
                                             children: [
-                                              const Icon(
-                                                Icons.location_pin,
-                                                color: Colors.green,
-                                                size: 20,
+                                              FlutterMap(
+                                                mapController: _mapController,
+                                                options: MapOptions(
+                                                  initialCenter: markers.isEmpty
+                                                      ? const LatLng(8.4542,
+                                                          124.6319) // Cagayan de Oro
+                                                      : markers.first.point,
+                                                  initialZoom: 13,
+                                                ),
+                                                children: [
+                                                  _getTileLayer(),
+                                                  if (markers.isNotEmpty)
+                                                    MarkerLayer(
+                                                        markers: markers),
+                                                ],
                                               ),
-                                              const SizedBox(width: 6),
-                                              Text(
-                                                '$totalTrees Trees',
-                                                style: const TextStyle(
-                                                  fontWeight: FontWeight.bold,
-                                                  fontSize: 14,
+
+                                              // Tree Count Badge
+                                              Positioned(
+                                                top: 16,
+                                                left: 16,
+                                                child: Container(
+                                                  padding: const EdgeInsets
+                                                      .symmetric(
+                                                    horizontal: 12,
+                                                    vertical: 8,
+                                                  ),
+                                                  decoration: BoxDecoration(
+                                                    color: Colors.white,
+                                                    borderRadius:
+                                                        BorderRadius.circular(
+                                                            20),
+                                                    boxShadow: [
+                                                      BoxShadow(
+                                                        color: Colors.black
+                                                            .withOpacity(0.2),
+                                                        blurRadius: 6,
+                                                        offset:
+                                                            const Offset(0, 2),
+                                                      ),
+                                                    ],
+                                                  ),
+                                                  child: Row(
+                                                    mainAxisSize:
+                                                        MainAxisSize.min,
+                                                    children: [
+                                                      const Icon(
+                                                        Icons.location_pin,
+                                                        color: Colors.green,
+                                                        size: 20,
+                                                      ),
+                                                      const SizedBox(width: 6),
+                                                      Text(
+                                                        '$totalTrees Trees',
+                                                        style: const TextStyle(
+                                                          fontWeight:
+                                                              FontWeight.bold,
+                                                          fontSize: 14,
+                                                        ),
+                                                      ),
+                                                    ],
+                                                  ),
+                                                ),
+                                              ),
+
+                                              // Report Metadata (bottom) - for screenshot
+                                              Positioned(
+                                                bottom: 16,
+                                                left: 16,
+                                                right: 16,
+                                                child: Container(
+                                                  padding:
+                                                      const EdgeInsets.all(12),
+                                                  decoration: BoxDecoration(
+                                                    color: Colors.white
+                                                        .withOpacity(0.95),
+                                                    borderRadius:
+                                                        BorderRadius.circular(
+                                                            12),
+                                                    boxShadow: [
+                                                      BoxShadow(
+                                                        color: Colors.black
+                                                            .withOpacity(0.2),
+                                                        blurRadius: 6,
+                                                        offset:
+                                                            const Offset(0, 2),
+                                                      ),
+                                                    ],
+                                                  ),
+                                                  child: Column(
+                                                    crossAxisAlignment:
+                                                        CrossAxisAlignment
+                                                            .start,
+                                                    mainAxisSize:
+                                                        MainAxisSize.min,
+                                                    children: [
+                                                      const Row(
+                                                        children: [
+                                                          Icon(Icons.eco,
+                                                              color:
+                                                                  Colors.green,
+                                                              size: 20),
+                                                          SizedBox(width: 8),
+                                                          Text(
+                                                            'TreeSure - Forestry Report',
+                                                            style: TextStyle(
+                                                              fontWeight:
+                                                                  FontWeight
+                                                                      .bold,
+                                                              fontSize: 14,
+                                                            ),
+                                                          ),
+                                                        ],
+                                                      ),
+                                                      const SizedBox(height: 8),
+                                                      Row(
+                                                        children: [
+                                                          Expanded(
+                                                            child: Text(
+                                                              'Total: $totalTrees trees | Volume: ${totalVolume.toStringAsFixed(2)} m³',
+                                                              style:
+                                                                  const TextStyle(
+                                                                      fontSize:
+                                                                          11),
+                                                            ),
+                                                          ),
+                                                        ],
+                                                      ),
+                                                      const SizedBox(height: 4),
+                                                      Text(
+                                                        'Generated: ${DateTime.now().toString().split('.')[0]}',
+                                                        style: TextStyle(
+                                                          fontSize: 10,
+                                                          color:
+                                                              Colors.grey[600],
+                                                        ),
+                                                      ),
+                                                    ],
+                                                  ),
                                                 ),
                                               ),
                                             ],
                                           ),
                                         ),
                                       ),
-                                      
-                                      // Report Metadata (bottom) - for screenshot
-                                      Positioned(
-                                        bottom: 16,
-                                        left: 16,
-                                        right: 16,
-                                        child: Container(
-                                          padding: const EdgeInsets.all(12),
-                                          decoration: BoxDecoration(
-                                            color: Colors.white.withOpacity(0.95),
-                                            borderRadius: BorderRadius.circular(12),
-                                            boxShadow: [
-                                              BoxShadow(
-                                                color: Colors.black.withOpacity(0.2),
-                                                blurRadius: 6,
-                                                offset: const Offset(0, 2),
-                                              ),
-                                            ],
-                                          ),
-                                          child: Column(
-                                            crossAxisAlignment: CrossAxisAlignment.start,
-                                            mainAxisSize: MainAxisSize.min,
-                                            children: [
-                                              const Row(
-                                                children: [
-                                                  Icon(Icons.eco, color: Colors.green, size: 20),
-                                                  SizedBox(width: 8),
-                                                  Text(
-                                                    'TreeSure - Forestry Report',
-                                                    style: TextStyle(
-                                                      fontWeight: FontWeight.bold,
-                                                      fontSize: 14,
-                                                    ),
-                                                  ),
-                                                ],
-                                              ),
-                                              const SizedBox(height: 8),
-                                              Row(
-                                                children: [
-                                                  Expanded(
-                                                    child: Text(
-                                                      'Total: $totalTrees trees | Volume: ${totalVolume.toStringAsFixed(2)} m³',
-                                                      style: const TextStyle(fontSize: 11),
-                                                    ),
-                                                  ),
-                                                ],
-                                              ),
-                                              const SizedBox(height: 4),
-                                              Text(
-                                                'Generated: ${DateTime.now().toString().split('.')[0]}',
-                                                style: TextStyle(
-                                                  fontSize: 10,
-                                                  color: Colors.grey[600],
-                                                ),
-                                              ),
-                                            ],
-                                          ),
-                                        ),
-                                      ),
-                                    ],
-                                  ),
+                                    );
+                                  },
                                 ),
-                                
+
                                 // Map Type Selector (outside screenshot)
                                 Positioned(
                                   top: 16,
@@ -826,26 +1277,6 @@ class _ForesterSummaryReportsState extends State<ForesterSummaryReports> {
                 ),
               ],
             ),
-      floatingActionButton: !_isLoading
-          ? FloatingActionButton.extended(
-              onPressed: _isCapturingScreenshot ? null : _captureMapScreenshot,
-              backgroundColor: Colors.green[700],
-              icon: _isCapturingScreenshot
-                  ? const SizedBox(
-                      width: 20,
-                      height: 20,
-                      child: CircularProgressIndicator(
-                        color: Colors.white,
-                        strokeWidth: 2,
-                      ),
-                    )
-                  : const Icon(Icons.camera_alt),
-              label: Text(
-                _isCapturingScreenshot ? 'Capturing...' : 'Capture Map',
-                style: const TextStyle(color: Colors.white),
-              ),
-            )
-          : null,
     );
   }
 
@@ -904,7 +1335,8 @@ class _ForesterSummaryReportsState extends State<ForesterSummaryReports> {
     );
   }
 
-  Widget _buildStatCard(String label, String value, IconData icon, Color color) {
+  Widget _buildStatCard(
+      String label, String value, IconData icon, Color color) {
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
@@ -1049,7 +1481,8 @@ class _ForesterSummaryReportsState extends State<ForesterSummaryReports> {
                       return Container(
                         height: 200,
                         color: Colors.grey[200],
-                        child: const Icon(Icons.park, size: 64, color: Colors.grey),
+                        child: const Icon(Icons.park,
+                            size: 64, color: Colors.grey),
                       );
                     },
                   ),
@@ -1061,7 +1494,8 @@ class _ForesterSummaryReportsState extends State<ForesterSummaryReports> {
               _buildDetailRow('Appointment', tree['appointment_location']),
               _buildDetailRow('Diameter', '${tree['diameter']} cm'),
               _buildDetailRow('Height', '${tree['height']} m'),
-              _buildDetailRow('Volume', '${tree['volume'].toStringAsFixed(2)} m³'),
+              _buildDetailRow(
+                  'Volume', '${tree['volume'].toStringAsFixed(2)} m³'),
               if (tree['latitude'] != null && tree['longitude'] != null)
                 _buildDetailRow(
                   'Coordinates',
