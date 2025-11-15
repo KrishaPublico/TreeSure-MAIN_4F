@@ -33,6 +33,11 @@ class PdfPreviewPage extends StatelessWidget {
   }
 }
 class _SPLTFormPageState extends State<SPLTFormPage> {
+  // Submission state
+  String? _currentSubmissionId;
+  List<Map<String, dynamic>> _existingSubmissions = [];
+  bool _isLoadingSubmissions = true;
+
   final List<Map<String, String>> formLabels = [
     {"title": "Application Letter", "description": "(1 original)"},
     {
@@ -92,9 +97,95 @@ class _SPLTFormPageState extends State<SPLTFormPage> {
     for (final label in formLabels) {
       uploadedFiles[label["title"]!] = {"file": null, "url": null};
     }
-    _loadExistingUploads();
-    _loadDocumentComments();
-    _loadApplicationTemplates(); // ✅ Load application-level templates
+    _loadSubmissions();
+  }
+
+  /// Load all submissions for this applicant
+  Future<void> _loadSubmissions() async {
+    try {
+      final firestore = FirebaseFirestore.instance;
+      final submissionsSnapshot = await firestore
+          .collection('applications')
+          .doc('splt')
+          .collection('applicants')
+          .doc(widget.applicantId)
+          .collection('submissions')
+          .orderBy('createdAt', descending: true)
+          .get();
+
+      if (submissionsSnapshot.docs.isEmpty) {
+        await _createNewSubmission();
+      } else {
+        _existingSubmissions = submissionsSnapshot.docs.map((doc) {
+          final data = doc.data();
+          return {
+            'id': doc.id,
+            'status': data['status'] ?? 'draft',
+            'uploadsCount': (data['uploads'] as Map?)?.length ?? 0,
+            'createdAt': data['createdAt'],
+          };
+        }).toList();
+
+        setState(() {
+          _currentSubmissionId = _existingSubmissions.first['id'] as String;
+          _isLoadingSubmissions = false;
+        });
+
+        await _loadExistingUploads();
+        await _loadDocumentComments();
+        await _loadApplicationTemplates();
+      }
+    } catch (e) {
+      print('Error loading submissions: $e');
+      setState(() => _isLoadingSubmissions = false);
+    }
+  }
+
+  Future<void> _createNewSubmission() async {
+    try {
+      final firestore = FirebaseFirestore.instance;
+      final applicantDoc = firestore
+          .collection('applications')
+          .doc('splt')
+          .collection('applicants')
+          .doc(widget.applicantId);
+
+      final submissionsSnapshot = await applicantDoc.collection('submissions').get();
+      final nextNumber = submissionsSnapshot.docs.length + 1;
+      final submissionId = 'SPLT-${widget.applicantId}-${nextNumber.toString().padLeft(3, '0')}';
+
+      await applicantDoc.collection('submissions').doc(submissionId).set({
+        'applicantName': widget.applicantName,
+        'status': 'draft',
+        'createdAt': FieldValue.serverTimestamp(),
+      });
+
+      await _loadSubmissions();
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('New submission created: $submissionId')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error creating submission: $e')),
+        );
+      }
+    }
+  }
+
+  Future<void> _switchSubmission(String submissionId) async {
+    setState(() {
+      _currentSubmissionId = submissionId;
+      for (final label in formLabels) {
+        uploadedFiles[label["title"]!] = {"file": null, "url": null};
+      }
+    });
+
+    await _loadExistingUploads();
+    await _loadDocumentComments();
   }
 
   /// ✅ Load application-level templates from Firestore
@@ -128,11 +219,15 @@ class _SPLTFormPageState extends State<SPLTFormPage> {
   }
 
   Future<void> _loadExistingUploads() async {
+    if (_currentSubmissionId == null) return;
+    
     final uploadsRef = FirebaseFirestore.instance
         .collection('applications')
         .doc('splt')
         .collection('applicants')
         .doc(widget.applicantId)
+        .collection('submissions')
+        .doc(_currentSubmissionId!)
         .collection('uploads');
 
     final snapshot = await uploadsRef.get();
@@ -164,12 +259,16 @@ class _SPLTFormPageState extends State<SPLTFormPage> {
 
   /// Load document-specific comments from uploads subcollection
   Future<void> _loadDocumentComments() async {
+    if (_currentSubmissionId == null) return;
+    
     try {
       final uploadsRef = FirebaseFirestore.instance
           .collection('applications')
           .doc('splt')
           .collection('applicants')
           .doc(widget.applicantId)
+          .collection('submissions')
+          .doc(_currentSubmissionId!)
           .collection('uploads');
 
       final uploadsSnapshot = await uploadsRef.get();
@@ -297,20 +396,31 @@ class _SPLTFormPageState extends State<SPLTFormPage> {
 
   /// Upload a single file immediately
   Future<void> uploadSingleFile(String title, PlatformFile file) async {
+    if (_currentSubmissionId == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('No submission selected')),
+      );
+      return;
+    }
+    
     setState(() => _isUploading = true);
 
     try {
       final firestore = FirebaseFirestore.instance;
       final storage = FirebaseStorage.instance;
 
-      // References
-      final appDoc = firestore.collection('applications').doc('splt');
-      final applicantDoc = appDoc.collection('applicants').doc(widget.applicantId);
+      final submissionDoc = firestore
+          .collection('applications')
+          .doc('splt')
+          .collection('applicants')
+          .doc(widget.applicantId)
+          .collection('submissions')
+          .doc(_currentSubmissionId!);
       final userUploadsRef = firestore
           .collection('users')
           .doc(widget.applicantId)
           .collection('splt_uploads');
-      final applicantUploadsRef = applicantDoc.collection('uploads');
+      final applicantUploadsRef = submissionDoc.collection('uploads');
 
       final safeTitle = title.replaceAll(RegExp(r'[.#$/\[\]]'), '-').trim();
       final fileName = "${DateTime.now().millisecondsSinceEpoch}_${file.name}";
@@ -343,9 +453,10 @@ class _SPLTFormPageState extends State<SPLTFormPage> {
       await userUploadsRef.doc(safeTitle).set(uploadData);
       await applicantUploadsRef.doc(safeTitle).set(uploadData, SetOptions(merge: true));
 
-      // Reset reuploadAllowed flag
-      await applicantDoc.set({
+      // Reset reuploadAllowed flag in submission
+      await submissionDoc.set({
         'uploads.$safeTitle.reuploadAllowed': false,
+        'lastUpdated': FieldValue.serverTimestamp(),
       }, SetOptions(merge: true));
 
       // Update local state
@@ -374,21 +485,31 @@ class _SPLTFormPageState extends State<SPLTFormPage> {
 
   /// Upload all selected files
   Future<void> handleSubmit() async {
+    if (_currentSubmissionId == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('No submission selected')),
+      );
+      return;
+    }
+    
     setState(() => _isUploading = true);
 
     try {
       final firestore = FirebaseFirestore.instance;
       final storage = FirebaseStorage.instance;
 
-      // References
-      final appDoc = firestore.collection('applications').doc('splt');
-      final applicantDoc =
-          appDoc.collection('applicants').doc(widget.applicantId);
+      final submissionDoc = firestore
+          .collection('applications')
+          .doc('splt')
+          .collection('applicants')
+          .doc(widget.applicantId)
+          .collection('submissions')
+          .doc(_currentSubmissionId!);
       final userUploadsRef = firestore
           .collection('users')
           .doc(widget.applicantId)
           .collection('splt_uploads');
-      final applicantUploadsRef = applicantDoc.collection('uploads');
+      final applicantUploadsRef = submissionDoc.collection('uploads');
 
       // Prepare updates map for uploads field
       Map<String, dynamic> uploadsFieldUpdates = {};
@@ -429,7 +550,7 @@ class _SPLTFormPageState extends State<SPLTFormPage> {
         // 1️⃣ Save inside user → splt_uploads
         await userUploadsRef.doc(safeTitle).set(uploadData);
 
-        // 2️⃣ Save inside applications → splt → applicants → uploads (subcollection)
+        // 2️⃣ Save inside submissions → uploads (subcollection)
         await applicantUploadsRef.doc(safeTitle).set(uploadData, SetOptions(merge: true));
 
         // 3️⃣ Reset reuploadAllowed in uploads field
@@ -439,22 +560,25 @@ class _SPLTFormPageState extends State<SPLTFormPage> {
         uploadedFiles[title]!["file"] = null; // Clear the selected file
       }
 
-      // Update applicant document with metadata and reset reuploadAllowed
-      if (uploadsFieldUpdates.isNotEmpty) {
-        await applicantDoc.update(uploadsFieldUpdates);
-      }
-      
-      await applicantDoc.set({
+      // Update submission document
+      await submissionDoc.set({
         'applicantName': widget.applicantName,
-        'uploadedAt': FieldValue.serverTimestamp(),
+        'status': 'submitted',
+        'submittedAt': FieldValue.serverTimestamp(),
+        ...uploadsFieldUpdates,
       }, SetOptions(merge: true));
 
-      // Update main summary document
-      final applicantsSnapshot = await appDoc.collection('applicants').get();
-      final uploadedCount = applicantsSnapshot.docs.length;
-
-      await appDoc.set({
-        'uploadedCount': uploadedCount,
+      // Update applicant document count
+      final applicantDoc = firestore
+          .collection('applications')
+          .doc('splt')
+          .collection('applicants')
+          .doc(widget.applicantId);
+      
+      final submissionsSnapshot = await applicantDoc.collection('submissions').get();
+      await applicantDoc.set({
+        'applicantName': widget.applicantName,
+        'submissionsCount': submissionsSnapshot.docs.length,
         'lastUpdated': FieldValue.serverTimestamp(),
       }, SetOptions(merge: true));
 
@@ -689,11 +813,98 @@ class _SPLTFormPageState extends State<SPLTFormPage> {
         backgroundColor: Colors.green,
         foregroundColor: Colors.white,
       ),
-      body: SingleChildScrollView(
+      body: _isLoadingSubmissions
+          ? const Center(child: CircularProgressIndicator())
+          : SingleChildScrollView(
         padding: const EdgeInsets.all(16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            // Submission Selector
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: Colors.green[50],
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: Colors.green[200]!),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Row(
+                        children: [
+                          Icon(Icons.folder_open, color: Colors.green[700], size: 24),
+                          const SizedBox(width: 8),
+                          Text(
+                            'Your Submissions',
+                            style: TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.green[900],
+                            ),
+                          ),
+                        ],
+                      ),
+                      ElevatedButton.icon(
+                        onPressed: _createNewSubmission,
+                        icon: const Icon(Icons.add, size: 18),
+                        label: const Text('New'),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.green[700],
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  if (_existingSubmissions.isEmpty)
+                    const Text('No submissions yet.')
+                  else
+                    DropdownButtonFormField<String>(
+                      value: _currentSubmissionId,
+                      decoration: InputDecoration(
+                        labelText: 'Select Submission',
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                        filled: true,
+                        fillColor: Colors.white,
+                      ),
+                      items: _existingSubmissions.map((submission) {
+                        return DropdownMenuItem<String>(
+                          value: submission['id'] as String,
+                          child: Row(
+                            children: [
+                              Icon(
+                                submission['status'] == 'submitted'
+                                    ? Icons.check_circle
+                                    : Icons.edit_note,
+                                color: submission['status'] == 'submitted'
+                                    ? Colors.green
+                                    : Colors.orange,
+                                size: 18,
+                              ),
+                              const SizedBox(width: 8),
+                              Text(
+                                '${submission['id']} (${submission['uploadsCount']} files)',
+                                style: const TextStyle(fontSize: 14),
+                              ),
+                            ],
+                          ),
+                        );
+                      }).toList(),
+                      onChanged: (value) {
+                        if (value != null) {
+                          _switchSubmission(value);
+                        }
+                      },
+                    ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 16),
             const Text(
               'Issuance of Special Private Land Timber Permit (SPLTP) for Premium/Naturally Grown Trees Within Private/Titled Lands',
               style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),

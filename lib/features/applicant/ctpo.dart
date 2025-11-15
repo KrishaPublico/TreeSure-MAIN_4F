@@ -33,6 +33,10 @@ class PdfPreviewPage extends StatelessWidget {
   }
 }
 class _CTPOUploadPageState extends State<CTPOUploadPage> {
+  String? _currentSubmissionId;
+  List<Map<String, dynamic>> _existingSubmissions = [];
+  bool _isLoadingSubmissions = true;
+  
   final List<Map<String, String>> formLabels = [
     {
       "title": "Letter of Application",
@@ -84,9 +88,6 @@ class _CTPOUploadPageState extends State<CTPOUploadPage> {
   // Store all available templates
   List<Map<String, dynamic>> _availableTemplates = [];
 
-  // New flag: when true, all titles should be shown in green (after successful submit)
-  bool _allSubmitted = false;
-
   @override
   void initState() {
     super.initState();
@@ -97,9 +98,112 @@ class _CTPOUploadPageState extends State<CTPOUploadPage> {
         "fileName": null
       };
     }
-    _loadExistingUploads();
-    _loadDocumentComments();
+    _loadSubmissions();
     _loadApplicationTemplates();
+  }
+
+  /// Load all submissions for this applicant
+  Future<void> _loadSubmissions() async {
+    setState(() => _isLoadingSubmissions = true);
+    try {
+      final submissionsSnapshot = await FirebaseFirestore.instance
+          .collection('applications')
+          .doc('ctpo')
+          .collection('applicants')
+          .doc(widget.applicantId)
+          .collection('submissions')
+          .orderBy('createdAt', descending: true)
+          .get();
+      
+      setState(() {
+        _existingSubmissions = submissionsSnapshot.docs.map((doc) {
+          final data = doc.data();
+          return {
+            'id': doc.id,
+            'createdAt': data['createdAt'],
+            'status': data['status'] ?? 'pending',
+            'uploadsCount': (data['uploads'] as Map?)?.length ?? 0,
+          };
+        }).toList();
+        _isLoadingSubmissions = false;
+      });
+      
+      // If no submissions exist, create the first one
+      if (_existingSubmissions.isEmpty) {
+        await _createNewSubmission();
+      } else {
+        // Load the most recent submission by default
+        _currentSubmissionId = _existingSubmissions.first['id'];
+        await _loadExistingUploads();
+        await _loadDocumentComments();
+      }
+    } catch (e) {
+      print('❌ Error loading submissions: $e');
+      setState(() => _isLoadingSubmissions = false);
+    }
+  }
+  
+  /// Create a new submission for this applicant
+  Future<void> _createNewSubmission() async {
+    try {
+      final submissionCount = _existingSubmissions.length + 1;
+      final newSubmissionId = 'CTPO-${widget.applicantId}-${submissionCount.toString().padLeft(3, '0')}';
+      
+      final submissionRef = FirebaseFirestore.instance
+          .collection('applications')
+          .doc('ctpo')
+          .collection('applicants')
+          .doc(widget.applicantId)
+          .collection('submissions')
+          .doc(newSubmissionId);
+      
+      await submissionRef.set({
+        'applicantName': widget.applicantName,
+        'createdAt': FieldValue.serverTimestamp(),
+        'status': 'draft',
+        'uploads': {},
+      });
+      
+      setState(() {
+        _currentSubmissionId = newSubmissionId;
+        _existingSubmissions.insert(0, {
+          'id': newSubmissionId,
+          'createdAt': Timestamp.now(),
+          'status': 'draft',
+          'uploadsCount': 0,
+        });
+      });
+      
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('New submission created: $newSubmissionId')),
+        );
+      }
+    } catch (e) {
+      print('❌ Error creating submission: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error creating submission: $e')),
+        );
+      }
+    }
+  }
+  
+  /// Switch to a different submission
+  Future<void> _switchSubmission(String submissionId) async {
+    setState(() {
+      _currentSubmissionId = submissionId;
+      // Clear current uploads
+      for (final label in formLabels) {
+        uploadedFiles[label["title"]!] = {
+          "file": null,
+          "url": null,
+          "fileName": null
+        };
+      }
+    });
+    await _loadExistingUploads();
+    await _loadDocumentComments();
   }
 
   /// Load application-level templates from Firestore
@@ -131,13 +235,17 @@ class _CTPOUploadPageState extends State<CTPOUploadPage> {
     }
   }
 
-  /// Load already uploaded files (from applications → ctpo → applicants → uploads)
+  /// Load already uploaded files (from applications → ctpo → applicants → submissions → uploads)
   Future<void> _loadExistingUploads() async {
+    if (_currentSubmissionId == null) return;
+    
     final uploadsRef = FirebaseFirestore.instance
         .collection('applications')
         .doc('ctpo')
         .collection('applicants')
         .doc(widget.applicantId)
+        .collection('submissions')
+        .doc(_currentSubmissionId!)
         .collection('uploads');
     final snapshot = await uploadsRef.get();
     for (final doc in snapshot.docs) {
@@ -167,12 +275,16 @@ class _CTPOUploadPageState extends State<CTPOUploadPage> {
 
   /// Load comments per document from uploads subcollection
   Future<void> _loadDocumentComments() async {
+    if (_currentSubmissionId == null) return;
+    
     try {
       final uploadsRef = FirebaseFirestore.instance
           .collection('applications')
           .doc('ctpo')
           .collection('applicants')
           .doc(widget.applicantId)
+          .collection('submissions')
+          .doc(_currentSubmissionId!)
           .collection('uploads');
       final uploadsSnapshot = await uploadsRef.get();
       print("📄 Found ${uploadsSnapshot.docs.length} upload documents");
@@ -295,19 +407,30 @@ class _CTPOUploadPageState extends State<CTPOUploadPage> {
 
   /// Upload a single file immediately
   Future<void> uploadSingleFile(String title, PlatformFile file) async {
+    if (_currentSubmissionId == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('No submission selected')),
+      );
+      return;
+    }
+    
     setState(() => _isUploading = true);
     try {
       final firestore = FirebaseFirestore.instance;
       final storage = FirebaseStorage.instance;
 
-      final appDoc = firestore.collection('applications').doc('ctpo');
-      final applicantDoc =
-          appDoc.collection('applicants').doc(widget.applicantId);
+      final submissionDoc = firestore
+          .collection('applications')
+          .doc('ctpo')
+          .collection('applicants')
+          .doc(widget.applicantId)
+          .collection('submissions')
+          .doc(_currentSubmissionId!);
       final userUploadsRef = firestore
           .collection('users')
           .doc(widget.applicantId)
           .collection('ctpo_uploads');
-      final applicantUploadsRef = applicantDoc.collection('uploads');
+      final applicantUploadsRef = submissionDoc.collection('uploads');
 
       final safeTitle = title.replaceAll(RegExp(r'[.#$/\[\]]'), '-').trim();
       final fileName = "${DateTime.now().millisecondsSinceEpoch}_${file.name}";
@@ -339,8 +462,9 @@ class _CTPOUploadPageState extends State<CTPOUploadPage> {
           .doc(safeTitle)
           .set(uploadData, SetOptions(merge: true));
 
-      await applicantDoc.set({
+      await submissionDoc.set({
         'uploads.$safeTitle.reuploadAllowed': false,
+        'lastUpdated': FieldValue.serverTimestamp(),
       }, SetOptions(merge: true));
 
       uploadedFiles[title]!["url"] = url;
@@ -368,19 +492,30 @@ class _CTPOUploadPageState extends State<CTPOUploadPage> {
 
   /// Handles all uploads and synchronization (hybrid write)
   Future<void> handleSubmit() async {
+    if (_currentSubmissionId == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('No submission selected')),
+      );
+      return;
+    }
+    
     setState(() => _isUploading = true);
     try {
       final firestore = FirebaseFirestore.instance;
       final storage = FirebaseStorage.instance;
 
-      final appDoc = firestore.collection('applications').doc('ctpo');
-      final applicantDoc =
-          appDoc.collection('applicants').doc(widget.applicantId);
+      final submissionDoc = firestore
+          .collection('applications')
+          .doc('ctpo')
+          .collection('applicants')
+          .doc(widget.applicantId)
+          .collection('submissions')
+          .doc(_currentSubmissionId!);
       final userUploadsRef = firestore
           .collection('users')
           .doc(widget.applicantId)
           .collection('ctpo_uploads');
-      final applicantUploadsRef = applicantDoc.collection('uploads');
+      final applicantUploadsRef = submissionDoc.collection('uploads');
 
       Map<String, dynamic> uploadsFieldUpdates = {};
 
@@ -428,21 +563,29 @@ class _CTPOUploadPageState extends State<CTPOUploadPage> {
       }
 
       if (uploadsFieldUpdates.isNotEmpty) {
-        await applicantDoc.set(uploadsFieldUpdates, SetOptions(merge: true));
+        await submissionDoc.set(uploadsFieldUpdates, SetOptions(merge: true));
       }
 
       await _loadDocumentComments();
       await _loadExistingUploads();
 
-      await applicantDoc.set({
+      await submissionDoc.set({
         'applicantName': widget.applicantName,
-        'uploadedAt': FieldValue.serverTimestamp(),
+        'status': 'submitted',
+        'submittedAt': FieldValue.serverTimestamp(),
       }, SetOptions(merge: true));
 
-      final applicantsSnapshot = await appDoc.collection('applicants').get();
-      final uploadedCount = applicantsSnapshot.docs.length;
-      await appDoc.set({
-        'uploadedCount': uploadedCount,
+      // Update the applicant document count
+      final applicantDoc = firestore
+          .collection('applications')
+          .doc('ctpo')
+          .collection('applicants')
+          .doc(widget.applicantId);
+      
+      final submissionsSnapshot = await applicantDoc.collection('submissions').get();
+      await applicantDoc.set({
+        'applicantName': widget.applicantName,
+        'submissionsCount': submissionsSnapshot.docs.length,
         'lastUpdated': FieldValue.serverTimestamp(),
       }, SetOptions(merge: true));
 
@@ -519,8 +662,8 @@ class _CTPOUploadPageState extends State<CTPOUploadPage> {
                   if (isUploaded)
                     TextButton(
                       onPressed: () async {
-                        if (url != null && fileName != null) {
-                          final ext = fileName.split('.').last.toLowerCase();
+                        if (url != null) {
+                          final ext = fileName?.split('.').last.toLowerCase() ?? '';
 
                           if (ext == 'pdf') {
                             // Preview PDF in-app
@@ -673,12 +816,99 @@ class _CTPOUploadPageState extends State<CTPOUploadPage> {
           style: TextStyle(color: Colors.white),
         ),
       ),
-      body: SingleChildScrollView(
+      body: _isLoadingSubmissions
+          ? const Center(child: CircularProgressIndicator())
+          : SingleChildScrollView(
         padding: const EdgeInsets.all(16.0),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             const SizedBox(height: 8),
+            // Submission Selector Section
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: Colors.green[50],
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: Colors.green[200]!),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Row(
+                        children: [
+                          Icon(Icons.folder_open, color: Colors.green[700], size: 24),
+                          const SizedBox(width: 8),
+                          Text(
+                            'Your Submissions',
+                            style: TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.green[900],
+                            ),
+                          ),
+                        ],
+                      ),
+                      ElevatedButton.icon(
+                        onPressed: _createNewSubmission,
+                        icon: const Icon(Icons.add, size: 18),
+                        label: const Text('New'),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.green[700],
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  if (_existingSubmissions.isEmpty)
+                    const Text('No submissions yet. Click "New" to create one.')
+                  else
+                    DropdownButtonFormField<String>(
+                      value: _currentSubmissionId,
+                      decoration: InputDecoration(
+                        labelText: 'Select Submission',
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                        filled: true,
+                        fillColor: Colors.white,
+                      ),
+                      items: _existingSubmissions.map((submission) {
+                        return DropdownMenuItem<String>(
+                          value: submission['id'] as String,
+                          child: Row(
+                            children: [
+                              Icon(
+                                submission['status'] == 'submitted'
+                                    ? Icons.check_circle
+                                    : Icons.edit_note,
+                                color: submission['status'] == 'submitted'
+                                    ? Colors.green
+                                    : Colors.orange,
+                                size: 18,
+                              ),
+                              const SizedBox(width: 8),
+                              Text(
+                                '${submission['id']} (${submission['uploadsCount']} files)',
+                                style: const TextStyle(fontSize: 14),
+                              ),
+                            ],
+                          ),
+                        );
+                      }).toList(),
+                      onChanged: (value) {
+                        if (value != null) {
+                          _switchSubmission(value);
+                        }
+                      },
+                    ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 16),
             // Available Templates Section
             if (_availableTemplates.isNotEmpty) ...[
               Container(

@@ -4,6 +4,7 @@ import 'package:treesure_app/features/applicant/CuttingPermit.dart';
 import 'package:treesure_app/features/applicant/testQR.dart'; // ✅ Correct import
 import 'package:treesure_app/features/applicant/cov.dart  ';
 import 'package:treesure_app/features/applicant/chainsawreg.dart';
+
 class ApplicantHomepage extends StatelessWidget {
   final String applicantId; // comes from login
   final String applicantName; // comes from login
@@ -42,8 +43,8 @@ class ApplicantHomepage extends StatelessWidget {
                         const CircleAvatar(
                           radius: 30,
                           backgroundColor: Colors.white,
-                          child: Icon(Icons.person,
-                              size: 40, color: Colors.green),
+                          child:
+                              Icon(Icons.person, size: 40, color: Colors.green),
                         ),
                         const SizedBox(height: 8),
                         Text(
@@ -68,21 +69,21 @@ class ApplicantHomepage extends StatelessWidget {
                 ),
 
                 // ✅ Clickable QR icon → Navigates to ApplicantTreeMapping
-            Positioned(
-                bottom: -25,
-                left: 0,
-                right: 0,
-                child: Center(
-                  child: GestureDetector(
-                    onTap: () {
-                      // Navigate to QR scanner screen when tapped
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (context) => const QrUploadScanner(),
-                        ),
-                      );
-                    },
+                Positioned(
+                  bottom: -25,
+                  left: 0,
+                  right: 0,
+                  child: Center(
+                    child: GestureDetector(
+                      onTap: () {
+                        // Navigate to QR scanner screen when tapped
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) => const QrUploadScanner(),
+                          ),
+                        );
+                      },
                       child: Container(
                         decoration: BoxDecoration(
                           color: Colors.green,
@@ -197,15 +198,14 @@ class ApplicantHomepage extends StatelessWidget {
                   _buildApplicantPermitButton(
                     context,
                     "Transport Permit",
-              
-                Icons.description,
+                    Icons.description,
                     () {
                       Navigator.push(
                         context,
                         MaterialPageRoute(
                           builder: (context) => CovFormPage(
+                            applicantName: applicantName,
                             applicantId: applicantId,
-                       
                           ),
                         ),
                       );
@@ -213,23 +213,23 @@ class ApplicantHomepage extends StatelessWidget {
                   ),
                   const SizedBox(height: 8),
 
-_buildApplicantPermitButton(
-  context,
-  "Chainsaw Registration",
-  Icons.description,
-  () {
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (context) => ChainsawRegistrationPage(
-          applicantId: applicantId, // Pass the applicantId here
-        ),
-      ),
-    );
-  },
-),
-
-
+                  _buildApplicantPermitButton(
+                    context,
+                    "Chainsaw Registration",
+                    Icons.description,
+                    () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => ChainsawRegistrationPage(
+                            applicantName: applicantName,
+                            applicantId:
+                                applicantId, // Pass the applicantId here
+                          ),
+                        ),
+                      );
+                    },
+                  ),
 
                   const SizedBox(height: 30),
                 ],
@@ -290,8 +290,8 @@ _buildApplicantPermitButton(
   }
 
   // Permit Button Widget
-  Widget _buildApplicantPermitButton(
-      BuildContext context, String title, IconData icon, VoidCallback onPressed) {
+  Widget _buildApplicantPermitButton(BuildContext context, String title,
+      IconData icon, VoidCallback onPressed) {
     return SizedBox(
       width: double.infinity,
       child: ElevatedButton(
