@@ -2,6 +2,8 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:treesure_app/features/navbars/applicant_navbar.dart';
 import 'package:treesure_app/features/navbars/forester_navbar.dart';
+import 'package:treesure_app/features/signup/signup_page.dart';
+import '../roles/roles_page.dart'; // ✅ Import RolePage for back navigation
 
 class LoginPage extends StatefulWidget {
   final String role; // Role passed from RolePage
@@ -32,7 +34,6 @@ class _LoginPageState extends State<LoginPage> {
     }
 
     try {
-      // Query Firestore for this username
       final query = await FirebaseFirestore.instance
           .collection('users')
           .where('username', isEqualTo: email)
@@ -43,14 +44,15 @@ class _LoginPageState extends State<LoginPage> {
       if (query.docs.isNotEmpty) {
         final doc = query.docs.first;
         final userData = doc.data();
-
         final String dbRole = userData['role'] ?? "Unknown";
 
         if (dbRole.toLowerCase() == widget.role.toLowerCase()) {
-          // ✅ Role matches → Navigate to correct navbar
           if (dbRole == "Forester") {
-            final String foresterId = doc.id; // Document ID
+            final String foresterId = doc.id;
             final String foresterName = userData['name'] ?? "Unknown Forester";
+
+            final String applicantName =
+                userData['assignedApplicantName'] ?? "Unknown Applicant";
 
             Navigator.pushReplacement(
               context,
@@ -62,20 +64,21 @@ class _LoginPageState extends State<LoginPage> {
               ),
             );
           } else if (dbRole == "Applicant") {
-            final String applicantId = doc.id; // Document ID
-            final String applicantName = userData['name'] ?? "Unknown Forester";
+            final String applicantId = doc.id;
+            final String applicantName =
+                userData['name'] ?? "Unknown Applicant";
 
             Navigator.pushReplacement(
               context,
               MaterialPageRoute(
-                  builder: (_) => ApplicantNavbar(
-                        applicantId: applicantId,
-                        applicantName: applicantName,
-                      )),
+                builder: (_) => ApplicantNavbar(
+                  applicantId: applicantId,
+                  applicantName: applicantName,
+                ),
+              ),
             );
           }
         } else {
-          // ❌ Wrong role
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
               content:
@@ -85,7 +88,6 @@ class _LoginPageState extends State<LoginPage> {
           );
         }
       } else {
-        // ❌ Invalid credentials
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text("Invalid username or password."),
@@ -107,28 +109,51 @@ class _LoginPageState extends State<LoginPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.white,
+      appBar: AppBar(
+        title: const Text("Log In"),
+        titleTextStyle: const TextStyle(
+          color: Colors.white,
+          fontSize: 20,
+          fontWeight: FontWeight.bold,
+        ),
+        backgroundColor: Colors.green.shade800,
+        iconTheme: const IconThemeData(
+          color: Colors.white,
+        ),
+      ),
       body: Center(
-        child: Padding(
+        child: SingleChildScrollView(
           padding: const EdgeInsets.symmetric(horizontal: 30),
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
+              // Logo
+              Image.asset(
+                "assets/treesurelogo.png",
+                height: 120,
+              ),
+              const SizedBox(height: 20),
+
+              // Dynamic Title
               Text(
-                "TreeSure - ${widget.role} Login",
+                " ${widget.role}",
                 style: TextStyle(
-                  fontSize: 32,
+                  fontSize: 30,
+                  fontFamily: 'Poppins',
                   fontWeight: FontWeight.bold,
                   color: Colors.green[900],
                 ),
+                textAlign: TextAlign.center,
               ),
+
               const SizedBox(height: 30),
 
-              // Email
+              // Username Field
               TextFormField(
                 controller: _emailController,
                 decoration: InputDecoration(
                   prefixIcon: const Icon(Icons.email, color: Colors.white),
-                  hintText: "Email / Username",
+                  hintText: "Username",
                   filled: true,
                   fillColor: Colors.green,
                   hintStyle: const TextStyle(color: Colors.white),
@@ -141,7 +166,7 @@ class _LoginPageState extends State<LoginPage> {
               ),
               const SizedBox(height: 15),
 
-              // Password
+              // Password Field
               TextFormField(
                 controller: _passwordController,
                 obscureText: _obscurePassword,
@@ -188,6 +213,30 @@ class _LoginPageState extends State<LoginPage> {
                   style: TextStyle(fontSize: 18, color: Colors.white),
                 ),
               ),
+
+              const SizedBox(height: 10),
+
+              // ✅ Show Sign Up button only if NOT Forester
+              if (widget.role.toLowerCase() != 'forester')
+                TextButton(
+                  onPressed: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => SignupPage(role: widget.role),
+                      ),
+                    );
+                  },
+                  child: const Text(
+                    "Don’t have an account? Sign Up",
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontFamily: 'Poppins',
+                      fontWeight: FontWeight.bold,
+                      color: Colors.green,
+                    ),
+                  ),
+                ),
             ],
           ),
         ),

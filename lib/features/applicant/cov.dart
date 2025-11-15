@@ -1,22 +1,21 @@
 import 'dart:io';
-import 'package:flutter/foundation.dart' show kIsWeb;
-import 'package:flutter/material.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:firebase_storage/firebase_storage.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
 import 'package:path/path.dart' as path;
-import 'package:url_launcher/url_launcher.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:syncfusion_flutter_pdfviewer/pdfviewer.dart';
 
-class SPLTFormPage extends StatefulWidget {
+class CovFormPage extends StatefulWidget {
   final String applicantId;
-  final String applicantName;
-  const SPLTFormPage(
-      {super.key, required this.applicantId, required this.applicantName});
+
+  const CovFormPage({Key? key, required this.applicantId}) : super(key: key);
+
 
   @override
-  _SPLTFormPageState createState() => _SPLTFormPageState();
+  _CovFormPageState createState() => _CovFormPageState();
 }
 
 
@@ -32,77 +31,49 @@ class PdfPreviewPage extends StatelessWidget {
     );
   }
 }
-class _SPLTFormPageState extends State<SPLTFormPage> {
+class _CovFormPageState extends State<CovFormPage> {
+  final _formKey = GlobalKey<FormState>();
+
+
+  /// List of documents required for COV (title and short description)
   final List<Map<String, String>> formLabels = [
-    {"title": "Application Letter", "description": "(1 original)"},
-    {
-      "title": "LGU Endorsement/Certification of No Objection",
-      "description": "(1 original)"
-    },
-    {
-      "title":
-          "Endorsement from concerned LGU interposing no objection to the cutting of trees under the following conditions",
-      "description": "(1 original)"
-    },
-    {
-      "title":
-          "If the trees to be cut fall within one barangay, an endorsement from the Barangay Captain shall be secured",
-      "description": ""
-    },
-    {
-      "title":
-          "If the trees to be cut fall within more than one barangay, endorsement shall be secured either from the Municipal/City Mayor or all the Barangay Captains concerned",
-      "description": ""
-    },
-    {
-      "title":
-          "If the trees to be cut fall within more than one municipality/city, endorsement shall be secured either from the Provincial Governor or all the Municipality/City Mayors concerned",
-      "description": ""
-    },
-    {
-      "title":
-          "Environmental Compliance Certificate (ECC)/Certificate of Non-Coverage (CNC)",
-      "description": "If applicable."
-    },
-    {
-      "title": "Utilization Plan",
-      "description":
-          "Required if the application covers ten (10) hectares or larger — must show at least 50% of the area covered with forest trees (1 original)."
-    },
-    {
-      "title": "Endorsement by Local Agrarian Reform Officer",
-      "description":
-          "Required if covered by CLOA — interposing no objection (1 original)."
-    },
-    {
-      "title": "PTA/Organization Resolution",
-      "description":
-          "Required if school or organization — resolution of no objection and reason for cutting (1 original)."
-    },
+    {"title": "Request Letter", "description": "(1 original, 1 photocopy)"},
+    {"title": "Barangay Certificate (for non-timber)", "description": "(1 original)"},
+    {"title": "Certification that forest products are harvested within owner's area", "description": "(for timber)"},
+    {"title": "Approved Tree Cutting Permit", "description": "(if applicable)"},
+    {"title": "OR/CR of Conveyance and Driver's License", "description": ""},
+    {"title": "Certificate of Transport Agreement", "description": "(if conveyance not owned by forest product owner)"},
+    {"title": "Special Power of Attorney (SPA)", "description": "(if applicant is not land owner)"},
   ];
 
+  /// Local state to keep selected file objects and uploaded urls
   final Map<String, Map<String, dynamic>> uploadedFiles = {};
   bool _isUploading = false;
-  Map<String, Map<String, dynamic>> _documentComments = {}; // Per-document comments
-  List<Map<String, dynamic>> _availableTemplates = []; // ✅ Store all available templates
+
+  /// Comments and flags per document
+  Map<String, Map<String, dynamic>> _documentComments = {};
+
+  /// Templates available for the application (optional)
+  List<Map<String, dynamic>> _availableTemplates = [];
 
   @override
   void initState() {
     super.initState();
     for (final label in formLabels) {
-      uploadedFiles[label["title"]!] = {"file": null, "url": null};
+      uploadedFiles[label['title']!] = {"file": null, "url": null};
     }
+
     _loadExistingUploads();
     _loadDocumentComments();
-    _loadApplicationTemplates(); // ✅ Load application-level templates
+    _loadApplicationTemplates();
   }
 
-  /// ✅ Load application-level templates from Firestore
+  /// Load templates saved under applications/cov/templates
   Future<void> _loadApplicationTemplates() async {
     try {
       final templatesSnapshot = await FirebaseFirestore.instance
           .collection('applications')
-          .doc('splt')
+          .doc('cov')
           .collection('templates')
           .get();
 
@@ -120,73 +91,68 @@ class _SPLTFormPageState extends State<SPLTFormPage> {
             };
           }).toList();
         });
-        print("✅ Loaded ${_availableTemplates.length} templates for SPLT");
       }
     } catch (e) {
-      print("❌ Error loading application templates: $e");
+      debugPrint('Error loading templates: $e');
     }
   }
 
+  /// Load already uploaded file metadata for this applicant
   Future<void> _loadExistingUploads() async {
-    final uploadsRef = FirebaseFirestore.instance
-        .collection('applications')
-        .doc('splt')
-        .collection('applicants')
-        .doc(widget.applicantId)
-        .collection('uploads');
+    try {
+      final uploadsRef = FirebaseFirestore.instance
+          .collection('applications')
+          .doc('cov')
+          .collection('applicants')
+          .doc(widget.applicantId)
+          .collection('uploads');
 
-    final snapshot = await uploadsRef.get();
-    
-    for (final doc in snapshot.docs) {
-      final data = doc.data();
-      final docId = doc.id; // Document ID (e.g., "Letter of Application")
-      final url = data['url'] as String?;
-      
-      // Try exact match first
-      if (uploadedFiles.containsKey(docId)) {
-        uploadedFiles[docId]!["url"] = url;
-        continue;
-      }
-      
-      // Match document ID to form label titles
-      for (final label in formLabels) {
-        final title = label["title"]!;
-        final safeTitle = title.replaceAll(RegExp(r'[.#$/\[\]]'), '-').trim();
-        
-        if (docId == safeTitle || docId == title) {
-          uploadedFiles[title]!["url"] = url;
-          break;
+      final snapshot = await uploadsRef.get();
+
+      for (final doc in snapshot.docs) {
+        final data = doc.data();
+        final docId = doc.id; 
+        final url = data['url'] as String?;
+
+        if (uploadedFiles.containsKey(docId)) {
+          uploadedFiles[docId]!['url'] = url;
+          continue;
+        }
+
+        for (final label in formLabels) {
+          final title = label['title']!;
+          final safeTitle = title.replaceAll(RegExp(r'[.#$/\[\]]'), '-').trim();
+          if (docId == safeTitle || docId == title) {
+            uploadedFiles[title]!['url'] = url;
+            break;
+          }
         }
       }
+
+      if (mounted) setState(() {});
+    } catch (e) {
+      debugPrint('Error loading existing uploads: $e');
     }
-    setState(() {});
   }
 
-  /// Load document-specific comments from uploads subcollection
+  /// Load the most recent comment and reuploadAllowed flag for each document
   Future<void> _loadDocumentComments() async {
     try {
       final uploadsRef = FirebaseFirestore.instance
           .collection('applications')
-          .doc('splt')
+          .doc('cov')
           .collection('applicants')
           .doc(widget.applicantId)
           .collection('uploads');
 
       final uploadsSnapshot = await uploadsRef.get();
-      
-      print("📄 Found ${uploadsSnapshot.docs.length} upload documents");
-      
-      final Map<String, Map<String, dynamic>> tempComments = {};
 
       for (final uploadDoc in uploadsSnapshot.docs) {
         final docKey = uploadDoc.id;
         final docData = uploadDoc.data();
 
         final reuploadAllowed = docData['reuploadAllowed'] as bool? ?? false;
-        
-        print("📄 Processing document: $docKey, reuploadAllowed: $reuploadAllowed");
 
-        // Get comments from the subcollection
         final commentsSnapshot = await uploadDoc.reference
             .collection('comments')
             .orderBy('createdAt', descending: true)
@@ -196,142 +162,116 @@ class _SPLTFormPageState extends State<SPLTFormPage> {
         Map<String, dynamic>? mostRecentComment;
         if (commentsSnapshot.docs.isNotEmpty) {
           mostRecentComment = commentsSnapshot.docs.first.data();
-          print("📄 Most recent comment: ${mostRecentComment['message']}");
         }
 
-        // Find matching form title (exact match or sanitized)
         String? matchingTitle;
-        for (final label in formLabels) {
-          final title = label["title"]!;
-          final sanitizedTitle = title.replaceAll(RegExp(r'[^\w\s]+'), '');
-          if (docKey == title || docKey == sanitizedTitle) {
-            matchingTitle = title;
-            break;
+        if (uploadedFiles.containsKey(docKey)) {
+          matchingTitle = docKey;
+        } else {
+          for (final label in formLabels) {
+            final title = label['title']!;
+            final safeTitle = title.replaceAll(RegExp(r'[.#$/\[\]]'), '-').trim();
+            if (docKey == safeTitle) {
+              matchingTitle = title;
+              break;
+            }
           }
         }
 
         if (matchingTitle != null) {
-          tempComments[matchingTitle] = {
+          _documentComments[matchingTitle] = {
             'reuploadAllowed': reuploadAllowed,
-            'comment': mostRecentComment != null ? {
-              'message': mostRecentComment['message'] as String? ?? '',
-              'from': mostRecentComment['from'] as String? ?? 'Admin',
-              'createdAt': _parseCommentTimestamp(mostRecentComment['createdAt']),
-            } : null,
+            'from': mostRecentComment?['from'] as String? ?? 'Admin',
+            'message': mostRecentComment?['message'] as String? ?? '',
+            'createdAt': _parseCommentTimestamp(mostRecentComment?['createdAt']),
           };
         }
       }
 
-      setState(() {
-        _documentComments = tempComments;
-      });
+      if (mounted) setState(() {});
     } catch (e) {
-      print("Error loading document comments: $e");
+      debugPrint('Error loading document comments: $e');
     }
   }
 
-  /// Parse comment timestamp (can be Timestamp or String)
   Timestamp? _parseCommentTimestamp(dynamic timestamp) {
     if (timestamp == null) return null;
-    
-    if (timestamp is Timestamp) {
-      return timestamp;
-    }
-    
-    // If it's a string like "November 11, 2025 at 10:55:18 AM UTC+8"
+    if (timestamp is Timestamp) return timestamp;
     if (timestamp is String) {
       try {
-        // Remove UTC timezone info and parse
-        final cleanedStr = timestamp
-            .replaceAll(RegExp(r'\s*at\s*'), ' ')
-            .replaceAll(RegExp(r'\s*UTC[+-]\d+$'), '');
-        final dateTime = DateTime.parse(cleanedStr);
+        final dateTime = DateTime.parse(timestamp);
         return Timestamp.fromDate(dateTime);
-      } catch (e) {
-        print("Error parsing timestamp string: $e");
+      } catch (_) {
         return null;
       }
     }
-    
     return null;
   }
 
-  /// Selects a file and automatically uploads it (for reupload scenario)
   Future<void> pickFile(String title) async {
     try {
-      FilePickerResult? result = await FilePicker.platform.pickFiles(
+      final result = await FilePicker.platform.pickFiles(
         type: FileType.custom,
         allowedExtensions: ['pdf', 'doc', 'docx'],
         withData: true,
       );
-
       if (result == null) return;
-      final PlatformFile file = result.files.single;
-      final ext = path.extension(file.name).toLowerCase();
 
+      final file = result.files.single;
+      final ext = path.extension(file.name).toLowerCase();
       if (!['.pdf', '.doc', '.docx'].contains(ext)) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text("Please upload only PDF or DOC files.")),
-        );
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Please upload only PDF or DOC files.')),
+          );
+        }
         return;
       }
 
-      // Check if this is a reupload (file already uploaded)
-      final isReupload = uploadedFiles[title]!["url"] != null;
-      
+      final isReupload = uploadedFiles[title]!['url'] != null;
+
       if (isReupload) {
-        // Auto-upload immediately for reuploads
         await uploadSingleFile(title, file);
       } else {
-        // For initial uploads, just store the file
         setState(() {
-          uploadedFiles[title]!["file"] = file;
+          uploadedFiles[title]!['file'] = file;
         });
       }
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text("Error selecting file: $e")),
-      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error selecting file: $e')));
+      }
     }
   }
 
-  /// Upload a single file immediately
   Future<void> uploadSingleFile(String title, PlatformFile file) async {
     setState(() => _isUploading = true);
-
     try {
       final firestore = FirebaseFirestore.instance;
       final storage = FirebaseStorage.instance;
 
-      // References
-      final appDoc = firestore.collection('applications').doc('splt');
-      final applicantDoc = appDoc.collection('applicants').doc(widget.applicantId);
-      final userUploadsRef = firestore
-          .collection('users')
-          .doc(widget.applicantId)
-          .collection('splt_uploads');
+      final applicantDoc = firestore.collection('applications').doc('cov').collection('applicants').doc(widget.applicantId);
+      final userUploadsRef = firestore.collection('users').doc(widget.applicantId).collection('cov_uploads');
       final applicantUploadsRef = applicantDoc.collection('uploads');
 
       final safeTitle = title.replaceAll(RegExp(r'[.#$/\[\]]'), '-').trim();
-      final fileName = "${DateTime.now().millisecondsSinceEpoch}_${file.name}";
-      final ref = storage.ref().child("splt_uploads/$fileName");
+      final fileName = '${DateTime.now().millisecondsSinceEpoch}_${file.name}';
+      final ref = storage.ref().child('cov_uploads/$fileName');
 
-      // Upload file
       UploadTask uploadTask;
       if (kIsWeb) {
         final bytes = file.bytes;
-        if (bytes == null) throw Exception("File bytes missing");
+        if (bytes == null) throw Exception('File bytes missing');
         uploadTask = ref.putData(bytes);
       } else {
         final pathStr = file.path;
-        if (pathStr == null) throw Exception("File path missing");
+        if (pathStr == null) throw Exception('File path missing');
         uploadTask = ref.putFile(File(pathStr));
       }
 
       await uploadTask.whenComplete(() {});
       final url = await ref.getDownloadURL();
 
-      // Save data structure
       final uploadData = {
         'title': title,
         'fileName': file.name,
@@ -339,146 +279,113 @@ class _SPLTFormPageState extends State<SPLTFormPage> {
         'uploadedAt': FieldValue.serverTimestamp(),
       };
 
-      // Save to all locations
       await userUploadsRef.doc(safeTitle).set(uploadData);
       await applicantUploadsRef.doc(safeTitle).set(uploadData, SetOptions(merge: true));
 
-      // Reset reuploadAllowed flag
-      await applicantDoc.set({
-        'uploads.$safeTitle.reuploadAllowed': false,
-      }, SetOptions(merge: true));
+      await applicantDoc.set({'uploads.$safeTitle.reuploadAllowed': false}, SetOptions(merge: true));
 
-      // Update local state
-      uploadedFiles[title]!["url"] = url;
-      uploadedFiles[title]!["file"] = null;
+      uploadedFiles[title]!['url'] = url;
+      uploadedFiles[title]!['file'] = null;
 
-      // Reload comments and uploads
       await _loadDocumentComments();
       await _loadExistingUploads();
 
       if (mounted) {
         setState(() => _isUploading = false);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text("$title uploaded successfully!")),
-        );
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$title uploaded successfully!')));
       }
     } catch (e) {
       if (mounted) {
         setState(() => _isUploading = false);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text("Error uploading file: $e")),
-        );
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error uploading file: $e')));
       }
     }
   }
 
-  /// Upload all selected files
-  Future<void> handleSubmit() async {
-    setState(() => _isUploading = true);
+ Future<void> handleSubmit() async {
+  setState(() => _isUploading = true);
 
-    try {
-      final firestore = FirebaseFirestore.instance;
-      final storage = FirebaseStorage.instance;
+  try {
+    final firestore = FirebaseFirestore.instance;
+    final storage = FirebaseStorage.instance;
 
-      // References
-      final appDoc = firestore.collection('applications').doc('splt');
-      final applicantDoc =
-          appDoc.collection('applicants').doc(widget.applicantId);
-      final userUploadsRef = firestore
-          .collection('users')
-          .doc(widget.applicantId)
-          .collection('splt_uploads');
-      final applicantUploadsRef = applicantDoc.collection('uploads');
+    final applicantDoc = firestore
+        .collection('applications')
+        .doc('cov')
+        .collection('applicants')
+        .doc(widget.applicantId);
 
-      // Prepare updates map for uploads field
-      Map<String, dynamic> uploadsFieldUpdates = {};
+    final userUploadsRef = firestore
+        .collection('users')
+        .doc(widget.applicantId)
+        .collection('cov_uploads');
 
-      // Upload files one by one
-      for (final entry in uploadedFiles.entries) {
-        final title = entry.key;
-        final file = entry.value["file"] as PlatformFile?;
-        if (file == null) continue;
+    final applicantUploadsRef = applicantDoc.collection('uploads');
 
-        final safeTitle = title.replaceAll(RegExp(r'[.#$/\[\]]'), '-').trim();
-        final fileName =
-            "${DateTime.now().millisecondsSinceEpoch}_${file.name}";
-        final ref = storage.ref().child("splt_uploads/$fileName");
+    Map<String, dynamic> uploadsFieldUpdates = {};
 
-        UploadTask uploadTask;
-        if (kIsWeb) {
-          final bytes = file.bytes;
-          if (bytes == null) throw Exception("File bytes missing");
-          uploadTask = ref.putData(bytes);
-        } else {
-          final pathStr = file.path;
-          if (pathStr == null) throw Exception("File path missing");
-          uploadTask = ref.putFile(File(pathStr));
-        }
+    for (final entry in uploadedFiles.entries) {
+      final title = entry.key;
+      final file = entry.value['file'] as PlatformFile?;
 
-        await uploadTask.whenComplete(() {});
-        final url = await ref.getDownloadURL();
+      if (file == null) continue;
 
-        // Save data structure
-        final uploadData = {
-          'title': title,
-          'fileName': file.name,
-          'url': url,
-          'uploadedAt': FieldValue.serverTimestamp(),
-        };
+      final safeTitle = title.replaceAll(RegExp(r'[.#$/\[\]]'), '-').trim();
+      final fileName = '${DateTime.now().millisecondsSinceEpoch}_${file.name}';
+      final ref = storage.ref().child('cov_uploads/$fileName');
 
-        // 1️⃣ Save inside user → splt_uploads
-        await userUploadsRef.doc(safeTitle).set(uploadData);
+      UploadTask uploadTask;
 
-        // 2️⃣ Save inside applications → splt → applicants → uploads (subcollection)
-        await applicantUploadsRef.doc(safeTitle).set(uploadData, SetOptions(merge: true));
-
-        // 3️⃣ Reset reuploadAllowed in uploads field
-        uploadsFieldUpdates['uploads.$safeTitle.reuploadAllowed'] = false;
-
-        uploadedFiles[title]!["url"] = url;
-        uploadedFiles[title]!["file"] = null; // Clear the selected file
+      if (kIsWeb) {
+        uploadTask = ref.putData(file.bytes!);
+      } else {
+        uploadTask = ref.putFile(File(file.path!));
       }
 
-      // Update applicant document with metadata and reset reuploadAllowed
-      if (uploadsFieldUpdates.isNotEmpty) {
-        await applicantDoc.update(uploadsFieldUpdates);
-      }
-      
-      await applicantDoc.set({
-        'applicantName': widget.applicantName,
+      await uploadTask.whenComplete(() {});
+      final url = await ref.getDownloadURL();
+
+      final uploadData = {
+        'title': title,
+        'fileName': file.name,
+        'url': url,
         'uploadedAt': FieldValue.serverTimestamp(),
-      }, SetOptions(merge: true));
+      };
 
-      // Update main summary document
-      final applicantsSnapshot = await appDoc.collection('applicants').get();
-      final uploadedCount = applicantsSnapshot.docs.length;
+      await userUploadsRef.doc(safeTitle).set(uploadData);
+      await applicantUploadsRef.doc(safeTitle).set(uploadData, SetOptions(merge: true));
 
-      await appDoc.set({
-        'uploadedCount': uploadedCount,
-        'lastUpdated': FieldValue.serverTimestamp(),
-      }, SetOptions(merge: true));
+      uploadsFieldUpdates['uploads.$safeTitle.reuploadAllowed'] = false;
 
-      // Reload document comments and existing uploads
-      await _loadDocumentComments();
-      await _loadExistingUploads();
+      uploadedFiles[title]!['url'] = url;
+      uploadedFiles[title]!['file'] = null;
+    }
 
-      if (mounted) {
-        setState(() => _isUploading = false);
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text("All files uploaded successfully!")),
-        );
-      }
-    } catch (e) {
-      if (mounted) {
-        setState(() => _isUploading = false);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text("Error uploading files: $e")),
-        );
-      }
+    if (uploadsFieldUpdates.isNotEmpty) {
+      await applicantDoc.set(uploadsFieldUpdates, SetOptions(merge: true));
+    }
+
+    await _loadDocumentComments();
+    await _loadExistingUploads();
+
+    if (mounted) {
+      setState(() => _isUploading = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('All files uploaded successfully!')),
+      );
+    }
+  } catch (e) {
+    if (mounted) {
+      setState(() => _isUploading = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error uploading files: $e')),
+      );
     }
   }
+}
 
-    Widget buildUploadField(Map<String, String> label) {
+
+   Widget buildUploadField(Map<String, String> label) {
     final title = label["title"]!;
     final description = label["description"] ?? "";
     final file = uploadedFiles[title]!["file"] as PlatformFile?;
@@ -680,73 +587,114 @@ class _SPLTFormPageState extends State<SPLTFormPage> {
   }
 
 
-  /// UI
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('SPLTP Application Form'),
-        backgroundColor: Colors.green,
-        foregroundColor: Colors.white,
-      ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text(
-              'Issuance of Special Private Land Timber Permit (SPLTP) for Premium/Naturally Grown Trees Within Private/Titled Lands',
-              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 16),
-            
-            for (final label in formLabels) buildUploadField(label),
-            const SizedBox(height: 32),
-            Center(
-              child: SizedBox(
-                width: double.infinity,
-                child: ElevatedButton(
-                  onPressed: _isUploading ? null : handleSubmit,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.green[700],
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(vertical: 20),
-                    textStyle: const TextStyle(
-                        fontSize: 14, fontWeight: FontWeight.bold),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                  ),
-                  child: _isUploading
-                      ? const CircularProgressIndicator(color: Colors.white)
-                      : const Text('Submit (Upload All Files)'),
-                ),
-              ),
-            ),
-            const SizedBox(height: 32),
-          ],
+  Widget _buildTemplateCard(Map<String, dynamic> template) {
+    return Card(
+      margin: const EdgeInsets.only(bottom: 8),
+      elevation: 2,
+      child: ListTile(
+        leading: Icon(Icons.description, color: Colors.blue[700], size: 32),
+        title: Text(template['documentType'] ?? 'Template', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
+        subtitle: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          if (template['title']?.isNotEmpty == true) Text(template['title'], style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500)),
+          if (template['description']?.isNotEmpty == true) Text(template['description'], style: TextStyle(fontSize: 12, color: Colors.grey[600])),
+          const SizedBox(height: 4),
+          Row(children: [Icon(Icons.insert_drive_file, size: 14, color: Colors.grey[600]), const SizedBox(width: 4), Expanded(child: Text(template['fileName'] ?? '', style: TextStyle(fontSize: 11, color: Colors.grey[600]), overflow: TextOverflow.ellipsis))]),
+        ]),
+        trailing: ElevatedButton.icon(
+          onPressed: () async {
+            final url = template['url'] as String?;
+            if (url != null) {
+              final uri = Uri.parse(url);
+              if (await canLaunchUrl(uri)) await launchUrl(uri, mode: LaunchMode.externalApplication);
+            }
+          },
+          icon: const Icon(Icons.download, size: 16),
+          label: const Text('Download', style: TextStyle(fontSize: 12)),
+          style: ElevatedButton.styleFrom(backgroundColor: Colors.blue[700], foregroundColor: Colors.white),
         ),
       ),
     );
   }
 
-  /// ✅ Format Firestore Timestamp to readable date format
   String _formatTimestamp(Timestamp? timestamp) {
     if (timestamp == null) return '';
-    final dateTime = timestamp.toDate();
-    final now = DateTime.now();
-    final difference = now.difference(dateTime);
+    final dt = timestamp.toDate();
+    return '${dt.month}/${dt.day}/${dt.year} ${dt.hour}:${dt.minute.toString().padLeft(2, '0')}';
+  }
 
-    if (difference.inMinutes < 1) {
-      return 'Just now';
-    } else if (difference.inHours < 1) {
-      return '${difference.inMinutes}m ago';
-    } else if (difference.inDays < 1) {
-      return '${difference.inHours}h ago';
-    } else if (difference.inDays < 7) {
-      return '${difference.inDays}d ago';
-    } else {
-      return '${dateTime.month}/${dateTime.day}/${dateTime.year} ${dateTime.hour}:${dateTime.minute.toString().padLeft(2, '0')} ${dateTime.hour >= 12 ? 'PM' : 'AM'}';
-    }
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        backgroundColor: Colors.green[700],
+        iconTheme: const IconThemeData(color: Colors.white),
+        title: const Text('COV File Upload', style: TextStyle(color: Colors.white)),
+      ),
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.all(16.0),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          
+
+          if (_availableTemplates.isNotEmpty) ...[
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: Colors.blue[50],
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: Colors.blue[200]!),
+              ),
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Row(children: [
+                  Icon(Icons.folder_special, color: Colors.blue[700], size: 24),
+                  const SizedBox(width: 8),
+                  Text('Available Templates', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.blue[900]))
+                ]),
+                const SizedBox(height: 8),
+                Text('Download these templates before preparing your documents', style: TextStyle(fontSize: 13, color: Colors.blue[800])),
+                const Divider(height: 16),
+                ..._availableTemplates.map((t) => _buildTemplateCard(t)),
+              ]),
+            ),
+            const SizedBox(height: 24),
+          ],
+
+          Form(
+            key: _formKey,
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              const Text(
+                'Issuance of Certificate of Verification (COV) for the Transport of Planted Trees within Private Land, Non-Timber Forest Products (except Rattan and Bamboo)',
+                style: TextStyle(fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 20),
+
+      
+              const SizedBox(height: 20),
+
+              for (final label in formLabels) buildUploadField(label),
+
+              const SizedBox(height: 24),
+
+              Center(
+                child: SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton(
+                    onPressed: _isUploading ? null : handleSubmit,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.green[700],
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 20),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    ),
+                    child: _isUploading
+                        ? const CircularProgressIndicator(color: Colors.white)
+                        : const Text('Submit (Upload All Files)', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
+                  ),
+                ),
+              ),
+            ]),
+          ),
+        ]),
+      ),
+    );
   }
 }

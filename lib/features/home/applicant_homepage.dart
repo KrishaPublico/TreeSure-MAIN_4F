@@ -1,14 +1,18 @@
 import 'package:flutter/material.dart';
 import 'package:treesure_app/features/applicant/ctpo.dart';
 import 'package:treesure_app/features/applicant/CuttingPermit.dart';
-
+import 'package:treesure_app/features/applicant/testQR.dart'; // ✅ Correct import
+import 'package:treesure_app/features/applicant/cov.dart  ';
+import 'package:treesure_app/features/applicant/chainsawreg.dart';
 class ApplicantHomepage extends StatelessWidget {
   final String applicantId; // comes from login
   final String applicantName; // comes from login
-  const ApplicantHomepage(
-      {super.key, required this.applicantId, required this.applicantName});
 
-  final int totalRestrictedTrees = 30;
+  const ApplicantHomepage({
+    super.key,
+    required this.applicantId,
+    required this.applicantName,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -19,63 +23,80 @@ class ApplicantHomepage extends StatelessWidget {
           children: [
             const SizedBox(height: 20),
 
-            // Profile Header with QR code
+            // ✅ HEADER (same as ForesterHomepage)
             Stack(
               clipBehavior: Clip.none,
               children: [
                 Container(
-                  width: MediaQuery.of(context).size.width * 0.9,
+                  width: 350,
                   decoration: BoxDecoration(
                     color: Colors.green,
                     borderRadius: BorderRadius.circular(20),
                   ),
-                  padding: const EdgeInsets.all(12),
-                  child: Column(
-                    children: [
-                      Image.asset("assets/treesure_leaf.png", height: 50),
-                      const SizedBox(height: 10),
-                      const CircleAvatar(
-                        radius: 30,
-                        backgroundColor: Colors.white,
-                        child:
-                            Icon(Icons.person, size: 40, color: Colors.green),
-                      ),
-                      const SizedBox(height: 8),
-                      Text(
-                        applicantName,
-                        style: const TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
-                          color: Colors.white,
+                  child: Padding(
+                    padding: const EdgeInsets.all(12.0),
+                    child: Column(
+                      children: [
+                        Image.asset("assets/treesure_leaf.png", height: 50),
+                        const SizedBox(height: 10),
+                        const CircleAvatar(
+                          radius: 30,
+                          backgroundColor: Colors.white,
+                          child: Icon(Icons.person,
+                              size: 40, color: Colors.green),
                         ),
-                      ),
-                      Text(
-                        applicantId,
-                        style: TextStyle(
-                          fontSize: 14,
-                          color: Colors.white70,
+                        const SizedBox(height: 8),
+                        Text(
+                          applicantName,
+                          style: const TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.white,
+                          ),
                         ),
-                      ),
-                      const SizedBox(height: 20),
-                    ],
+                        Text(
+                          applicantId,
+                          style: const TextStyle(
+                            fontSize: 14,
+                            color: Colors.white70,
+                          ),
+                        ),
+                        const SizedBox(height: 20),
+                      ],
+                    ),
                   ),
                 ),
-                Positioned(
-                  bottom: -25,
-                  left: 0,
-                  right: 0,
-                  child: Center(
-                    child: Container(
-                      decoration: BoxDecoration(
-                        color: Colors.green,
-                        borderRadius: BorderRadius.circular(50),
-                      ),
-                      padding: const EdgeInsets.all(4.0),
-                      child: const CircleAvatar(
-                        radius: 25,
-                        backgroundColor: Colors.white,
-                        child:
-                            Icon(Icons.qr_code, size: 30, color: Colors.green),
+
+                // ✅ Clickable QR icon → Navigates to ApplicantTreeMapping
+            Positioned(
+                bottom: -25,
+                left: 0,
+                right: 0,
+                child: Center(
+                  child: GestureDetector(
+                    onTap: () {
+                      // Navigate to QR scanner screen when tapped
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => const QrUploadScanner(),
+                        ),
+                      );
+                    },
+                      child: Container(
+                        decoration: BoxDecoration(
+                          color: Colors.green,
+                          borderRadius: BorderRadius.circular(50),
+                        ),
+                        child: const Padding(
+                          padding: EdgeInsets.all(4.0),
+                          child: CircleAvatar(
+                            radius: 25,
+                            backgroundColor: Colors.white,
+                            child: Icon(Icons.qr_code,
+                                size: 30, color: Colors.green),
+                          ),
+                        ),
                       ),
                     ),
                   ),
@@ -83,44 +104,7 @@ class ApplicantHomepage extends StatelessWidget {
               ],
             ),
 
-            const SizedBox(height: 40),
-
-            // Total Trees Button
-            SizedBox(
-              width: 250,
-              height: 60,
-              child: ElevatedButton.icon(
-                onPressed: () {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content:
-                          Text('Total Restricted Trees: $totalRestrictedTrees'),
-                    ),
-                  );
-                },
-                icon: const Icon(
-                  Icons.park_rounded,
-                  size: 36,
-                  color: Colors.white,
-                ),
-                label: Text(
-                  'Total Trees: $totalRestrictedTrees',
-                  style: const TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color.fromARGB(255, 52, 123, 57),
-                  foregroundColor: Colors.white,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(30),
-                  ),
-                ),
-              ),
-            ),
-
-            const SizedBox(height: 20),
+            const SizedBox(height: 60),
 
             // Tree Restrictions Section
             Padding(
@@ -161,7 +145,7 @@ class ApplicantHomepage extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    "Permits & Certificates",
+                    "Permits",
                     style: TextStyle(
                       fontSize: 16,
                       fontWeight: FontWeight.bold,
@@ -170,7 +154,7 @@ class ApplicantHomepage extends StatelessWidget {
                   ),
                   const SizedBox(height: 12),
 
-                  // ✅ CTPO Button -> Opens Upload Page
+                  // ✅ CTPO Button
                   _buildApplicantPermitButton(
                     context,
                     "CTPO (Certificate of Tree Plantation Ownership)",
@@ -189,9 +173,11 @@ class ApplicantHomepage extends StatelessWidget {
                   ),
 
                   const SizedBox(height: 8),
+
+                  // ✅ Cutting Permit
                   _buildApplicantPermitButton(
                     context,
-                    "Cutting Permit",
+                    "Cutting Permits",
                     Icons.description,
                     () {
                       Navigator.push(
@@ -205,32 +191,46 @@ class ApplicantHomepage extends StatelessWidget {
                       );
                     },
                   ),
+
                   const SizedBox(height: 8),
+
                   _buildApplicantPermitButton(
                     context,
-                    "Certificate to Travel (COV)",
-                    Icons.build,
+                    "Transport Permit",
+              
+                Icons.description,
                     () {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                            content: Text(
-                                "Access Certificate to Travel information")),
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => CovFormPage(
+                            applicantId: applicantId,
+                       
+                          ),
+                        ),
                       );
                     },
                   ),
                   const SizedBox(height: 8),
-                  _buildApplicantPermitButton(
-                    context,
-                    "Chainsaw Permit",
-                    Icons.build,
-                    () {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                            content:
-                                Text("Access Chainsaw Permit information.")),
-                      );
-                    },
-                  ),
+
+_buildApplicantPermitButton(
+  context,
+  "Chainsaw Registration",
+  Icons.description,
+  () {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => ChainsawRegistrationPage(
+          applicantId: applicantId, // Pass the applicantId here
+        ),
+      ),
+    );
+  },
+),
+
+
+
                   const SizedBox(height: 30),
                 ],
               ),
@@ -290,8 +290,8 @@ class ApplicantHomepage extends StatelessWidget {
   }
 
   // Permit Button Widget
-  Widget _buildApplicantPermitButton(BuildContext context, String title,
-      IconData icon, VoidCallback onPressed) {
+  Widget _buildApplicantPermitButton(
+      BuildContext context, String title, IconData icon, VoidCallback onPressed) {
     return SizedBox(
       width: double.infinity,
       child: ElevatedButton(

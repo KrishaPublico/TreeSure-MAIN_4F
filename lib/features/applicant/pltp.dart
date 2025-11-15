@@ -6,6 +6,7 @@ import 'package:firebase_storage/firebase_storage.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:path/path.dart' as path;
 import 'package:url_launcher/url_launcher.dart';
+import 'package:syncfusion_flutter_pdfviewer/pdfviewer.dart';
 
 class PLTPFormPage extends StatefulWidget {
   final String applicantId;
@@ -15,6 +16,19 @@ class PLTPFormPage extends StatefulWidget {
 
   @override
   _PLTPFormPageState createState() => _PLTPFormPageState();
+}
+
+class PdfPreviewPage extends StatelessWidget {
+  final String url;
+  const PdfPreviewPage({super.key, required this.url});
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('PDF Preview')),
+      body: SfPdfViewer.network(url),
+    );
+  }
 }
 
 class _PLTPFormPageState extends State<PLTPFormPage> {
@@ -70,7 +84,8 @@ class _PLTPFormPageState extends State<PLTPFormPage> {
   bool _isUploading = false;
   Map<String, Map<String, dynamic>> _documentComments =
       {}; // ✅ Store comments per document
-  List<Map<String, dynamic>> _availableTemplates = []; // ✅ Store all available templates
+  List<Map<String, dynamic>> _availableTemplates =
+      []; // ✅ Store all available templates
 
   @override
   void initState() {
@@ -159,27 +174,27 @@ class _PLTPFormPageState extends State<PLTPFormPage> {
           .collection('uploads');
 
       final uploadsSnapshot = await uploadsRef.get();
-      
+
       print("📄 Found ${uploadsSnapshot.docs.length} upload documents");
-      
+
       // Iterate through each upload document
       for (final uploadDoc in uploadsSnapshot.docs) {
         final docKey = uploadDoc.id;
         final docData = uploadDoc.data();
-        
+
         print("📄 Processing document: $docKey");
-        
+
         // Get reuploadAllowed from the upload document
         final reuploadAllowed = docData['reuploadAllowed'] as bool? ?? false;
         print("📄 reuploadAllowed: $reuploadAllowed");
-        
+
         // Get comments from the subcollection
         final commentsSnapshot = await uploadDoc.reference
             .collection('comments')
             .orderBy('createdAt', descending: true)
             .limit(1)
             .get();
-        
+
         Map<String, dynamic>? mostRecentComment;
         if (commentsSnapshot.docs.isNotEmpty) {
           mostRecentComment = commentsSnapshot.docs.first.data();
@@ -207,7 +222,8 @@ class _PLTPFormPageState extends State<PLTPFormPage> {
             'reuploadAllowed': reuploadAllowed,
             'from': mostRecentComment?['from'] as String? ?? 'Admin',
             'message': mostRecentComment?['message'] as String? ?? '',
-            'createdAt': _parseCommentTimestamp(mostRecentComment?['createdAt']),
+            'createdAt':
+                _parseCommentTimestamp(mostRecentComment?['createdAt']),
           };
         }
       }
@@ -221,11 +237,11 @@ class _PLTPFormPageState extends State<PLTPFormPage> {
   /// Parse comment timestamp (can be Timestamp or String)
   Timestamp? _parseCommentTimestamp(dynamic timestamp) {
     if (timestamp == null) return null;
-    
+
     if (timestamp is Timestamp) {
       return timestamp;
     }
-    
+
     // If it's a string like "November 11, 2025 at 10:55:18 AM UTC+8"
     if (timestamp is String) {
       try {
@@ -240,7 +256,7 @@ class _PLTPFormPageState extends State<PLTPFormPage> {
         return null;
       }
     }
-    
+
     return null;
   }
 
@@ -266,7 +282,7 @@ class _PLTPFormPageState extends State<PLTPFormPage> {
 
       // Check if this is a reupload (file already uploaded)
       final isReupload = uploadedFiles[title]!["url"] != null;
-      
+
       if (isReupload) {
         // Auto-upload immediately for reuploads
         await uploadSingleFile(title, file);
@@ -293,7 +309,8 @@ class _PLTPFormPageState extends State<PLTPFormPage> {
 
       // References
       final appDoc = firestore.collection('applications').doc('pltp');
-      final applicantDoc = appDoc.collection('applicants').doc(widget.applicantId);
+      final applicantDoc =
+          appDoc.collection('applicants').doc(widget.applicantId);
       final userUploadsRef = firestore
           .collection('users')
           .doc(widget.applicantId)
@@ -329,7 +346,9 @@ class _PLTPFormPageState extends State<PLTPFormPage> {
 
       // Save to all locations
       await userUploadsRef.doc(safeTitle).set(uploadData);
-      await applicantUploadsRef.doc(safeTitle).set(uploadData, SetOptions(merge: true));
+      await applicantUploadsRef
+          .doc(safeTitle)
+          .set(uploadData, SetOptions(merge: true));
 
       // Reset reuploadAllowed flag
       await applicantDoc.set({
@@ -418,7 +437,9 @@ class _PLTPFormPageState extends State<PLTPFormPage> {
         await userUploadsRef.doc(safeTitle).set(uploadData);
 
         // 2️⃣ Save inside applications → pltp → applicants → uploads (subcollection)
-        await applicantUploadsRef.doc(safeTitle).set(uploadData, SetOptions(merge: true));
+        await applicantUploadsRef
+            .doc(safeTitle)
+            .set(uploadData, SetOptions(merge: true));
 
         // 3️⃣ Reset reuploadAllowed in the uploads field (where comments are stored)
         uploadsFieldUpdates['uploads.$safeTitle.reuploadAllowed'] = false;
@@ -474,7 +495,7 @@ class _PLTPFormPageState extends State<PLTPFormPage> {
     final url = uploadedFiles[title]!["url"] as String?;
     final isUploaded = url != null;
 
-    // ✅ Get per-document reuploadAllowed flag and comments
+    // Get per-document reuploadAllowed flag and comments
     final docData = _documentComments[title];
     final reuploadAllowed = docData?['reuploadAllowed'] as bool? ?? false;
     final hasComments = docData?['message'] != null &&
@@ -494,33 +515,81 @@ class _PLTPFormPageState extends State<PLTPFormPage> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      title +
-                          (isUploaded
-                              ? " ✅ (Uploaded)"
-                              : file != null
-                                  ? " (Ready)"
-                                  : ""),
-                      style: TextStyle(
+                      title,
+                      style: const TextStyle(
                         fontSize: 15,
                         fontWeight: FontWeight.bold,
-                        color: isUploaded
-                            ? Colors.green
-                            : file != null
-                                ? Colors.orange
-                                : Colors.black,
+                        color: Colors.black,
                       ),
                     ),
                     const SizedBox(height: 4),
-                    Text(
-                      description,
-                      style:
-                          const TextStyle(fontSize: 13, color: Colors.black87),
-                    ),
-                    
+                    if ((file != null) || (isUploaded))
+                      Padding(
+                        padding: const EdgeInsets.only(top: 6),
+                        child: Text(
+                          "Uploaded: ${file != null ? file.name : url != null ? url.split('/').last : ''}",
+                          style: const TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w500,
+                            color: Colors.grey,
+                          ),
+                        ),
+                      ),
                     if (isUploaded)
                       TextButton(
                         onPressed: () async {
-                          await launchUrl(Uri.parse(url));
+                          if (url != null) {
+                            final fileName = url
+                                .split('/')
+                                .last
+                                .split('?')
+                                .first; // Remove query params
+                            final ext = fileName.split('.').last.toLowerCase();
+
+                            if (ext == 'pdf') {
+                              // Preview PDF in-app
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (_) => PdfPreviewPage(url: url),
+                                ),
+                              );
+                            } else if (ext == 'doc' || ext == 'docx') {
+                              // Open DOC/DOCX in external app
+                              try {
+                                final uri = Uri.parse(url);
+                                if (await canLaunchUrl(uri)) {
+                                  await launchUrl(uri,
+                                      mode: LaunchMode.externalApplication);
+                                } else {
+                                  if (mounted) {
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      const SnackBar(
+                                          content:
+                                              Text("Cannot open this file.")),
+                                    );
+                                  }
+                                }
+                              } catch (e) {
+                                if (mounted) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    SnackBar(
+                                        content:
+                                            Text("Error opening file: $e")),
+                                  );
+                                }
+                              }
+                            } else {
+                              if (mounted) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(
+                                    content: Text(
+                                        "Preview not supported for this file type."),
+                                  ),
+                                );
+                              }
+                            }
+                          }
                         },
                         child: const Text("View Uploaded File"),
                       ),
@@ -545,8 +614,7 @@ class _PLTPFormPageState extends State<PLTPFormPage> {
               ),
             ],
           ),
-
-          // ✅ Show admin comment if exists
+          // Show admin comment if exists
           if (hasComments && comment != null)
             Padding(
               padding: const EdgeInsets.only(top: 12),
@@ -622,7 +690,6 @@ class _PLTPFormPageState extends State<PLTPFormPage> {
   }
 
   @override
-  @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
@@ -683,3 +750,6 @@ class _PLTPFormPageState extends State<PLTPFormPage> {
     return '';
   }
 }
+
+
+

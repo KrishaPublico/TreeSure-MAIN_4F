@@ -1,0 +1,509 @@
+import 'dart:io';
+import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
+import 'package:file_picker/file_picker.dart';
+import 'package:firebase_storage/firebase_storage.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:path/path.dart' as path;
+import 'package:url_launcher/url_launcher.dart';
+import 'package:url_launcher/url_launcher.dart';
+import 'package:syncfusion_flutter_pdfviewer/pdfviewer.dart';
+
+class ChainsawRegistrationPage extends StatefulWidget {
+  final String applicantId;
+
+  const ChainsawRegistrationPage({Key? key, required this.applicantId}) : super(key: key);
+
+  @override
+  _ChainsawRegistrationPageState createState() => _ChainsawRegistrationPageState();
+}
+
+
+class PdfPreviewPage extends StatelessWidget {
+  final String url;
+  const PdfPreviewPage({super.key, required this.url});
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('PDF Preview')),
+      body: SfPdfViewer.network(url),
+    );
+  }
+}
+class _ChainsawRegistrationPageState extends State<ChainsawRegistrationPage> {
+  final _formKey = GlobalKey<FormState>();
+
+  /// Documents required
+  final List<Map<String, String>> documents = [
+    {"title": "Official Receipt of Chainsaw Purchase / Affidavit of Ownership", "description": "(1 original, 1 certified copy)"},
+    {"title": "SPA (if applicant is not owner)", "description": ""},
+    {"title": "Stencil Serial Number of Chainsaw", "description": ""},
+    {"title": "Duly Accomplished Application Form", "description": ""},
+    {"title": "Detailed Specification of Chainsaw", "description": "(brand, model, engine capacity, etc.)"},
+    {"title": "Notarized Deed of Absolute Sale", "description": "(if transfer of ownership, 1 original)"},
+    {"title": "Certified True Copy of Forest Tenure Agreement (if Tenurial Instrument holder)", "description": ""},
+    {"title": "Business Permit (if Business Owner)", "description": "(1 photocopy)"},
+    {"title": "Certificate of Registration (if Private Tree Plantation Owner)", "description": ""},
+    {"title": "Business Permit / Affidavit of Legal Use", "description": "(if chainsaw used legally)"},
+    {"title": "Wood Processing Plant Permit (if licensed wood processor)", "description": "(1 photocopy)"},
+    {"title": "Certification from Head of Office (if chainsaw owned by office)", "description": ""},
+    {"title": "Latest Certificate of Chainsaw Registration (if renewal)", "description": "(1 photocopy)"},
+  ];
+
+  /// Holds selected file (PlatformFile), uploaded file URL, and display filename per document title.
+  final Map<String, Map<String, dynamic>> uploadedFiles = {};
+  /// Holds admin comment/meta per document title.
+  final Map<String, Map<String, dynamic>> _documentComments = {};
+
+  bool _isUploading = false;
+
+  @override
+  void initState() {
+    super.initState();
+    for (final doc in documents) {
+      uploadedFiles[doc['title']!] = {"file": null, "url": null, "fileName": null};
+    }
+    _loadExistingUploads();
+  }
+
+  Future<void> _loadExistingUploads() async {
+    try {
+      final uploadsRef = FirebaseFirestore.instance
+          .collection('applications')
+          .doc('chainsaw')
+          .collection('applicants')
+          .doc(widget.applicantId)
+          .collection('uploads');
+
+      final snapshot = await uploadsRef.get();
+
+      for (final doc in snapshot.docs) {
+        final data = doc.data();
+        // Prefer the stored title field (this preserves original label with spaces)
+        final titleFromData = (data['title'] as String?)?.trim();
+        final fileName = data['fileName'] as String?;
+        final url = data['url'] as String?;
+
+        if (titleFromData != null && uploadedFiles.containsKey(titleFromData)) {
+          uploadedFiles[titleFromData]!['url'] = url;
+          uploadedFiles[titleFromData]!['fileName'] = fileName;
+        } else {
+          // Defensive: if title field missing, try matching by doc id (less likely to match)
+          final docId = doc.id;
+          if (uploadedFiles.containsKey(docId)) {
+            uploadedFiles[docId]!['url'] = url;
+            uploadedFiles[docId]!['fileName'] = fileName;
+          }
+        }
+
+        // Load admin comment/meta if present in the upload doc
+        final message = data['message'] as String?;
+        final from = data['from'] as String?;
+        final createdAt = data['createdAt'];
+        final reuploadAllowed = data['reuploadAllowed'] as bool? ?? false;
+
+        final key = titleFromData ?? doc.id;
+        _documentComments[key] = {
+          'message': message,
+          'from': from,
+          'createdAt': createdAt,
+          'reuploadAllowed': reuploadAllowed,
+        };
+      }
+      if (mounted) setState(() {});
+    } catch (e) {
+      debugPrint('Error loading existing uploads: $e');
+    }
+  }
+
+  Future<void> pickFile(String title) async {
+    try {
+      final result = await FilePicker.platform.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: ['pdf', 'doc', 'docx'],
+        withData: true,
+      );
+      if (result == null) return;
+
+      final file = result.files.single;
+      final ext = path.extension(file.name).toLowerCase();
+      if (!['.pdf', '.doc', '.docx'].contains(ext)) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Please upload only PDF or DOC files.')),
+        );
+        return;
+      }
+
+      setState(() {
+        uploadedFiles[title]!['file'] = file;
+        uploadedFiles[title]!['fileName'] = file.name; // Save filename for display
+      });
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error selecting file: $e')));
+    }
+  }
+
+  Future<void> uploadSingleFile(String title, PlatformFile file) async {
+    setState(() => _isUploading = true);
+
+    try {
+      final firestore = FirebaseFirestore.instance;
+      final storage = FirebaseStorage.instance;
+
+      final safeTitle = title.replaceAll(RegExp(r'[.#$/\[\]]'), '-').trim();
+      final fileName = '${DateTime.now().millisecondsSinceEpoch}_${file.name}';
+      final ref = storage.ref().child('chainsaw_uploads/$fileName');
+
+      UploadTask uploadTask;
+      if (kIsWeb) {
+        final bytes = file.bytes;
+        if (bytes == null) throw Exception('File bytes missing');
+        uploadTask = ref.putData(bytes);
+      } else {
+        final filePath = file.path;
+        if (filePath == null) throw Exception('File path missing');
+        uploadTask = ref.putFile(File(filePath));
+      }
+
+      await uploadTask.whenComplete(() {});
+      final url = await ref.getDownloadURL();
+
+      final uploadData = {
+        'title': title,
+        'fileName': file.name,
+        'url': url,
+        'uploadedAt': FieldValue.serverTimestamp(),
+      };
+
+      await firestore
+          .collection('applications')
+          .doc('chainsaw')
+          .collection('applicants')
+          .doc(widget.applicantId)
+          .collection('uploads')
+          .doc(safeTitle)
+          .set(uploadData);
+
+      uploadedFiles[title]!['url'] = url;
+      uploadedFiles[title]!['file'] = null;
+
+      if (mounted) {
+        setState(() => _isUploading = false);
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$title uploaded successfully!')));
+      }
+    } catch (e) {
+      if (mounted) setState(() => _isUploading = false);
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error uploading $title: $e')));
+    }
+  }
+
+  Future<void> handleSubmit() async {
+    for (final entry in uploadedFiles.entries) {
+      final title = entry.key;
+      final file = entry.value['file'] as PlatformFile?;
+      if (file != null) {
+        await uploadSingleFile(title, file);
+      }
+    }
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('All files uploaded successfully!')),
+    );
+  }
+
+  // Helper to zero-pad minutes/hours
+  String _two(int n) => n.toString().padLeft(2, '0');
+
+  /// Formats a Firestore Timestamp or DateTime into a readable string.
+  /// Returns empty string if value is null or unrecognized.
+  String _formatTimestamp(dynamic ts) {
+    if (ts == null) return '';
+    DateTime dt;
+    // Firestore Timestamp
+    if (ts is Timestamp) {
+      dt = ts.toDate();
+    } else if (ts is DateTime) {
+      dt = ts;
+    } else if (ts is int) {
+      // epoch millis (defensive)
+      dt = DateTime.fromMillisecondsSinceEpoch(ts);
+    } else {
+      // fallback: try parsing string
+      try {
+        dt = DateTime.parse(ts.toString());
+      } catch (_) {
+        return ts.toString();
+      }
+    }
+
+    final hour12 = dt.hour % 12 == 0 ? 12 : dt.hour % 12;
+    final ampm = dt.hour >= 12 ? 'PM' : 'AM';
+    final month = dt.month;
+    final day = dt.day;
+    final year = dt.year;
+    final hour = _two(hour12);
+    final minute = _two(dt.minute);
+
+    // Example format: "Nov 15, 2025 · 03:05 PM"
+    const monthNames = [
+      '', 'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+      'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'
+    ];
+    final monthStr = monthNames[month];
+
+    return '$monthStr $day, $year · $hour:$minute $ampm';
+  }
+
+   Widget buildUploadField(Map<String, String> label) {
+    final title = label["title"]!;
+    final description = label["description"] ?? "";
+    final file = uploadedFiles[title]!["file"] as PlatformFile?;
+    final url = uploadedFiles[title]!["url"] as String?;
+    final isUploaded = url != null;
+
+    // Get per-document reuploadAllowed flag and comments
+    final docData = _documentComments[title];
+    final reuploadAllowed = docData?['reuploadAllowed'] as bool? ?? false;
+    final hasComments = docData?['message'] != null &&
+        (docData?['message'] as String?)?.isNotEmpty == true;
+    final comment = docData;
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      style: const TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.black,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    if ((file != null) || (isUploaded))
+                      Padding(
+                        padding: const EdgeInsets.only(top: 6),
+                        child: Text(
+                          "Uploaded: ${file != null ? file.name : url != null ? url.split('/').last : ''}",
+                          style: const TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w500,
+                            color: Colors.grey,
+                          ),
+                        ),
+                      ),
+                    if (isUploaded)
+                      TextButton(
+                        onPressed: () async {
+                          if (url != null) {
+                            final fileName = url
+                                .split('/')
+                                .last
+                                .split('?')
+                                .first; // Remove query params
+                            final ext = fileName.split('.').last.toLowerCase();
+
+                            if (ext == 'pdf') {
+                              // Preview PDF in-app
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (_) => PdfPreviewPage(url: url),
+                                ),
+                              );
+                            } else if (ext == 'doc' || ext == 'docx') {
+                              // Open DOC/DOCX in external app
+                              try {
+                                final uri = Uri.parse(url);
+                                if (await canLaunchUrl(uri)) {
+                                  await launchUrl(uri,
+                                      mode: LaunchMode.externalApplication);
+                                } else {
+                                  if (mounted) {
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      const SnackBar(
+                                          content:
+                                              Text("Cannot open this file.")),
+                                    );
+                                  }
+                                }
+                              } catch (e) {
+                                if (mounted) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    SnackBar(
+                                        content:
+                                            Text("Error opening file: $e")),
+                                  );
+                                }
+                              }
+                            } else {
+                              if (mounted) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(
+                                    content: Text(
+                                        "Preview not supported for this file type."),
+                                  ),
+                                );
+                              }
+                            }
+                          }
+                        },
+                        child: const Text("View Uploaded File"),
+                      ),
+                  ],
+                ),
+              ),
+              ElevatedButton(
+                onPressed: (isUploaded && !reuploadAllowed) || _isUploading
+                    ? null
+                    : () => pickFile(title),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: (isUploaded && !reuploadAllowed)
+                      ? Colors.grey
+                      : (isUploaded ? Colors.orange : Colors.green[700]),
+                  foregroundColor: Colors.white,
+                ),
+                child: Text(
+                  isUploaded
+                      ? (reuploadAllowed ? "Re-upload" : "Uploaded")
+                      : (file != null ? "Change File" : "Select File"),
+                ),
+              ),
+            ],
+          ),
+          // Show admin comment if exists
+          if (hasComments && comment != null)
+            Padding(
+              padding: const EdgeInsets.only(top: 12),
+              child: Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.orange[50],
+                  border: Border.all(color: Colors.orange, width: 1),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        const Icon(Icons.comment,
+                            color: Colors.orange, size: 18),
+                        const SizedBox(width: 8),
+                        Text(
+                          'Admin Comment',
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.orange[700],
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      comment['message'] ?? '',
+                      style:
+                          const TextStyle(fontSize: 13, color: Colors.black87),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      'From: ${comment['from'] ?? 'Admin'} • ${_formatTimestamp(comment['createdAt'])}',
+                      style: TextStyle(fontSize: 11, color: Colors.grey[600]),
+                    ),
+                    if (reuploadAllowed)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 8),
+                        child: Container(
+                          padding: const EdgeInsets.all(8),
+                          decoration: BoxDecoration(
+                            color: Colors.green[50],
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                          child: const Row(
+                            children: [
+                              Icon(Icons.check_circle,
+                                  color: Colors.green, size: 16),
+                              SizedBox(width: 8),
+                              Expanded(
+                                child: Text(
+                                  'You can re-upload this file',
+                                  style: TextStyle(
+                                      fontSize: 12, color: Colors.green),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+            ),
+          const SizedBox(height: 8),
+        ],
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        backgroundColor: Colors.green[700],
+        iconTheme: const IconThemeData(color: Colors.white),
+        title: const Text('Chainsaw Registration', style: TextStyle(color: Colors.white)),
+      ),
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.all(16),
+        child: Form(
+          key: _formKey,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'APPLICATION FOR CHAINSAW REGISTRATION\nREQUIREMENTS',
+                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+              ),
+              const SizedBox(height: 16),
+
+              for (final doc in documents) buildUploadField(doc),
+
+              const SizedBox(height: 24),
+
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton(
+                  onPressed: _isUploading ? null : handleSubmit,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.green[700],
+                    disabledBackgroundColor: Colors.grey,
+                    disabledForegroundColor: Colors.white70,
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  ),
+                  child: _isUploading
+                      ? const CircularProgressIndicator(color: Colors.white)
+                      : const Text(
+                          'Submit All Files',
+                          style: TextStyle(fontSize: 16, color: Colors.white),
+                        ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
