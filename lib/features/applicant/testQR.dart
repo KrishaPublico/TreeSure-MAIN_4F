@@ -39,7 +39,7 @@ class _QrUploadScannerState extends State<QrUploadScanner>
   List<Polyline> polylines = [];
   double? routeDistanceKm;
   Duration? routeDuration;
-  
+
   // Map type selection
   String _mapType = 'street'; // 'street', 'satellite', 'terrain'
 
@@ -317,7 +317,8 @@ class _QrUploadScannerState extends State<QrUploadScanner>
 
     if (updatedMarkers.isNotEmpty) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        _fitCameraToPoints(updatedMarkers.map((marker) => marker.point).toList());
+        _fitCameraToPoints(
+            updatedMarkers.map((marker) => marker.point).toList());
       });
     }
   }
@@ -355,7 +356,8 @@ class _QrUploadScannerState extends State<QrUploadScanner>
       case 'satellite':
         // Using ESRI World Imagery (satellite)
         return TileLayer(
-          urlTemplate: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+          urlTemplate:
+              'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
           userAgentPackageName: 'com.treesure.app',
           maxZoom: 19,
         );
@@ -410,7 +412,7 @@ class _QrUploadScannerState extends State<QrUploadScanner>
 
     try {
       String? qrData;
-      
+
       if (kIsWeb) {
         // Web platform: Use BarcodeCapture with the camera controller
         // Since analyzeImage() doesn't work on web, we'll use a workaround
@@ -422,11 +424,12 @@ class _QrUploadScannerState extends State<QrUploadScanner>
               "or use the mobile app for full image upload functionality.";
           isUploading = false;
         });
-        
+
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
-              content: Text('⚠️ Image QR scanning not available on web. Please use the Scan tab or mobile app.'),
+              content: Text(
+                  '⚠️ Image QR scanning not available on web. Please use the Scan tab or mobile app.'),
               backgroundColor: Colors.orange,
               duration: Duration(seconds: 4),
             ),
@@ -436,13 +439,14 @@ class _QrUploadScannerState extends State<QrUploadScanner>
       } else {
         // Mobile platform: Use analyzeImage
         final imageController = MobileScannerController();
-        
+
         try {
           final result = await imageController.analyzeImage(pickedFile.path);
           if (result != null && result.barcodes.isNotEmpty) {
             qrData = result.barcodes.first.rawValue;
           } else {
-            qrData = "❌ No QR code found in image. Please ensure the QR code is clear and try again.";
+            qrData =
+                "❌ No QR code found in image. Please ensure the QR code is clear and try again.";
           }
         } catch (e) {
           print('Scanning error: $e');
@@ -461,7 +465,7 @@ class _QrUploadScannerState extends State<QrUploadScanner>
           !scannedData!.startsWith('❌') &&
           !scannedData!.startsWith('⚠️')) {
         await _fetchTreeDataFromQR(scannedData!);
-        
+
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
@@ -475,7 +479,8 @@ class _QrUploadScannerState extends State<QrUploadScanner>
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
               content: Text(scannedData!),
-              backgroundColor: scannedData!.startsWith('❌') ? Colors.red : Colors.orange,
+              backgroundColor:
+                  scannedData!.startsWith('❌') ? Colors.red : Colors.orange,
             ),
           );
         }
@@ -485,7 +490,7 @@ class _QrUploadScannerState extends State<QrUploadScanner>
         scannedData = "❌ Error scanning image: $e";
         isUploading = false;
       });
-      
+
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -538,7 +543,8 @@ class _QrUploadScannerState extends State<QrUploadScanner>
     }
   }
 
-  Future<void> _fetchTreeFromFirestore(String treeId, [String? appointmentId]) async {
+  Future<void> _fetchTreeFromFirestore(String treeId,
+      [String? appointmentId]) async {
     try {
       DocumentSnapshot? treeDoc;
 
@@ -556,9 +562,8 @@ class _QrUploadScannerState extends State<QrUploadScanner>
       }
 
       if (treeDoc == null) {
-        final appointmentsSnapshot = await FirebaseFirestore.instance
-            .collection('appointments')
-            .get();
+        final appointmentsSnapshot =
+            await FirebaseFirestore.instance.collection('appointments').get();
 
         for (var appointmentDoc in appointmentsSnapshot.docs) {
           final doc = await appointmentDoc.reference
@@ -619,26 +624,25 @@ Location: ${lat != null ? '${lat.toStringAsFixed(6)}, ${lng!.toStringAsFixed(6)}
     return DefaultTabController(
       length: 3,
       child: Scaffold(
-appBar: AppBar(
-  backgroundColor: Colors.green[800],
-  iconTheme: const IconThemeData(color: Colors.white), // back button color
-  title: const Text(
-    'QR Scanner & Tree Location',
-    style: TextStyle(color: Colors.white), // title color
-  ),
-  bottom: const TabBar(
-    labelColor: Colors.white, // selected tab text color
-    unselectedLabelColor: Colors.white70, // unselected tab text color
-    indicatorColor: Colors.white, // underline indicator color
-    tabs: [
-      Tab(icon: Icon(Icons.qr_code_scanner), text: "Scan"),
-      Tab(icon: Icon(Icons.upload_file), text: "Upload"),
-      Tab(icon: Icon(Icons.map), text: "Map"),
-    ],
-  ),
-),
-
-
+        appBar: AppBar(
+          backgroundColor: Colors.green[800],
+          iconTheme:
+              const IconThemeData(color: Colors.white), // back button color
+          title: const Text(
+            'QR Scanner & Tree Location',
+            style: TextStyle(color: Colors.white), // title color
+          ),
+          bottom: const TabBar(
+            labelColor: Colors.white, // selected tab text color
+            unselectedLabelColor: Colors.white70, // unselected tab text color
+            indicatorColor: Colors.white, // underline indicator color
+            tabs: [
+              Tab(icon: Icon(Icons.qr_code_scanner), text: "Scan"),
+              Tab(icon: Icon(Icons.upload_file), text: "Upload"),
+              Tab(icon: Icon(Icons.map), text: "Map"),
+            ],
+          ),
+        ),
         body: TabBarView(
           children: [
             // Scanner Tab
@@ -674,20 +678,24 @@ appBar: AppBar(
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  Icon(Icons.qr_code_scanner, size: 100, color: Colors.grey[400]),
+                  Icon(Icons.qr_code_scanner,
+                      size: 100, color: Colors.grey[400]),
                   const SizedBox(height: 20),
-                  const Text("Tap the scanner icon to start scanning QR codes", textAlign: TextAlign.center),
+                  const Text("Tap the scanner icon to start scanning QR codes",
+                      textAlign: TextAlign.center),
                   const SizedBox(height: 20),
-             ElevatedButton.icon(
-  icon: const Icon(Icons.qr_code_scanner, color: Colors.white),
-  label: const Text("Start Scanning", style: TextStyle(color: Colors.white)),
-  style: ElevatedButton.styleFrom(
-    backgroundColor: Colors.green[800],
-    padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
-  ),
-  onPressed: _startScanning,
-),
-
+                  ElevatedButton.icon(
+                    icon:
+                        const Icon(Icons.qr_code_scanner, color: Colors.white),
+                    label: const Text("Start Scanning",
+                        style: TextStyle(color: Colors.white)),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.green[800],
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 24, vertical: 16),
+                    ),
+                    onPressed: _startScanning,
+                  ),
                 ],
               ),
             ),
@@ -734,19 +742,19 @@ appBar: AppBar(
                   ),
                 ],
                 const SizedBox(height: 20),
-            ElevatedButton.icon(
-  icon: const Icon(Icons.upload_file, color: Colors.white),
-  label: Text(
-    kIsWeb ? "Upload (Not Available)" : "Upload QR Image",
-    style: const TextStyle(color: Colors.white),
-  ),
-  style: ElevatedButton.styleFrom(
-    backgroundColor: kIsWeb ? Colors.grey : Colors.green[800],
-    padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
-  ),
-  onPressed: (isUploading || kIsWeb) ? null : _uploadQrImage,
-),
-
+                ElevatedButton.icon(
+                  icon: const Icon(Icons.upload_file, color: Colors.white),
+                  label: Text(
+                    kIsWeb ? "Upload (Not Available)" : "Upload QR Image",
+                    style: const TextStyle(color: Colors.white),
+                  ),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: kIsWeb ? Colors.grey : Colors.green[800],
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 24, vertical: 16),
+                  ),
+                  onPressed: (isUploading || kIsWeb) ? null : _uploadQrImage,
+                ),
                 if (isUploading) ...[
                   const SizedBox(height: 20),
                   const CircularProgressIndicator(),
@@ -885,32 +893,32 @@ appBar: AppBar(
       ),
       child: Column(
         children: [
-          const Text("📄 Scanned Data:", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+          const Text("📄 Scanned Data:",
+              style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
           const SizedBox(height: 8),
-          Text(scannedData!, textAlign: TextAlign.center, style: const TextStyle(fontSize: 14)),
+          Text(scannedData!,
+              textAlign: TextAlign.center,
+              style: const TextStyle(fontSize: 14)),
           if (treeLocation != null) ...[
             const SizedBox(height: 16),
-ElevatedButton.icon(
-  icon: const Icon(Icons.map, color: Colors.white), // white icon
-  label: const Text(
-    "View Tree Location",
-    style: TextStyle(color: Colors.white), // white text
-  ),
-  style: ElevatedButton.styleFrom(
-    backgroundColor: Colors.green[700], // green background
-    padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
-  ),
-  onPressed: () {
-    final tabController = DefaultTabController.of(context);
-    if (tabController != null) {
-      tabController.animateTo(2); // Map tab index
-    }
-  },
-),
-
-
-
-
+            ElevatedButton.icon(
+              icon: const Icon(Icons.map, color: Colors.white), // white icon
+              label: const Text(
+                "View Tree Location",
+                style: TextStyle(color: Colors.white), // white text
+              ),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.green[700], // green background
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+              ),
+              onPressed: () {
+                final tabController = DefaultTabController.of(context);
+                if (tabController != null) {
+                  tabController.animateTo(2); // Map tab index
+                }
+              },
+            ),
           ],
         ],
       ),
@@ -928,13 +936,16 @@ ElevatedButton.icon(
       ),
       child: Column(
         children: [
-          const Text("📷 Uploaded Image:", style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
+          const Text("📷 Uploaded Image:",
+              style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
           const SizedBox(height: 8),
           ClipRRect(
             borderRadius: BorderRadius.circular(8),
             child: kIsWeb
-                ? Image.network(uploadedImage!.path, width: 200, height: 200, fit: BoxFit.cover)
-                : Image.file(io.File(uploadedImage!.path), width: 200, height: 200, fit: BoxFit.cover),
+                ? Image.network(uploadedImage!.path,
+                    width: 200, height: 200, fit: BoxFit.cover)
+                : Image.file(io.File(uploadedImage!.path),
+                    width: 200, height: 200, fit: BoxFit.cover),
           ),
         ],
       ),
@@ -957,7 +968,8 @@ ElevatedButton.icon(
       color: Colors.grey[100],
       child: Row(
         children: [
-          Icon(Icons.location_on, color: currentLocation != null ? Colors.green : Colors.red),
+          Icon(Icons.location_on,
+              color: currentLocation != null ? Colors.green : Colors.red),
           const SizedBox(width: 8),
           Expanded(
             child: Column(
@@ -975,14 +987,25 @@ ElevatedButton.icon(
                     style: const TextStyle(fontSize: 12, color: Colors.blue),
                   ),
                 if (isLoadingRoute)
-                  const Text("🔄 Loading route...", style: TextStyle(fontSize: 11, color: Colors.orange, fontStyle: FontStyle.italic))
+                  const Text("🔄 Loading route...",
+                      style: TextStyle(
+                          fontSize: 11,
+                          color: Colors.orange,
+                          fontStyle: FontStyle.italic))
                 else if (routePoints.isNotEmpty)
-                  Text("✅ Route displayed (${routePoints.length} points)", style: const TextStyle(fontSize: 11, color: Colors.green, fontStyle: FontStyle.italic)),
+                  Text("✅ Route displayed (${routePoints.length} points)",
+                      style: const TextStyle(
+                          fontSize: 11,
+                          color: Colors.green,
+                          fontStyle: FontStyle.italic)),
               ],
             ),
           ),
           if (isLoadingLocation || isLoadingRoute)
-            const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)),
+            const SizedBox(
+                width: 16,
+                height: 16,
+                child: CircularProgressIndicator(strokeWidth: 2)),
         ],
       ),
     );
@@ -1041,7 +1064,8 @@ ElevatedButton.icon(
             const SizedBox(height: 16),
             Text("Location Error: $locationError"),
             const SizedBox(height: 16),
-            ElevatedButton(onPressed: _getCurrentLocation, child: const Text("Retry")),
+            ElevatedButton(
+                onPressed: _getCurrentLocation, child: const Text("Retry")),
           ],
         ),
       );

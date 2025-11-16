@@ -18,7 +18,6 @@ class ChainsawRegistrationPage extends StatefulWidget {
   _ChainsawRegistrationPageState createState() => _ChainsawRegistrationPageState();
 }
 
-
 class PdfPreviewPage extends StatelessWidget {
   final String url;
   const PdfPreviewPage({super.key, required this.url});
