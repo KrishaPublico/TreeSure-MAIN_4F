@@ -6,16 +6,19 @@ import 'package:firebase_storage/firebase_storage.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:path/path.dart' as path;
 import 'package:url_launcher/url_launcher.dart';
-import 'package:url_launcher/url_launcher.dart';
 import 'package:syncfusion_flutter_pdfviewer/pdfviewer.dart';
 
 class ChainsawRegistrationPage extends StatefulWidget {
   final String applicantId;
+  final String applicantName;
 
-  const ChainsawRegistrationPage({Key? key, required this.applicantId}) : super(key: key);
+  const ChainsawRegistrationPage(
+      {Key? key, required this.applicantId, required this.applicantName})
+      : super(key: key);
 
   @override
-  _ChainsawRegistrationPageState createState() => _ChainsawRegistrationPageState();
+  _ChainsawRegistrationPageState createState() =>
+      _ChainsawRegistrationPageState();
 }
 
 class PdfPreviewPage extends StatelessWidget {
@@ -30,28 +33,67 @@ class PdfPreviewPage extends StatelessWidget {
     );
   }
 }
+
 class _ChainsawRegistrationPageState extends State<ChainsawRegistrationPage> {
   final _formKey = GlobalKey<FormState>();
 
+  // Submission state
+  String? _currentSubmissionId;
+  List<Map<String, dynamic>> _existingSubmissions = [];
+  bool _isLoadingSubmissions = true;
+
   /// Documents required
   final List<Map<String, String>> documents = [
-    {"title": "Official Receipt of Chainsaw Purchase / Affidavit of Ownership", "description": "(1 original, 1 certified copy)"},
+    {
+      "title": "Official Receipt of Chainsaw Purchase / Affidavit of Ownership",
+      "description": "(1 original, 1 certified copy)"
+    },
     {"title": "SPA (if applicant is not owner)", "description": ""},
     {"title": "Stencil Serial Number of Chainsaw", "description": ""},
     {"title": "Duly Accomplished Application Form", "description": ""},
-    {"title": "Detailed Specification of Chainsaw", "description": "(brand, model, engine capacity, etc.)"},
-    {"title": "Notarized Deed of Absolute Sale", "description": "(if transfer of ownership, 1 original)"},
-    {"title": "Certified True Copy of Forest Tenure Agreement (if Tenurial Instrument holder)", "description": ""},
-    {"title": "Business Permit (if Business Owner)", "description": "(1 photocopy)"},
-    {"title": "Certificate of Registration (if Private Tree Plantation Owner)", "description": ""},
-    {"title": "Business Permit / Affidavit of Legal Use", "description": "(if chainsaw used legally)"},
-    {"title": "Wood Processing Plant Permit (if licensed wood processor)", "description": "(1 photocopy)"},
-    {"title": "Certification from Head of Office (if chainsaw owned by office)", "description": ""},
-    {"title": "Latest Certificate of Chainsaw Registration (if renewal)", "description": "(1 photocopy)"},
+    {
+      "title": "Detailed Specification of Chainsaw",
+      "description": "(brand, model, engine capacity, etc.)"
+    },
+    {
+      "title": "Notarized Deed of Absolute Sale",
+      "description": "(if transfer of ownership, 1 original)"
+    },
+    {
+      "title":
+          "Certified True Copy of Forest Tenure Agreement (if Tenurial Instrument holder)",
+      "description": ""
+    },
+    {
+      "title": "Business Permit (if Business Owner)",
+      "description": "(1 photocopy)"
+    },
+    {
+      "title": "Certificate of Registration (if Private Tree Plantation Owner)",
+      "description": ""
+    },
+    {
+      "title": "Business Permit / Affidavit of Legal Use",
+      "description": "(if chainsaw used legally)"
+    },
+    {
+      "title": "Wood Processing Plant Permit (if licensed wood processor)",
+      "description": "(1 photocopy)"
+    },
+    {
+      "title":
+          "Certification from Head of Office (if chainsaw owned by office)",
+      "description": ""
+    },
+    {
+      "title": "Latest Certificate of Chainsaw Registration (if renewal)",
+      "description": "(1 photocopy)"
+    },
   ];
 
   /// Holds selected file (PlatformFile), uploaded file URL, and display filename per document title.
   final Map<String, Map<String, dynamic>> uploadedFiles = {};
+
   /// Holds admin comment/meta per document title.
   final Map<String, Map<String, dynamic>> _documentComments = {};
 
@@ -61,18 +103,116 @@ class _ChainsawRegistrationPageState extends State<ChainsawRegistrationPage> {
   void initState() {
     super.initState();
     for (final doc in documents) {
-      uploadedFiles[doc['title']!] = {"file": null, "url": null, "fileName": null};
+      uploadedFiles[doc['title']!] = {
+        "file": null,
+        "url": null,
+        "fileName": null
+      };
     }
-    _loadExistingUploads();
+    _loadSubmissions();
+  }
+
+  /// Load all submissions for this applicant
+  Future<void> _loadSubmissions() async {
+    try {
+      final firestore = FirebaseFirestore.instance;
+      final submissionsSnapshot = await firestore
+          .collection('applications')
+          .doc('chainsaw')
+          .collection('applicants')
+          .doc(widget.applicantId)
+          .collection('submissions')
+          .orderBy('createdAt', descending: true)
+          .get();
+
+      if (submissionsSnapshot.docs.isEmpty) {
+        await _createNewSubmission();
+      } else {
+        _existingSubmissions = submissionsSnapshot.docs.map((doc) {
+          final data = doc.data();
+          return {
+            'id': doc.id,
+            'status': data['status'] ?? 'draft',
+            'uploadsCount': (data['uploads'] as Map?)?.length ?? 0,
+            'createdAt': data['createdAt'],
+          };
+        }).toList();
+
+        setState(() {
+          _currentSubmissionId = _existingSubmissions.first['id'] as String;
+          _isLoadingSubmissions = false;
+        });
+
+        await _loadExistingUploads();
+      }
+    } catch (e) {
+      print('Error loading submissions: $e');
+      setState(() => _isLoadingSubmissions = false);
+    }
+  }
+
+  Future<void> _createNewSubmission() async {
+    try {
+      final firestore = FirebaseFirestore.instance;
+      final applicantDoc = firestore
+          .collection('applications')
+          .doc('chainsaw')
+          .collection('applicants')
+          .doc(widget.applicantId);
+
+      final submissionsSnapshot =
+          await applicantDoc.collection('submissions').get();
+      final nextNumber = submissionsSnapshot.docs.length + 1;
+      final submissionId =
+          'CHAINSAW-${widget.applicantId}-${nextNumber.toString().padLeft(3, '0')}';
+
+      await applicantDoc.collection('submissions').doc(submissionId).set({
+        'status': 'draft',
+        'createdAt': FieldValue.serverTimestamp(),
+      });
+
+      await _loadSubmissions();
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('New submission created: $submissionId')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error creating submission: $e')),
+        );
+      }
+    }
+  }
+
+  Future<void> _switchSubmission(String submissionId) async {
+    setState(() {
+      _currentSubmissionId = submissionId;
+      for (final doc in documents) {
+        uploadedFiles[doc['title']!] = {
+          "file": null,
+          "url": null,
+          "fileName": null
+        };
+      }
+    });
+
+    await _loadExistingUploads();
   }
 
   Future<void> _loadExistingUploads() async {
+    if (_currentSubmissionId == null) return;
+
     try {
       final uploadsRef = FirebaseFirestore.instance
           .collection('applications')
           .doc('chainsaw')
           .collection('applicants')
           .doc(widget.applicantId)
+          .collection('submissions')
+          .doc(_currentSubmissionId!)
           .collection('uploads');
 
       final snapshot = await uploadsRef.get();
@@ -136,14 +276,23 @@ class _ChainsawRegistrationPageState extends State<ChainsawRegistrationPage> {
 
       setState(() {
         uploadedFiles[title]!['file'] = file;
-        uploadedFiles[title]!['fileName'] = file.name; // Save filename for display
+        uploadedFiles[title]!['fileName'] =
+            file.name; // Save filename for display
       });
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error selecting file: $e')));
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text('Error selecting file: $e')));
     }
   }
 
   Future<void> uploadSingleFile(String title, PlatformFile file) async {
+    if (_currentSubmissionId == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('No submission selected')),
+      );
+      return;
+    }
+
     setState(() => _isUploading = true);
 
     try {
@@ -180,6 +329,8 @@ class _ChainsawRegistrationPageState extends State<ChainsawRegistrationPage> {
           .doc('chainsaw')
           .collection('applicants')
           .doc(widget.applicantId)
+          .collection('submissions')
+          .doc(_currentSubmissionId!)
           .collection('uploads')
           .doc(safeTitle)
           .set(uploadData);
@@ -189,21 +340,63 @@ class _ChainsawRegistrationPageState extends State<ChainsawRegistrationPage> {
 
       if (mounted) {
         setState(() => _isUploading = false);
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$title uploaded successfully!')));
+        ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('$title uploaded successfully!')));
       }
     } catch (e) {
       if (mounted) setState(() => _isUploading = false);
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error uploading $title: $e')));
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text('Error uploading $title: $e')));
     }
   }
 
   Future<void> handleSubmit() async {
+    if (_currentSubmissionId == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('No submission selected')),
+      );
+      return;
+    }
+
     for (final entry in uploadedFiles.entries) {
       final title = entry.key;
       final file = entry.value['file'] as PlatformFile?;
       if (file != null) {
         await uploadSingleFile(title, file);
       }
+    }
+
+    // Update submission status
+    try {
+      await FirebaseFirestore.instance
+          .collection('applications')
+          .doc('chainsaw')
+          .collection('applicants')
+          .doc(widget.applicantId)
+          .collection('submissions')
+          .doc(_currentSubmissionId!)
+          .set({
+        'applicantName': widget.applicantName,
+        'status': 'submitted',
+        'submittedAt': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
+
+      // Update applicant document count
+      final applicantDoc = FirebaseFirestore.instance
+          .collection('applications')
+          .doc('chainsaw')
+          .collection('applicants')
+          .doc(widget.applicantId);
+
+      final submissionsSnapshot =
+          await applicantDoc.collection('submissions').get();
+      await applicantDoc.set({
+        'applicantName': widget.applicantName,
+        'submissionsCount': submissionsSnapshot.docs.length,
+        'lastUpdated': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
+    } catch (e) {
+      debugPrint('Error updating submission status: $e');
     }
 
     ScaffoldMessenger.of(context).showSnackBar(
@@ -246,15 +439,26 @@ class _ChainsawRegistrationPageState extends State<ChainsawRegistrationPage> {
 
     // Example format: "Nov 15, 2025 · 03:05 PM"
     const monthNames = [
-      '', 'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-      'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'
+      '',
+      'Jan',
+      'Feb',
+      'Mar',
+      'Apr',
+      'May',
+      'Jun',
+      'Jul',
+      'Aug',
+      'Sep',
+      'Oct',
+      'Nov',
+      'Dec'
     ];
     final monthStr = monthNames[month];
 
     return '$monthStr $day, $year · $hour:$minute $ampm';
   }
 
-   Widget buildUploadField(Map<String, String> label) {
+  Widget buildUploadField(Map<String, String> label) {
     final title = label["title"]!;
     final description = label["description"] ?? "";
     final file = uploadedFiles[title]!["file"] as PlatformFile?;
@@ -461,48 +665,144 @@ class _ChainsawRegistrationPageState extends State<ChainsawRegistrationPage> {
       appBar: AppBar(
         backgroundColor: Colors.green[700],
         iconTheme: const IconThemeData(color: Colors.white),
-        title: const Text('Chainsaw Registration', style: TextStyle(color: Colors.white)),
+        title: const Text('Chainsaw Registration',
+            style: TextStyle(color: Colors.white)),
       ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16),
-        child: Form(
-          key: _formKey,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text(
-                'APPLICATION FOR CHAINSAW REGISTRATION\nREQUIREMENTS',
-                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
-              ),
-              const SizedBox(height: 16),
+      body: _isLoadingSubmissions
+          ? const Center(child: CircularProgressIndicator())
+          : SingleChildScrollView(
+              padding: const EdgeInsets.all(16),
+              child: Form(
+                key: _formKey,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // Submission Selector
+                    Container(
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: Colors.green[50],
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: Colors.green[200]!),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Row(
+                                children: [
+                                  Icon(Icons.folder_open,
+                                      color: Colors.green[700], size: 24),
+                                  const SizedBox(width: 8),
+                                  Text(
+                                    'Your Submissions',
+                                    style: TextStyle(
+                                      fontSize: 18,
+                                      fontWeight: FontWeight.bold,
+                                      color: Colors.green[900],
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              ElevatedButton.icon(
+                                onPressed: _createNewSubmission,
+                                icon: const Icon(Icons.add, size: 18),
+                                label: const Text('New'),
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: Colors.green[700],
+                                  foregroundColor: Colors.white,
+                                  padding: const EdgeInsets.symmetric(
+                                      horizontal: 12, vertical: 8),
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 12),
+                          if (_existingSubmissions.isEmpty)
+                            const Text('No submissions yet.')
+                          else
+                            DropdownButtonFormField<String>(
+                              value: _currentSubmissionId,
+                              decoration: InputDecoration(
+                                labelText: 'Select Submission',
+                                border: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(8)),
+                                filled: true,
+                                fillColor: Colors.white,
+                              ),
+                              items: _existingSubmissions.map((submission) {
+                                return DropdownMenuItem<String>(
+                                  value: submission['id'] as String,
+                                  child: Row(
+                                    children: [
+                                      Icon(
+                                        submission['status'] == 'submitted'
+                                            ? Icons.check_circle
+                                            : Icons.edit_note,
+                                        color:
+                                            submission['status'] == 'submitted'
+                                                ? Colors.green
+                                                : Colors.orange,
+                                        size: 18,
+                                      ),
+                                      const SizedBox(width: 8),
+                                      Text(
+                                        '${submission['id']} (${submission['uploadsCount']} files)',
+                                        style: const TextStyle(fontSize: 14),
+                                      ),
+                                    ],
+                                  ),
+                                );
+                              }).toList(),
+                              onChanged: (value) {
+                                if (value != null) {
+                                  _switchSubmission(value);
+                                }
+                              },
+                            ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    const Text(
+                      'APPLICATION FOR CHAINSAW REGISTRATION\nREQUIREMENTS',
+                      style:
+                          TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                    ),
+                    const SizedBox(height: 16),
 
-              for (final doc in documents) buildUploadField(doc),
+                    for (final doc in documents) buildUploadField(doc),
 
-              const SizedBox(height: 24),
+                    const SizedBox(height: 24),
 
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton(
-                  onPressed: _isUploading ? null : handleSubmit,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.green[700],
-                    disabledBackgroundColor: Colors.grey,
-                    disabledForegroundColor: Colors.white70,
-                    padding: const EdgeInsets.symmetric(vertical: 14),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                  ),
-                  child: _isUploading
-                      ? const CircularProgressIndicator(color: Colors.white)
-                      : const Text(
-                          'Submit All Files',
-                          style: TextStyle(fontSize: 16, color: Colors.white),
+                    SizedBox(
+                      width: double.infinity,
+                      child: ElevatedButton(
+                        onPressed: _isUploading ? null : handleSubmit,
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.green[700],
+                          disabledBackgroundColor: Colors.grey,
+                          disabledForegroundColor: Colors.white70,
+                          padding: const EdgeInsets.symmetric(vertical: 14),
+                          shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12)),
                         ),
+                        child: _isUploading
+                            ? const CircularProgressIndicator(
+                                color: Colors.white)
+                            : const Text(
+                                'Submit All Files',
+                                style: TextStyle(
+                                    fontSize: 16, color: Colors.white),
+                              ),
+                      ),
+                    ),
+                  ],
                 ),
               ),
-            ],
-          ),
-        ),
-      ),
+            ),
     );
   }
 }
