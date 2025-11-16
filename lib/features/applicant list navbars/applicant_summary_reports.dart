@@ -27,7 +27,7 @@ class _ApplicantSummaryPageState extends State<ApplicantSummaryPage> {
     _loadAppointments();
   }
 
-  /// Load all tree tagging appointments for this applicant
+  /// Load all tree tagging appointments for this applicant (excluding revisits)
   Future<void> _loadAppointments() async {
     try {
       final appointmentsSnapshot = await _firestore
@@ -38,10 +38,24 @@ class _ApplicantSummaryPageState extends State<ApplicantSummaryPage> {
 
       final appointments = <Map<String, dynamic>>[];
       for (var doc in appointmentsSnapshot.docs) {
+        final data = doc.data();
+        final appointmentType = data['appointmentType'] ?? 'Tree Tagging';
+        final applicationType = data['applicationType'] ?? '';
+        
+        // Build display name: "CTPO Tree Tagging", "PLTP Tree Tagging", etc.
+        String displayName = appointmentType;
+        if (applicationType.isNotEmpty) {
+          final appTypeUpper = applicationType.toUpperCase();
+          displayName = '$appTypeUpper $appointmentType';
+        }
+        
         appointments.add({
           'id': doc.id,
-          'location': doc.data()['location'] ?? 'Unknown Location',
-          'createdAt': doc.data()['createdAt'],
+          'location': data['location'] ?? 'Unknown Location',
+          'applicationID': data['applicationID'] ?? 'N/A',
+          'applicationType': applicationType,
+          'displayName': displayName,
+          'createdAt': data['createdAt'],
         });
       }
 
@@ -83,7 +97,7 @@ class _ApplicantSummaryPageState extends State<ApplicantSummaryPage> {
           allTrees.add({
             'id': treeDoc.id,
             'tree_no': treeData['tree_no'] ?? 'N/A',
-            'species': treeData['species'] ?? 'Unknown',
+            'specie': treeData['specie'] ?? 'Unknown',
             'diameter': treeData['diameter'] ?? 0,
             'height': treeData['height'] ?? 0,
             'volume': treeData['volume'] ?? 0,
@@ -133,17 +147,35 @@ class _ApplicantSummaryPageState extends State<ApplicantSummaryPage> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       // Applicant Info Header
-                      Card(
-                        elevation: 2,
-                        shape: RoundedRectangleBorder(
+                      Container(
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(
+                            colors: [Colors.green[600]!, Colors.green[400]!],
+                            begin: Alignment.topLeft,
+                            end: Alignment.bottomRight,
+                          ),
                           borderRadius: BorderRadius.circular(12),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.green.withOpacity(0.3),
+                              blurRadius: 8,
+                              offset: const Offset(0, 3),
+                            ),
+                          ],
                         ),
                         child: Padding(
                           padding: const EdgeInsets.all(16.0),
                           child: Row(
                             children: [
-                              const Icon(Icons.person,
-                                  color: Colors.green, size: 40),
+                              Container(
+                                padding: const EdgeInsets.all(10),
+                                decoration: BoxDecoration(
+                                  color: Colors.white.withOpacity(0.3),
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                                child: const Icon(Icons.person,
+                                    color: Colors.white, size: 32),
+                              ),
                               const SizedBox(width: 12),
                               Expanded(
                                 child: Column(
@@ -154,14 +186,27 @@ class _ApplicantSummaryPageState extends State<ApplicantSummaryPage> {
                                       style: const TextStyle(
                                         fontSize: 18,
                                         fontWeight: FontWeight.bold,
+                                        color: Colors.white,
                                       ),
+                                      overflow: TextOverflow.ellipsis,
                                     ),
                                     const SizedBox(height: 4),
-                                    Text(
-                                      "ID: ${widget.applicantId}",
-                                      style: const TextStyle(
-                                        fontSize: 14,
-                                        color: Colors.grey,
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 8,
+                                        vertical: 4,
+                                      ),
+                                      decoration: BoxDecoration(
+                                        color: Colors.white.withOpacity(0.3),
+                                        borderRadius: BorderRadius.circular(8),
+                                      ),
+                                      child: Text(
+                                        "ID: ${widget.applicantId}",
+                                        style: const TextStyle(
+                                          fontSize: 12,
+                                          color: Colors.white,
+                                          fontWeight: FontWeight.w500,
+                                        ),
                                       ),
                                     ),
                                   ],
@@ -178,11 +223,16 @@ class _ApplicantSummaryPageState extends State<ApplicantSummaryPage> {
                         value: _selectedAppointmentId,
                         decoration: InputDecoration(
                           labelText: "Filter by Appointment",
-                          prefixIcon: const Icon(Icons.location_on),
+                          prefixIcon: const Icon(Icons.event_note),
                           border: OutlineInputBorder(
                             borderRadius: BorderRadius.circular(12),
                           ),
+                          contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 8,
+                          ),
                         ),
+                        isExpanded: true,
                         items: [
                           const DropdownMenuItem(
                             value: 'All',
@@ -191,7 +241,10 @@ class _ApplicantSummaryPageState extends State<ApplicantSummaryPage> {
                           ..._appointments.map((appointment) {
                             return DropdownMenuItem(
                               value: appointment['id'],
-                              child: Text(appointment['location']),
+                              child: Text(
+                                '${appointment['displayName']} - ${appointment['applicationID']}',
+                                overflow: TextOverflow.ellipsis,
+                              ),
                             );
                           }),
                         ],
@@ -214,9 +267,6 @@ class _ApplicantSummaryPageState extends State<ApplicantSummaryPage> {
                             const SizedBox(width: 8),
                             _buildFilterButton('Ready to Cut'),
                             const SizedBox(width: 8),
-                            _buildFilterButton('Cut'),
-                            const SizedBox(width: 8),
-                            _buildFilterButton('Paid'),
                           ],
                         ),
                       ),
@@ -284,46 +334,63 @@ class _ApplicantSummaryPageState extends State<ApplicantSummaryPage> {
                             return Column(
                               children: [
                                 // Summary Statistics Card
-                                Card(
-                                  elevation: 2,
-                                  color: Colors.green[50],
-                                  shape: RoundedRectangleBorder(
+                                Container(
+                                  decoration: BoxDecoration(
+                                    gradient: LinearGradient(
+                                      colors: [Colors.green[50]!, Colors.green[100]!],
+                                      begin: Alignment.topLeft,
+                                      end: Alignment.bottomRight,
+                                    ),
                                     borderRadius: BorderRadius.circular(12),
+                                    border: Border.all(
+                                      color: Colors.green.withOpacity(0.3),
+                                      width: 1.5,
+                                    ),
                                   ),
                                   child: Padding(
-                                    padding: const EdgeInsets.all(16.0),
+                                    padding: const EdgeInsets.all(12.0),
                                     child: Column(
                                       children: [
                                         Row(
-                                          mainAxisAlignment:
-                                              MainAxisAlignment.spaceBetween,
                                           children: [
-                                            _buildStatItem(
-                                              "Total Trees",
-                                              trees.length.toString(),
-                                              Icons.park,
+                                            Expanded(
+                                              child: _buildStatItem(
+                                                "Trees",
+                                                "${trees.length}",
+                                                Icons.park,
+                                                Colors.green,
+                                              ),
                                             ),
-                                            _buildStatItem(
-                                              "Total Volume",
-                                              "${totalVolume.toStringAsFixed(2)} m³",
-                                              Icons.straighten,
+                                            const SizedBox(width: 8),
+                                            Expanded(
+                                              child: _buildStatItem(
+                                                "Volume",
+                                                "${totalVolume.toStringAsFixed(1)} m³",
+                                                Icons.inventory_2,
+                                                Colors.blue,
+                                              ),
                                             ),
                                           ],
                                         ),
-                                        const SizedBox(height: 12),
+                                        const SizedBox(width: 8),
                                         Row(
-                                          mainAxisAlignment:
-                                              MainAxisAlignment.spaceBetween,
                                           children: [
-                                            _buildStatItem(
-                                              "Avg. Diameter",
-                                              "${avgDiameter.toStringAsFixed(1)} cm",
-                                              Icons.circle_outlined,
+                                            Expanded(
+                                              child: _buildStatItem(
+                                                "Avg Ø",
+                                                "${avgDiameter.toStringAsFixed(1)} cm",
+                                                Icons.circle_outlined,
+                                                Colors.orange,
+                                              ),
                                             ),
-                                            _buildStatItem(
-                                              "Avg. Height",
-                                              "${avgHeight.toStringAsFixed(1)} m",
-                                              Icons.height,
+                                            const SizedBox(width: 8),
+                                            Expanded(
+                                              child: _buildStatItem(
+                                                "Avg H",
+                                                "${avgHeight.toStringAsFixed(1)} m",
+                                                Icons.height,
+                                                Colors.purple,
+                                              ),
                                             ),
                                           ],
                                         ),
@@ -376,26 +443,50 @@ class _ApplicantSummaryPageState extends State<ApplicantSummaryPage> {
   }
 
   /// Build statistic item widget
-  Widget _buildStatItem(String label, String value, IconData icon) {
-    return Expanded(
+  Widget _buildStatItem(String label, String value, IconData icon, Color color) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(
+          color: color.withOpacity(0.3),
+          width: 1.5,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: color.withOpacity(0.15),
+            blurRadius: 4,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
       child: Column(
+        mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icon, color: Colors.green[700], size: 28),
+          Icon(icon, color: color, size: 22),
           const SizedBox(height: 4),
           Text(
             value,
             style: TextStyle(
-              fontSize: 18,
+              fontSize: 14,
               fontWeight: FontWeight.bold,
-              color: Colors.green[900],
+              color: color,
             ),
+            textAlign: TextAlign.center,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
           ),
           Text(
             label,
-            style: const TextStyle(
-              fontSize: 12,
-              color: Colors.grey,
+            style: TextStyle(
+              fontSize: 9,
+              color: Colors.grey[600],
+              fontWeight: FontWeight.w500,
             ),
+            textAlign: TextAlign.center,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
           ),
         ],
       ),
@@ -416,24 +507,32 @@ class _ApplicantSummaryPageState extends State<ApplicantSummaryPage> {
 
     return Card(
       elevation: 2,
-      margin: const EdgeInsets.only(bottom: 12),
+      margin: const EdgeInsets.only(bottom: 10),
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(12),
+        side: BorderSide(
+          color: statusColor.withOpacity(0.3),
+          width: 1.5,
+        ),
       ),
       child: InkWell(
         onTap: () => _showTreeDetails(tree),
         borderRadius: BorderRadius.circular(12),
         child: Padding(
-          padding: const EdgeInsets.all(12.0),
+          padding: const EdgeInsets.all(10.0),
           child: Row(
             children: [
               // Tree Icon/Image
               Container(
-                width: 60,
-                height: 60,
+                width: 55,
+                height: 55,
                 decoration: BoxDecoration(
-                  color: Colors.green[100],
-                  borderRadius: BorderRadius.circular(8),
+                  color: statusColor.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(
+                    color: statusColor.withOpacity(0.3),
+                    width: 1.5,
+                  ),
                 ),
                 child: tree['photo_url'] != null
                     ? ClipRRect(
@@ -488,46 +587,64 @@ class _ApplicantSummaryPageState extends State<ApplicantSummaryPage> {
                     ),
                     const SizedBox(height: 4),
                     Text(
-                      tree['species'],
+                      tree['specie'],
                       style: TextStyle(
                         fontSize: 14,
                         color: Colors.grey[600],
                         fontStyle: FontStyle.italic,
                       ),
                     ),
-                    const SizedBox(height: 4),
-                    Row(
+                    const SizedBox(height: 6),
+                    Wrap(
+                      spacing: 10,
+                      runSpacing: 4,
                       children: [
-                        Icon(Icons.straighten,
-                            size: 14, color: Colors.grey[600]),
-                        const SizedBox(width: 4),
-                        Text(
-                          "Ø${tree['diameter']}cm",
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: Colors.grey[600],
-                          ),
+                        Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(Icons.straighten,
+                                size: 13, color: Colors.grey[600]),
+                            const SizedBox(width: 3),
+                            Text(
+                              "Ø${tree['diameter']}cm",
+                              style: TextStyle(
+                                fontSize: 11,
+                                color: Colors.grey[700],
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                          ],
                         ),
-                        const SizedBox(width: 12),
-                        Icon(Icons.height, size: 14, color: Colors.grey[600]),
-                        const SizedBox(width: 4),
-                        Text(
-                          "${tree['height']}m",
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: Colors.grey[600],
-                          ),
+                        Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(Icons.height, size: 13, color: Colors.grey[600]),
+                            const SizedBox(width: 3),
+                            Text(
+                              "${tree['height']}m",
+                              style: TextStyle(
+                                fontSize: 11,
+                                color: Colors.grey[700],
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                          ],
                         ),
-                        const SizedBox(width: 12),
-                        Icon(Icons.inventory_2,
-                            size: 14, color: Colors.grey[600]),
-                        const SizedBox(width: 4),
-                        Text(
-                          "${tree['volume'].toStringAsFixed(2)}m³",
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: Colors.grey[600],
-                          ),
+                        Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(Icons.inventory_2,
+                                size: 13, color: Colors.grey[600]),
+                            const SizedBox(width: 3),
+                            Text(
+                              "${tree['volume'].toStringAsFixed(1)}m³",
+                              style: TextStyle(
+                                fontSize: 11,
+                                color: Colors.grey[700],
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                          ],
                         ),
                       ],
                     ),
@@ -584,7 +701,7 @@ class _ApplicantSummaryPageState extends State<ApplicantSummaryPage> {
                   ),
                 ),
               const SizedBox(height: 16),
-              _buildDetailRow("Species", tree['species']),
+              _buildDetailRow("Specie", tree['specie']),
               _buildDetailRow("Status", tree['tree_status']),
               _buildDetailRow("Location", tree['location']),
               _buildDetailRow("Diameter", "${tree['diameter']} cm"),

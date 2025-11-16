@@ -239,7 +239,7 @@ class _PltpRegisterTreesPageState extends State<PltpRegisterTreesPage> {
 
         for (var treeDoc in treeInventorySnapshot.docs) {
           final treeData = treeDoc.data();
-          final specie = treeData['species'] ?? treeData['specie'] ?? 'N/A';
+          final specie = treeData['specie'] ?? treeData['specie'] ?? 'N/A';
           print('✅ Adding tree: ${treeDoc.id} - $specie');
 
           allTrees.add({
@@ -284,7 +284,7 @@ class _PltpRegisterTreesPageState extends State<PltpRegisterTreesPage> {
         selectedTreeId = treeId;
         // ✅ Store the tree_tagging_appointment doc ID
         selectedTreeTaggingAppointmentId = selectedTree['appointmentId'];
-        specieController.text = selectedTree['species'] ?? selectedTree['specie'] ?? '';
+        specieController.text = selectedTree['specie'] ?? selectedTree['specie'] ?? '';
         diameterController.text = selectedTree['diameter']?.toString() ?? '';
         heightController.text = selectedTree['height']?.toString() ?? '';
         volumeController.text = selectedTree['volume']?.toStringAsFixed(2) ?? '';
@@ -1023,7 +1023,7 @@ Timestamp: ${treeData['timestamp'] != null ? (treeData['timestamp'] as Timestamp
                             hint: const Text('Choose a tree...'),
                             items: ctpoTrees.map((tree) {
                               final treeId = tree['docId'] ?? 'Unknown';
-                              final specie = tree['species'] ?? tree['specie'] ?? 'N/A';
+                              final specie = tree['specie'] ?? tree['specie'] ?? 'N/A';
                               return DropdownMenuItem<String>(
                                 value: treeId,
                                 child: Text('$treeId - $specie'),

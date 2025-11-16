@@ -305,10 +305,16 @@ class _NotifPageState extends State<NotifPage> {
                         // Display appointment
                         final appointmentType =
                             itemData['appointmentType'] ?? 'Tree Tagging';
+                        final applicationType = itemData['applicationType'] ?? '';
                         final isWalkIn = appointmentType == 'Walk-in Appointment';
-                        final type = appointmentType == 'Cutting Assignment'
-                            ? itemData['permitType'] ?? 'Cutting Assignment'
-                            : appointmentType;
+                        
+                        // Build display type: "CTPO Tree Tagging", "PLTP Revisit", etc.
+                        String displayType = appointmentType;
+                        if (applicationType.isNotEmpty && !isWalkIn) {
+                          final appTypeUpper = applicationType.toUpperCase();
+                          displayType = '$appTypeUpper $appointmentType';
+                        }
+                        
                         final location = isWalkIn
                             ? (itemData['location'] ?? 'DENR Office')
                             : (itemData['location'] ?? 'No location');
@@ -340,7 +346,7 @@ class _NotifPageState extends State<NotifPage> {
                               ),
                             ),
                             title: Text(
-                              isWalkIn ? type : "$type - $status",
+                              isWalkIn ? appointmentType : "$displayType - $status",
                               style: const TextStyle(
                                 fontWeight: FontWeight.bold,
                                 color: Colors.black,
@@ -480,11 +486,14 @@ class _NotifPageState extends State<NotifPage> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               _buildDetail(
-                "Type",
-                appointment['appointmentType'] == 'Cutting Assignment'
-                    ? appointment['permitType'] ?? 'N/A'
-                    : appointment['appointmentType'] ?? 'N/A',
+                "Appointment Type",
+                appointment['appointmentType'] ?? 'N/A',
               ),
+              if (appointment['applicationType'] != null && appointment['applicationType'] != '')
+                _buildDetail(
+                  "Application Type",
+                  appointment['applicationType']?.toString().toUpperCase() ?? 'N/A',
+                ),
               _buildDetail("Location", appointment['location'] ?? 'N/A'),
               if (isWalkIn) ...[
                 _buildDetail("Purpose", appointment['purpose'] ?? 'N/A'),

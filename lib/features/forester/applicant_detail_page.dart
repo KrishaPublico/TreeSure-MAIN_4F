@@ -10,7 +10,7 @@ class ApplicantDetailPage extends StatefulWidget {
   final String applicantName;
   final String requirementDetails;
   final String appointmentId; // ✅ appointment document ID
-  final String permitType;
+  final String applicationType;
 
   const ApplicantDetailPage({
     super.key,
@@ -19,7 +19,7 @@ class ApplicantDetailPage extends StatefulWidget {
     required this.foresterId,
     required this.foresterName,
     required this.appointmentId,
-    required this.permitType,
+    required this.applicationType,
   });
 
   @override
@@ -118,11 +118,12 @@ class _ApplicantDetailPageState extends State<ApplicantDetailPage> {
     );
   }
 
-  /// ✅ Get button label based on permitType
+  /// ✅ Get button label based on applicationType
   String _getButtonLabel() {
-    if (widget.permitType.contains('PLTP (Private Land Timber Permit)')) {
+    final appType = widget.applicationType.toLowerCase();
+    if (appType == 'pltp') {
       return 'Proceed to PLTP Inventory';
-    } else if (widget.permitType.contains('SPLTP (Special Land Timber Permit)')) {
+    } else if (appType == 'splt') {
       return 'Proceed to SPLTP Inventory';
     }
     return 'Proceed to Tree Inventory';
@@ -291,31 +292,25 @@ class _ApplicantDetailPageState extends State<ApplicantDetailPage> {
                     onPressed: status == 'Completed'
                         ? null
                         : () {
-                            // Check permitType to route correctly
-                            final permitType = widget.permitType;
-
-                            // Check if it's a PLTP permit
-                            final isPLTP = permitType.contains('PLTP (Private Land Timber Permit)');
-
-                            // Check if it's a SPLTP permit
-                            final isSPLTP = permitType.contains('SPLTP (Special Land Timber Permit)');
+                            // Route based on applicationType from appointment
+                            final appType = widget.applicationType.toLowerCase();
 
                             late Widget targetPage;
 
-                            if (isPLTP) {
+                            if (appType == 'pltp') {
                               targetPage = PltpRegisterTreesPage(
                                 foresterId: widget.foresterId,
                                 foresterName: widget.foresterName,
                                 appointmentId: widget.appointmentId,
                               );
-                            } else if (isSPLTP) {
+                            } else if (appType == 'splt') {
                               targetPage = SpltpRegisterTreesPage(
                                 foresterId: widget.foresterId,
                                 foresterName: widget.foresterName,
                                 appointmentId: widget.appointmentId,
                               );
                             } else {
-                              // Default to CTPO for Tree Tagging Assignment or other types
+                              // Default to CTPO for Tree Tagging or Revisit
                               targetPage = CtpoRegisterTreesPage(
                                 foresterId: widget.foresterId,
                                 foresterName: widget.foresterName,
