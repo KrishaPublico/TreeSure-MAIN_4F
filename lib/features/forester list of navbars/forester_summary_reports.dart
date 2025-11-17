@@ -122,7 +122,8 @@ class _ForesterSummaryReportsState extends State<ForesterSummaryReports> {
 
   /// Get filtered trees stream
   Stream<List<Map<String, dynamic>>> _getTreesStream() async* {
-    final allTrees = <Map<String, dynamic>>[];
+    final uniqueTrees = <String, Map<String, dynamic>>{};
+    final uniqueTimestamps = <String, DateTime?>{};
 
     try {
       // Filter appointments based on selection
@@ -140,6 +141,7 @@ class _ForesterSummaryReportsState extends State<ForesterSummaryReports> {
 
       // Get trees from filtered appointments
       for (var appointment in filteredAppointments) {
+        final appointmentCreatedAt = _extractDateTime(appointment['createdAt']);
         final treesSnapshot = await _firestore
             .collection('appointments')
             .doc(appointment['id'])
@@ -153,7 +155,22 @@ class _ForesterSummaryReportsState extends State<ForesterSummaryReports> {
           final lngValue =
               _parseCoordinate(treeData['longitude'], isLatitude: false);
 
-          allTrees.add({
+            final applicantId =
+              appointment['applicantId']?.toString().trim() ?? 'unknown';
+            final treeIdentifier =
+              (treeData['tree_no'] ?? treeDoc.id ?? '').toString().trim();
+            if (treeIdentifier.isEmpty) {
+            continue;
+          }
+            final uniqueKey = '${applicantId}_$treeIdentifier';
+
+          final candidateTimestamp =
+              _extractDateTime(treeData['updatedAt']) ??
+                  _extractDateTime(treeData['taggedAt']) ??
+                  _extractDateTime(treeData['timestamp']) ??
+                  appointmentCreatedAt;
+
+          final treeEntry = {
             'id': treeDoc.id,
             'tree_no': treeData['tree_no'] ?? 'N/A',
             'species': treeData['species'] ?? treeData['specie'] ?? 'Unknown',
@@ -173,18 +190,35 @@ class _ForesterSummaryReportsState extends State<ForesterSummaryReports> {
               (a) => a['id'] == appointment['applicantId'],
               orElse: () => {'name': 'Unknown'},
             )['name'],
-          });
+          };
+
+          final existingTimestamp = uniqueTimestamps[uniqueKey];
+          final shouldReplace = !uniqueTrees.containsKey(uniqueKey) ||
+              (candidateTimestamp != null &&
+                  (existingTimestamp == null ||
+                      candidateTimestamp.isAfter(existingTimestamp)));
+
+          if (shouldReplace) {
+            uniqueTrees[uniqueKey] = treeEntry;
+            uniqueTimestamps[uniqueKey] =
+                candidateTimestamp ?? existingTimestamp;
+          }
         }
       }
 
+      var resultTrees = uniqueTrees.values.toList()
+        ..sort((a, b) => (a['tree_no'] ?? 'N/A')
+            .toString()
+            .compareTo((b['tree_no'] ?? 'N/A').toString()));
+
       // Filter by tree status
       if (_selectedTreeStatus != 'All') {
-        yield allTrees
+        resultTrees = resultTrees
             .where((tree) => tree['tree_status'] == _selectedTreeStatus)
             .toList();
-      } else {
-        yield allTrees;
       }
+
+      yield resultTrees;
     } catch (e) {
       print('Error loading trees: $e');
       yield [];
@@ -215,6 +249,20 @@ class _ForesterSummaryReportsState extends State<ForesterSummaryReports> {
     return null;
   }
 
+  DateTime? _extractDateTime(dynamic value) {
+    if (value == null) return null;
+    if (value is Timestamp) return value.toDate();
+    if (value is DateTime) return value;
+    if (value is int) {
+      // Assume value is a millisecond epoch
+      return DateTime.fromMillisecondsSinceEpoch(value, isUtc: false);
+    }
+    if (value is String) {
+      return DateTime.tryParse(value);
+    }
+    return null;
+  }
+
   bool _isValidLatitude(double value) {
     return value.isFinite && !value.isNaN && value >= -90 && value <= 90;
   }
@@ -238,7 +286,8 @@ class _ForesterSummaryReportsState extends State<ForesterSummaryReports> {
     }
 
     if (!_isValidLatLng(lat, lng)) {
-      print('⚠️ Tree $treeLabel skipped due to invalid coordinates: ($lat, $lng)');
+      print(
+          '⚠️ Tree $treeLabel skipped due to invalid coordinates: ($lat, $lng)');
       return null;
     }
 
@@ -303,26 +352,53 @@ class _ForesterSummaryReportsState extends State<ForesterSummaryReports> {
         markerColor = Colors.orange;
       } else if (status == 'Cut') {
         markerColor = Colors.red;
-      } else if (status == 'Paid') {
-        markerColor = Colors.blue;
       }
+
+      final treeLabel =
+          (tree['tree_no'] ?? tree['id'] ?? 'N/A').toString().trim();
 
       markers.add(
         Marker(
           point: latLng,
-          width: 40,
-          height: 40,
-          alignment: Alignment.center,
-          child: GestureDetector(
-            onTap: () => _showTreeDetails(tree),
-            child: Icon(
-              Icons.location_pin,
-              color: markerColor,
-              size: 40,
-              shadows: const [
-                Shadow(blurRadius: 3, color: Colors.black45),
-              ],
-            ),
+          width: 60,
+          height: 60,
+          alignment: Alignment.topCenter,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                Icons.location_pin,
+                color: markerColor,
+                size: 40,
+                shadows: const [
+                  Shadow(blurRadius: 3, color: Colors.black45),
+                ],
+              ),
+              Container(
+                margin: const EdgeInsets.only(top: 2),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(4),
+                  boxShadow: const [
+                    BoxShadow(
+                      color: Colors.black26,
+                      blurRadius: 3,
+                      offset: Offset(0, 1),
+                    ),
+                  ],
+                ),
+                child: Text(
+                  treeLabel.isEmpty ? 'N/A' : treeLabel,
+                  style: TextStyle(
+                    fontSize: 10,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.grey[800],
+                  ),
+                ),
+              ),
+            ],
           ),
         ),
       );
@@ -757,10 +833,15 @@ class _ForesterSummaryReportsState extends State<ForesterSummaryReports> {
 
   /// Show individual tree details in a dialog
   void _showTreeDetailsInDialog(Map<String, dynamic> tree) {
-    final latValue = tree['latitude'];
-    final lngValue = tree['longitude'];
-    final hasCoordinates =
-        latValue is double && lngValue is double && _isValidLatLng(latValue, lngValue);
+    final double? latValue = tree['latitude'] is num
+        ? (tree['latitude'] as num).toDouble()
+        : null;
+    final double? lngValue = tree['longitude'] is num
+        ? (tree['longitude'] as num).toDouble()
+        : null;
+    final hasCoordinates = latValue != null &&
+        lngValue != null &&
+        _isValidLatLng(latValue, lngValue);
 
     showDialog(
       context: context,
@@ -804,11 +885,11 @@ class _ForesterSummaryReportsState extends State<ForesterSummaryReports> {
                 const SizedBox(height: 8),
                 _buildDetailItem(
                   'Latitude',
-                  _formatCoordinate(latValue as double),
+                  _formatCoordinate(latValue),
                 ),
                 _buildDetailItem(
                   'Longitude',
-                  _formatCoordinate(lngValue as double),
+                  _formatCoordinate(lngValue),
                 ),
               ],
               if (tree['appointment_location'] != null) ...[
@@ -1045,8 +1126,6 @@ class _ForesterSummaryReportsState extends State<ForesterSummaryReports> {
                             _buildStatusButton('Ready to Cut'),
                             const SizedBox(width: 8),
                             _buildStatusButton('Cut'),
-                            const SizedBox(width: 8),
-                            _buildStatusButton('Paid'),
                           ],
                         ),
                       ),
@@ -1182,8 +1261,6 @@ class _ForesterSummaryReportsState extends State<ForesterSummaryReports> {
                                       statusColor = Colors.orange;
                                     } else if (entry.key == 'Cut') {
                                       statusColor = Colors.red;
-                                    } else if (entry.key == 'Paid') {
-                                      statusColor = Colors.green;
                                     }
 
                                     return Chip(
@@ -1231,7 +1308,8 @@ class _ForesterSummaryReportsState extends State<ForesterSummaryReports> {
                                                 const InteractionOptions(
                                               flags: InteractiveFlag.pinchZoom |
                                                   InteractiveFlag.drag |
-                                                  InteractiveFlag.flingAnimation |
+                                                  InteractiveFlag
+                                                      .flingAnimation |
                                                   InteractiveFlag.doubleTapZoom,
                                             ),
                                           ),
@@ -1253,7 +1331,8 @@ class _ForesterSummaryReportsState extends State<ForesterSummaryReports> {
                                             ),
                                             decoration: BoxDecoration(
                                               color: Colors.white,
-                                              borderRadius: BorderRadius.circular(20),
+                                              borderRadius:
+                                                  BorderRadius.circular(20),
                                               boxShadow: [
                                                 BoxShadow(
                                                   color: Colors.black
@@ -1292,8 +1371,10 @@ class _ForesterSummaryReportsState extends State<ForesterSummaryReports> {
                                           child: Container(
                                             padding: const EdgeInsets.all(12),
                                             decoration: BoxDecoration(
-                                              color: Colors.white.withOpacity(0.95),
-                                              borderRadius: BorderRadius.circular(12),
+                                              color: Colors.white
+                                                  .withOpacity(0.95),
+                                              borderRadius:
+                                                  BorderRadius.circular(12),
                                               boxShadow: [
                                                 BoxShadow(
                                                   color: Colors.black
@@ -1405,8 +1486,6 @@ class _ForesterSummaryReportsState extends State<ForesterSummaryReports> {
       statusColor = Colors.orange;
     } else if (status == 'Cut') {
       statusColor = Colors.red;
-    } else if (status == 'Paid') {
-      statusColor = Colors.green;
     }
 
     return ElevatedButton(
@@ -1539,118 +1618,4 @@ class _ForesterSummaryReportsState extends State<ForesterSummaryReports> {
     );
   }
 
-  void _showTreeDetails(Map<String, dynamic> tree) {
-    showDialog(
-      context: context,
-      builder: (_) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: Row(
-          children: [
-            const Icon(Icons.park, color: Colors.green, size: 28),
-            const SizedBox(width: 8),
-            Expanded(
-              child: Text(
-                'Tree #${tree['tree_no']}',
-                style: const TextStyle(fontSize: 18),
-              ),
-            ),
-          ],
-        ),
-        content: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              if (tree['photo_url'] != null)
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(8),
-                  child: Image.network(
-                    tree['photo_url'],
-                    height: 200,
-                    width: double.infinity,
-                    fit: BoxFit.cover,
-                    errorBuilder: (context, error, stackTrace) {
-                      return Container(
-                        height: 200,
-                        color: Colors.grey[200],
-                        child: const Icon(Icons.park,
-                            size: 64, color: Colors.grey),
-                      );
-                    },
-                  ),
-                ),
-              const SizedBox(height: 16),
-              _buildDetailRow('Species', tree['species']),
-              _buildDetailRow('Status', tree['tree_status']),
-              _buildDetailRow('Applicant', tree['applicant_name']),
-              _buildDetailRow('Appointment', tree['appointment_location']),
-              _buildDetailRow('Diameter', '${tree['diameter']} cm'),
-              _buildDetailRow('Height', '${tree['height']} m'),
-              _buildDetailRow(
-                  'Volume', '${tree['volume'].toStringAsFixed(2)} m┬│'),
-              if (tree['latitude'] is double &&
-                  tree['longitude'] is double &&
-                  _isValidLatLng(tree['latitude'], tree['longitude']))
-                _buildDetailRow(
-                  'Coordinates',
-                  '${_formatCoordinate(tree['latitude'])}, ${_formatCoordinate(tree['longitude'])}',
-                ),
-              if (tree['qr_url'] != null) ...[
-                const SizedBox(height: 12),
-                const Text(
-                  'QR Code:',
-                  style: TextStyle(fontWeight: FontWeight.bold),
-                ),
-                const SizedBox(height: 8),
-                Center(
-                  child: Image.network(
-                    tree['qr_url'],
-                    height: 150,
-                    width: 150,
-                    errorBuilder: (context, error, stackTrace) {
-                      return const Icon(Icons.qr_code, size: 64);
-                    },
-                  ),
-                ),
-              ],
-            ],
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Close', style: TextStyle(color: Colors.green)),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildDetailRow(String label, String value) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 8.0),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          SizedBox(
-            width: 100,
-            child: Text(
-              '$label:',
-              style: const TextStyle(
-                fontWeight: FontWeight.bold,
-                fontSize: 14,
-              ),
-            ),
-          ),
-          Expanded(
-            child: Text(
-              value,
-              style: const TextStyle(fontSize: 14),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
 }
-

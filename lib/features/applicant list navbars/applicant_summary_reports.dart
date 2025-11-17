@@ -41,14 +41,14 @@ class _ApplicantSummaryPageState extends State<ApplicantSummaryPage> {
         final data = doc.data();
         final appointmentType = data['appointmentType'] ?? 'Tree Tagging';
         final applicationType = data['applicationType'] ?? '';
-        
+
         // Build display name: "CTPO Tree Tagging", "PLTP Tree Tagging", etc.
         String displayName = appointmentType;
         if (applicationType.isNotEmpty) {
           final appTypeUpper = applicationType.toUpperCase();
           displayName = '$appTypeUpper $appointmentType';
         }
-        
+
         appointments.add({
           'id': doc.id,
           'location': data['location'] ?? 'Unknown Location',
@@ -322,13 +322,17 @@ class _ApplicantSummaryPageState extends State<ApplicantSummaryPage> {
                                 0, (sum, tree) => sum + (tree['volume'] ?? 0));
                             final avgDiameter = trees.isEmpty
                                 ? 0.0
-                                : trees.fold<double>(0,
-                                        (sum, tree) => sum + (tree['diameter'] ?? 0)) /
+                                : trees.fold<double>(
+                                        0,
+                                        (sum, tree) =>
+                                            sum + (tree['diameter'] ?? 0)) /
                                     trees.length;
                             final avgHeight = trees.isEmpty
                                 ? 0.0
                                 : trees.fold<double>(
-                                        0, (sum, tree) => sum + (tree['height'] ?? 0)) /
+                                        0,
+                                        (sum, tree) =>
+                                            sum + (tree['height'] ?? 0)) /
                                     trees.length;
 
                             return Column(
@@ -337,7 +341,10 @@ class _ApplicantSummaryPageState extends State<ApplicantSummaryPage> {
                                 Container(
                                   decoration: BoxDecoration(
                                     gradient: LinearGradient(
-                                      colors: [Colors.green[50]!, Colors.green[100]!],
+                                      colors: [
+                                        Colors.green[50]!,
+                                        Colors.green[100]!
+                                      ],
                                       begin: Alignment.topLeft,
                                       end: Alignment.bottomRight,
                                     ),
@@ -443,7 +450,8 @@ class _ApplicantSummaryPageState extends State<ApplicantSummaryPage> {
   }
 
   /// Build statistic item widget
-  Widget _buildStatItem(String label, String value, IconData icon, Color color) {
+  Widget _buildStatItem(
+      String label, String value, IconData icon, Color color) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
       decoration: BoxDecoration(
@@ -501,8 +509,6 @@ class _ApplicantSummaryPageState extends State<ApplicantSummaryPage> {
       statusColor = Colors.orange;
     } else if (status == 'Cut') {
       statusColor = Colors.red;
-    } else if (status == 'Paid') {
-      statusColor = Colors.green;
     }
 
     return Card(
@@ -618,7 +624,8 @@ class _ApplicantSummaryPageState extends State<ApplicantSummaryPage> {
                         Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            Icon(Icons.height, size: 13, color: Colors.grey[600]),
+                            Icon(Icons.height,
+                                size: 13, color: Colors.grey[600]),
                             const SizedBox(width: 3),
                             Text(
                               "${tree['height']}m",
