@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 
@@ -105,24 +106,28 @@ class _SpltpRegisterTreesPageState extends State<SpltpRegisterTreesPage> {
 
   Future<String?> _generateAndUploadQr(String treeId, Map<String, dynamic> data) async {
     try {
-      final buffer = StringBuffer()
-        ..writeln('tree_id: $treeId')
-        ..writeln('tree_no: ${data['tree_no']}')
-        ..writeln('appointment_id: ${data['appointment_id']}')
-        ..writeln('specie: ${data['specie']}')
-        ..writeln('diameter: ${data['diameter']}')
-        ..writeln('height: ${data['height']}')
-        ..writeln('volume: ${data['volume']}')
-        ..writeln('tree_status: ${data['tree_status'] ?? 'N/A'}')
-        ..writeln('latitude: ${data['latitude']}')
-        ..writeln('longitude: ${data['longitude']}')
-        ..writeln('forester_id: ${data['forester_id']}')
-        ..writeln('forester_name: ${data['forester_name']}')
-        ..writeln('photo_url: ${data['photo_url'] ?? 'N/A'}')
-        ..writeln('timestamp: ${data['timestamp']}');
+      final qrPayload = {
+        'format': 'treesure.v2',
+        'inventory_doc_id': treeId,
+        'appointment_id': data['appointment_id'],
+        'tree_id': data['tree_id'],
+        'tree_no': data['tree_no'],
+        'tree_status': data['tree_status'] ?? 'Not Yet Ready',
+        'specie': data['specie'],
+        'diameter': data['diameter'],
+        'height': data['height'],
+        'volume': data['volume'],
+        'latitude': data['latitude'],
+        'longitude': data['longitude'],
+        'forester_id': data['forester_id'],
+        'forester_name': data['forester_name'],
+        'photo_url': data['photo_url'] ?? '',
+        'timestamp': data['timestamp'],
+        'generated_at': DateTime.now().toIso8601String(),
+      };
 
       final qrPainter = QrPainter(
-        data: buffer.toString(),
+        data: jsonEncode(qrPayload),
         version: QrVersions.auto,
         gapless: true,
       );

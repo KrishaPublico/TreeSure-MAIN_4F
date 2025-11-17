@@ -690,21 +690,22 @@ class _ApplicantSummaryPageState extends State<ApplicantSummaryPage> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               if (tree['photo_url'] != null)
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(8),
-                  child: Image.network(
-                    tree['photo_url'],
-                    height: 200,
-                    width: double.infinity,
-                    fit: BoxFit.cover,
-                    errorBuilder: (context, error, stackTrace) {
-                      return Container(
-                        height: 200,
-                        color: Colors.grey[200],
-                        child: const Icon(Icons.park,
-                            size: 64, color: Colors.grey),
-                      );
-                    },
+                SizedBox(
+                  height: 200,
+                  width: double.infinity,
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(8),
+                    child: Image.network(
+                      tree['photo_url'],
+                      fit: BoxFit.cover,
+                      errorBuilder: (context, error, stackTrace) {
+                        return Container(
+                          color: Colors.grey[200],
+                          child: const Icon(Icons.park,
+                              size: 64, color: Colors.grey),
+                        );
+                      },
+                    ),
                   ),
                 ),
               const SizedBox(height: 16),
