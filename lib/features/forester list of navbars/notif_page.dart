@@ -209,9 +209,15 @@ class _NotifPageState extends State<NotifPage_Forester> {
                     final applicantId = appt['applicantId'] as String?;
                     final appointmentType =
                         appt['appointmentType'] ?? 'Tree Tagging';
-                    final type = appointmentType == 'Cutting Assignment'
-                        ? appt['permitType'] ?? 'Cutting Assignment'
-                        : appointmentType;
+                    final applicationType = appt['applicationType'] ?? '';
+
+                    // Build display type: "CTPO Tree Tagging", "PLTP Revisit", etc.
+                    String displayType = appointmentType;
+                    if (applicationType.isNotEmpty) {
+                      final appTypeUpper = applicationType.toUpperCase();
+                      displayType = '$appTypeUpper $appointmentType';
+                    }
+
                     final location = appt['location'] ?? 'No location';
                     final status = appt['status'] ?? 'Pending';
 
@@ -239,7 +245,7 @@ class _NotifPageState extends State<NotifPage_Forester> {
                               ),
                             ),
                             title: Text(
-                              "$type - $status",
+                              "$displayType - $status",
                               style: const TextStyle(
                                   fontWeight: FontWeight.bold,
                                   color: Colors.black),
@@ -262,7 +268,7 @@ class _NotifPageState extends State<NotifPage_Forester> {
                                     foresterName: widget.foresterName,
                                     foresterId: widget.foresterId,
                                     appointmentId: apptDoc.id,
-                                    permitType: appt['permitType'] ?? '',
+                                    applicationType: applicationType,
                                   ),
                                 ),
                               );
