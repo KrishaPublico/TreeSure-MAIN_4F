@@ -27,7 +27,7 @@ class SpltpRegisterTreesPage extends StatefulWidget {
     required this.foresterName,
     required this.appointmentId,
   });
- 
+
   @override
   State<SpltpRegisterTreesPage> createState() => _SpltpRegisterTreesPageState();
 }
@@ -66,7 +66,8 @@ class _SpltpRegisterTreesPageState extends State<SpltpRegisterTreesPage> {
   List<Map<String, dynamic>> spltpTrees = [];
   String? selectedTreeId; // Original tree doc ID (T1, T2, etc.)
   String? selectedDropdownId; // Unique dropdown ID for UI
-  String? selectedTreeTaggingAppointmentId; // ✅ Doc ID of tree_tagging_appointment
+  String?
+      selectedTreeTaggingAppointmentId; // ✅ Doc ID of tree_tagging_appointment
   String? treeStatus = 'Not Yet'; // ✅ Tree cutting status
   bool isLoadingTrees = false;
 
@@ -189,7 +190,8 @@ class _SpltpRegisterTreesPageState extends State<SpltpRegisterTreesPage> {
           .collection('tree_inventory')
           .get();
 
-      print('✅ Found ${treeInventorySnapshot.docs.length} trees in tree_inventory');
+      print(
+          '✅ Found ${treeInventorySnapshot.docs.length} trees in tree_inventory');
 
       final allTrees = <Map<String, dynamic>>[];
 
@@ -243,11 +245,12 @@ class _SpltpRegisterTreesPageState extends State<SpltpRegisterTreesPage> {
         specieController.text = selectedTree['specie'] ?? '';
         diameterController.text = selectedTree['diameter']?.toString() ?? '';
         heightController.text = selectedTree['height']?.toString() ?? '';
-        volumeController.text = selectedTree['volume']?.toStringAsFixed(2) ?? '';
-        
+        volumeController.text =
+            selectedTree['volume']?.toStringAsFixed(2) ?? '';
+
         final lat = (selectedTree['latitude'] as num?)?.toDouble();
         final lng = (selectedTree['longitude'] as num?)?.toDouble();
-        
+
         if (lat != null && lng != null) {
           latController.text = lat.toStringAsFixed(6);
           longController.text = lng.toStringAsFixed(6);
@@ -304,7 +307,8 @@ class _SpltpRegisterTreesPageState extends State<SpltpRegisterTreesPage> {
         await _fetchTreeFromFirestore(treeId);
       } else {
         setState(() {
-          scannedData = "❌ Invalid QR code format. Expected tree ID like 'T1', 'T2', etc.";
+          scannedData =
+              "❌ Invalid QR code format. Expected tree ID like 'T1', 'T2', etc.";
         });
       }
     } catch (e) {
@@ -359,12 +363,15 @@ Timestamp: ${treeData['timestamp'] != null ? (treeData['timestamp'] as Timestamp
           }
         });
 
-        _showDialog('Success', '✅ Tree data loaded successfully!\nSpecie and other details auto-filled.');
+        _showDialog('Success',
+            '✅ Tree data loaded successfully!\nSpecie and other details auto-filled.');
       } else {
         setState(() {
-          scannedData = "❌ Tree with ID '$treeId' not found in this appointment.";
+          scannedData =
+              "❌ Tree with ID '$treeId' not found in this appointment.";
         });
-        _showDialog('Not Found', "❌ Tree with ID '$treeId' not found in this appointment.");
+        _showDialog('Not Found',
+            "❌ Tree with ID '$treeId' not found in this appointment.");
       }
     } catch (e) {
       print('Error fetching tree data: $e');
@@ -375,7 +382,8 @@ Timestamp: ${treeData['timestamp'] != null ? (treeData['timestamp'] as Timestamp
     }
   }
 
-  Future<String?> _generateAndUploadQr(String treeId, Map<String, dynamic> data) async {
+  Future<String?> _generateAndUploadQr(
+      String treeId, Map<String, dynamic> data) async {
     try {
       final qrPayload = {
         'format': 'treesure.v2',
@@ -406,7 +414,8 @@ Timestamp: ${treeData['timestamp'] != null ? (treeData['timestamp'] as Timestamp
       final picData = await qrPainter.toImageData(300);
       final Uint8List bytes = picData!.buffer.asUint8List();
 
-      final ref = FirebaseStorage.instance.ref().child('tree_qrcodes/$treeId.png');
+      final ref =
+          FirebaseStorage.instance.ref().child('tree_qrcodes/$treeId.png');
 
       UploadTask uploadTask;
       if (kIsWeb) {
@@ -560,7 +569,7 @@ Timestamp: ${treeData['timestamp'] != null ? (treeData['timestamp'] as Timestamp
       // Close the "Submitting" dialog
       Navigator.of(context).pop();
 
-    _showDialog('Success', '✅ Tree and QR successfully saved!');
+      _showDialog('Success', '✅ Tree and QR successfully saved!');
 
       _clearFields();
     } catch (e) {
@@ -630,8 +639,9 @@ Timestamp: ${treeData['timestamp'] != null ? (treeData['timestamp'] as Timestamp
   Future<void> _completeTreeRegistration() async {
     try {
       // ✅ Use the tree_tagging_appointment doc ID if available
-      final appointmentIdToUse = selectedTreeTaggingAppointmentId ?? widget.appointmentId;
-      
+      final appointmentIdToUse =
+          selectedTreeTaggingAppointmentId ?? widget.appointmentId;
+
       final appointmentRef = FirebaseFirestore.instance
           .collection('appointments')
           .doc(appointmentIdToUse);
@@ -643,7 +653,8 @@ Timestamp: ${treeData['timestamp'] != null ? (treeData['timestamp'] as Timestamp
       }
 
       final appointmentData = appointmentDoc.data()!;
-      final foresterIds = List<String>.from(appointmentData['foresterIds'] ?? []);
+      final foresterIds =
+          List<String>.from(appointmentData['foresterIds'] ?? []);
 
       // Initialize completionStatus if it doesn't exist
       Map<String, dynamic> completionStatus =
@@ -669,12 +680,12 @@ Timestamp: ${treeData['timestamp'] != null ? (treeData['timestamp'] as Timestamp
           'status': 'Completed',
         });
 
-        _showDialog('Success', '✅ Tree registration completed by all foresters!');
+        _showDialog(
+            'Success', '✅ Tree registration completed by all foresters!');
       } else {
         // Not all completed yet
-        final completedCount = completionStatus.values
-            .where((v) => v['completed'] == true)
-            .length;
+        final completedCount =
+            completionStatus.values.where((v) => v['completed'] == true).length;
         final totalCount = foresterIds.length;
 
         await appointmentRef.update({
@@ -942,7 +953,6 @@ Timestamp: ${treeData['timestamp'] != null ? (treeData['timestamp'] as Timestamp
             onPressed: _hideMapView,
           ),
         ),
-        body: _buildMapView(),
       );
     }
 
@@ -953,13 +963,6 @@ Timestamp: ${treeData['timestamp'] != null ? (treeData['timestamp'] as Timestamp
           title: const Text("Tree Inventory - SPLTP"),
           backgroundColor: Colors.green[800],
           foregroundColor: Colors.white,
-          bottom: const TabBar(
-            tabs: [
-              Tab(icon: Icon(Icons.edit), text: "Register Tree"),
-              Tab(icon: Icon(Icons.qr_code_scanner), text: "Scan QR"),
-              Tab(icon: Icon(Icons.map), text: "Map View"),
-            ],
-          ),
         ),
         body: TabBarView(
           children: [
@@ -972,7 +975,7 @@ Timestamp: ${treeData['timestamp'] != null ? (treeData['timestamp'] as Timestamp
                       style: const TextStyle(
                           fontWeight: FontWeight.bold, fontSize: 16)),
                   const SizedBox(height: 20),
-                  
+
                   // ✅ Tree Selection Dropdown
                   const Text(
                     'Select Tree (Optional)',
@@ -1006,10 +1009,13 @@ Timestamp: ${treeData['timestamp'] != null ? (treeData['timestamp'] as Timestamp
                           child: DropdownButton<String>(
                             isExpanded: true,
                             value: selectedDropdownId,
-                            hint: const Text('Choose a tree or skip to register new...'),
+                            hint: const Text(
+                                'Choose a tree or skip to register new...'),
                             items: spltpTrees.map((tree) {
                               final uniqueId = tree['docId'] ?? 'Unknown';
-                              final treeId = tree['treeDocId'] ?? tree['tree_id'] ?? 'Unknown';
+                              final treeId = tree['treeDocId'] ??
+                                  tree['tree_id'] ??
+                                  'Unknown';
                               final specie = tree['specie'] ?? 'N/A';
                               return DropdownMenuItem<String>(
                                 value: uniqueId,
@@ -1025,7 +1031,8 @@ Timestamp: ${treeData['timestamp'] != null ? (treeData['timestamp'] as Timestamp
                       padding: const EdgeInsets.only(top: 8.0),
                       child: TextButton.icon(
                         icon: const Icon(Icons.clear, size: 16),
-                        label: const Text('Clear Selection & Register New Tree'),
+                        label:
+                            const Text('Clear Selection & Register New Tree'),
                         onPressed: () {
                           setState(() {
                             selectedDropdownId = null;
@@ -1046,113 +1053,116 @@ Timestamp: ${treeData['timestamp'] != null ? (treeData['timestamp'] as Timestamp
                       ),
                     ),
                   const SizedBox(height: 20),
-                  
-                  buildTextField("Specie", specieController, focusNode: specieFocus),
-            Row(
-              children: [
-                Expanded(
-                  child: buildTextField("Diameter (cm)", diameterController,
-                      keyboardType: TextInputType.number),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: buildTextField("Height (m)", heightController,
-                      keyboardType: TextInputType.number),
-                ),
-              ],
-            ),
-            buildTextField("Volume (CU m)", volumeController, enabled: false),
-            const SizedBox(height: 12),
 
-            // ✅ Tree Status Dropdown
-            const Text(
-              'Tree Status',
-              style: TextStyle(
-                fontWeight: FontWeight.w600,
-                color: Colors.black87,
-                fontSize: 14,
-              ),
-            ),
-            const SizedBox(height: 8),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12),
-              decoration: BoxDecoration(
-                border: Border.all(color: Colors.grey[400]!),
-                borderRadius: BorderRadius.circular(10),
-              ),
-              child: DropdownButton<String>(
-                isExpanded: true,
-                value: treeStatus,
-                items: const [
-                  DropdownMenuItem(
-                    value: 'Ready for Cutting',
-                    child: Text('Ready for Cutting'),
+                  buildTextField("Specie", specieController,
+                      focusNode: specieFocus),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: buildTextField(
+                            "Diameter (cm)", diameterController,
+                            keyboardType: TextInputType.number),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: buildTextField("Height (m)", heightController,
+                            keyboardType: TextInputType.number),
+                      ),
+                    ],
                   ),
-                  DropdownMenuItem(
-                    value: 'Not Yet',
-                    child: Text('Not Yet'),
-                  ),
-                ],
-                onChanged: (value) {
-                  setState(() {
-                    treeStatus = value;
-                  });
-                },
-                underline: const SizedBox(),
-              ),
-            ),
-            const SizedBox(height: 12),
+                  buildTextField("Volume (CU m)", volumeController,
+                      enabled: false),
+                  const SizedBox(height: 12),
 
-            Row(
-              children: [
-                Expanded(
-                  child: buildTextField("Latitude", latController,
-                      enabled: false, keyboardType: TextInputType.number),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: buildTextField("Longitude", longController,
-                      enabled: false, keyboardType: TextInputType.number),
-                ),
-              ],
-            ),
-            TextButton.icon(
-              icon: const Icon(Icons.my_location, color: Colors.green),
-              label: const Text("Get Current Location"),
-              onPressed: _getLocation,
-            ),
-            const SizedBox(height: 20),
-            const Text("Photo Evidence",
-                style: TextStyle(fontWeight: FontWeight.bold)),
-            if (imageFile != null)
-              kIsWeb
-                  ? Image.network(imageFile!.path, height: 200)
-                  : Image.file(File(imageFile!.path), height: 200)
-            else
-              const Text("No image selected."),
-            TextButton.icon(
-              icon: const Icon(Icons.upload),
-              label: const Text("Pick Photo"),
-              onPressed: pickImage,
-            ),
-            const SizedBox(height: 20),
-            ElevatedButton(
-              onPressed: handleSubmit,
-              style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.green[800],
-                  padding: const EdgeInsets.symmetric(vertical: 16)),
-              child: const Text("Submit",
-                  style: TextStyle(color: Colors.white, fontSize: 16)),
-            ),
-            const SizedBox(height: 10),
-            ElevatedButton(
-              onPressed: viewSummaryDialog,
-              style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.green[800],
-                  padding: const EdgeInsets.symmetric(vertical: 16)),
-              child: const Text("View Summary",
-                  style: TextStyle(color: Colors.white, fontSize: 16)),
-            ),
+                  // ✅ Tree Status Dropdown
+                  const Text(
+                    'Tree Status',
+                    style: TextStyle(
+                      fontWeight: FontWeight.w600,
+                      color: Colors.black87,
+                      fontSize: 14,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12),
+                    decoration: BoxDecoration(
+                      border: Border.all(color: Colors.grey[400]!),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: DropdownButton<String>(
+                      isExpanded: true,
+                      value: treeStatus,
+                      items: const [
+                        DropdownMenuItem(
+                          value: 'Ready for Cutting',
+                          child: Text('Ready for Cutting'),
+                        ),
+                        DropdownMenuItem(
+                          value: 'Not Yet',
+                          child: Text('Not Yet'),
+                        ),
+                      ],
+                      onChanged: (value) {
+                        setState(() {
+                          treeStatus = value;
+                        });
+                      },
+                      underline: const SizedBox(),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+
+                  Row(
+                    children: [
+                      Expanded(
+                        child: buildTextField("Latitude", latController,
+                            enabled: false, keyboardType: TextInputType.number),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: buildTextField("Longitude", longController,
+                            enabled: false, keyboardType: TextInputType.number),
+                      ),
+                    ],
+                  ),
+                  TextButton.icon(
+                    icon: const Icon(Icons.my_location, color: Colors.green),
+                    label: const Text("Get Current Location"),
+                    onPressed: _getLocation,
+                  ),
+                  const SizedBox(height: 20),
+                  const Text("Photo Evidence",
+                      style: TextStyle(fontWeight: FontWeight.bold)),
+                  if (imageFile != null)
+                    kIsWeb
+                        ? Image.network(imageFile!.path, height: 200)
+                        : Image.file(File(imageFile!.path), height: 200)
+                  else
+                    const Text("No image selected."),
+                  TextButton.icon(
+                    icon: const Icon(Icons.upload),
+                    label: const Text("Pick Photo"),
+                    onPressed: pickImage,
+                  ),
+                  const SizedBox(height: 20),
+                  ElevatedButton(
+                    onPressed: handleSubmit,
+                    style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.green[800],
+                        padding: const EdgeInsets.symmetric(vertical: 16)),
+                    child: const Text("Submit",
+                        style: TextStyle(color: Colors.white, fontSize: 16)),
+                  ),
+                  const SizedBox(height: 10),
+                  ElevatedButton(
+                    onPressed: viewSummaryDialog,
+                    style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.green[800],
+                        padding: const EdgeInsets.symmetric(vertical: 16)),
+                    child: const Text("View Summary",
+                        style: TextStyle(color: Colors.white, fontSize: 16)),
+                  ),
                   const SizedBox(height: 15),
                   ElevatedButton(
                     onPressed: _completeTreeRegistration,
@@ -1165,99 +1175,6 @@ Timestamp: ${treeData['timestamp'] != null ? (treeData['timestamp'] as Timestamp
                 ],
               ),
             ),
-            // QR Scanner Tab
-            Column(
-              children: [
-                if (isScanning)
-                  Expanded(
-                    child: MobileScanner(
-                      controller: scannerController,
-                      onDetect: _onDetect,
-                    ),
-                  )
-                else
-                  Expanded(
-                    child: Center(
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(Icons.qr_code, size: 100, color: Colors.green[800]),
-                          const SizedBox(height: 20),
-                          const Text(
-                            "Ready to scan QR codes",
-                            style: TextStyle(fontSize: 18),
-                          ),
-                          const SizedBox(height: 40),
-                          ElevatedButton.icon(
-                            icon: const Icon(Icons.qr_code_scanner),
-                            label: const Text("Start Scanning"),
-                            onPressed: _startScanning,
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: Colors.green[800],
-                              padding: const EdgeInsets.symmetric(
-                                  horizontal: 30, vertical: 16),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                if (isScanning)
-                  Padding(
-                    padding: const EdgeInsets.all(16.0),
-                    child: ElevatedButton(
-                      onPressed: _stopScanning,
-                      style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.red[700],
-                          padding: const EdgeInsets.symmetric(vertical: 12)),
-                      child: const Text("Stop Scanning",
-                          style:
-                              TextStyle(color: Colors.white, fontSize: 16)),
-                    ),
-                  ),
-                if (scannedData != null)
-                  Container(
-                    padding: const EdgeInsets.all(16),
-                    margin: const EdgeInsets.all(16),
-                    decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(10),
-                      color: Colors.green[50],
-                      border: Border.all(color: Colors.green[200]!),
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Text(
-                          "Scanned Tree Data",
-                          style: TextStyle(
-                              fontWeight: FontWeight.bold, fontSize: 16),
-                        ),
-                        const SizedBox(height: 10),
-                        Text(scannedData!),
-                        const SizedBox(height: 15),
-                        ElevatedButton.icon(
-                          icon: const Icon(Icons.check),
-                          label: const Text("Use This Data"),
-                          onPressed: () {
-                            // Form fields are already auto-filled
-                            _stopScanning();
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(
-                                  content: Text(
-                                      '✅ Tree data loaded. Adjust if needed and submit.')),
-                            );
-                          },
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.green[800],
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-              ],
-            ),
-            // Map View Tab
-            _buildMapView(),
           ],
         ),
       ),
