@@ -635,11 +635,17 @@ class _ForesterTreeMappingState extends State<ForesterTreeMapping> {
 
   @override
   Widget build(BuildContext context) {
+    final screenWidth = MediaQuery.of(context).size.width;
+    final screenHeight = MediaQuery.of(context).size.height;
+
     return Scaffold(
       appBar: AppBar(
-        title: Text(selectedAppointmentId == null
-            ? 'My Appointments'
-            : 'Tree Locations'),
+        title: Text(
+          selectedAppointmentId == null
+              ? 'My Appointments'
+              : 'Tree Locations',
+          style: TextStyle(fontSize: screenWidth * 0.045),
+        ),
         backgroundColor: Colors.green.shade700,
         elevation: 0,
         leading: selectedAppointmentId != null
@@ -681,33 +687,41 @@ class _ForesterTreeMappingState extends State<ForesterTreeMapping> {
   }
 
   Widget _buildAppointmentsList() {
+    final screenWidth = MediaQuery.of(context).size.width;
+    final screenHeight = MediaQuery.of(context).size.height;
+
     if (appointments.isEmpty) {
       return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            const Icon(Icons.assignment_outlined, size: 64, color: Colors.grey),
-            const SizedBox(height: 16),
-            Text(
-              'No appointments found',
-              style: TextStyle(
-                fontSize: 18,
-                color: Colors.grey[600],
-                fontWeight: FontWeight.w500,
+        child: Padding(
+          padding: EdgeInsets.all(screenWidth * 0.05),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(Icons.assignment_outlined, size: screenWidth * 0.16, color: Colors.grey),
+              SizedBox(height: screenHeight * 0.02),
+              Text(
+                'No appointments found',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: screenWidth * 0.045,
+                  color: Colors.grey[600],
+                  fontWeight: FontWeight.w500,
+                ),
               ),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              'Forester ID: ${widget.foresterId}',
-              style: TextStyle(fontSize: 14, color: Colors.grey),
-            ),
-          ],
+              SizedBox(height: screenHeight * 0.01),
+              Text(
+                'Forester ID: ${widget.foresterId}',
+                style: TextStyle(fontSize: screenWidth * 0.035, color: Colors.grey),
+                textAlign: TextAlign.center,
+              ),
+            ],
+          ),
         ),
       );
     }
 
     return ListView.builder(
-      padding: const EdgeInsets.all(16),
+      padding: EdgeInsets.all(screenWidth * 0.04),
       itemCount: appointments.length,
       itemBuilder: (context, index) {
         final appointment = appointments[index];
@@ -733,7 +747,7 @@ class _ForesterTreeMappingState extends State<ForesterTreeMapping> {
         }
 
         return Card(
-          margin: const EdgeInsets.only(bottom: 12),
+          margin: EdgeInsets.only(bottom: screenHeight * 0.015),
           elevation: 2,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(12),
@@ -742,7 +756,7 @@ class _ForesterTreeMappingState extends State<ForesterTreeMapping> {
             onTap: () => _fetchTreesForAppointment(appointmentId),
             borderRadius: BorderRadius.circular(12),
             child: Padding(
-              padding: const EdgeInsets.all(16),
+              padding: EdgeInsets.all(screenWidth * 0.04),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -752,16 +766,18 @@ class _ForesterTreeMappingState extends State<ForesterTreeMapping> {
                       Expanded(
                         child: Text(
                           appointmentType,
-                          style: const TextStyle(
-                            fontSize: 16,
+                          style: TextStyle(
+                            fontSize: screenWidth * 0.04,
                             fontWeight: FontWeight.bold,
                             color: Colors.green,
                           ),
+                          overflow: TextOverflow.ellipsis,
                         ),
                       ),
+                      SizedBox(width: screenWidth * 0.02),
                       Container(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 8, vertical: 4),
+                        padding: EdgeInsets.symmetric(
+                            horizontal: screenWidth * 0.02, vertical: screenHeight * 0.005),
                         decoration: BoxDecoration(
                           color: statusColor.withOpacity(0.2),
                           borderRadius: BorderRadius.circular(12),
@@ -769,7 +785,7 @@ class _ForesterTreeMappingState extends State<ForesterTreeMapping> {
                         child: Text(
                           status,
                           style: TextStyle(
-                            fontSize: 11,
+                            fontSize: screenWidth * 0.028,
                             fontWeight: FontWeight.w600,
                             color: statusColor,
                           ),
@@ -777,37 +793,38 @@ class _ForesterTreeMappingState extends State<ForesterTreeMapping> {
                       ),
                     ],
                   ),
-                  const SizedBox(height: 8),
+                  SizedBox(height: screenHeight * 0.01),
                   Row(
                     children: [
-                      const Icon(Icons.location_on,
-                          size: 16, color: Colors.grey),
-                      const SizedBox(width: 4),
+                      Icon(Icons.location_on,
+                          size: screenWidth * 0.04, color: Colors.grey),
+                      SizedBox(width: screenWidth * 0.01),
                       Expanded(
                         child: Text(
                           location,
                           style: TextStyle(
-                            fontSize: 14,
+                            fontSize: screenWidth * 0.035,
                             color: Colors.grey[700],
                           ),
+                          overflow: TextOverflow.ellipsis,
                         ),
                       ),
                     ],
                   ),
-                  const SizedBox(height: 8),
+                  SizedBox(height: screenHeight * 0.01),
                   Row(
                     children: [
-                      const Icon(Icons.park, size: 16, color: Colors.grey),
-                      const SizedBox(width: 4),
+                      Icon(Icons.park, size: screenWidth * 0.04, color: Colors.grey),
+                      SizedBox(width: screenWidth * 0.01),
                       Text(
                         '$actualTreeCount trees',
                         style: TextStyle(
-                          fontSize: 14,
+                          fontSize: screenWidth * 0.035,
                           color: Colors.grey[700],
                         ),
                       ),
                       const Spacer(),
-                      const Icon(Icons.chevron_right, color: Colors.green),
+                      Icon(Icons.chevron_right, size: screenWidth * 0.05, color: Colors.green),
                     ],
                   ),
                 ],
@@ -838,16 +855,19 @@ class _ForesterTreeMappingState extends State<ForesterTreeMapping> {
     }
 
     if (initialCenter == null) {
+      final screenWidth = MediaQuery.of(context).size.width;
+      final screenHeight = MediaQuery.of(context).size.height;
+
       return Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            const Icon(Icons.map_outlined, size: 64, color: Colors.grey),
-            const SizedBox(height: 16),
+            Icon(Icons.map_outlined, size: screenWidth * 0.16, color: Colors.grey),
+            SizedBox(height: screenHeight * 0.02),
             Text(
               'No tree locations found',
               style: TextStyle(
-                fontSize: 18,
+                fontSize: screenWidth * 0.045,
                 color: Colors.grey[600],
                 fontWeight: FontWeight.w500,
               ),
@@ -879,17 +899,20 @@ class _ForesterTreeMappingState extends State<ForesterTreeMapping> {
         ),
         // Map type selector
         Positioned(
-          top: 16,
-          right: 16,
+          top: MediaQuery.of(context).size.height * 0.02,
+          right: MediaQuery.of(context).size.width * 0.04,
           child: _buildMapTypeSelector(),
         ),
         // Info panel at bottom
         Positioned(
-          bottom: 20,
-          left: 20,
-          right: 20,
+          bottom: MediaQuery.of(context).size.height * 0.025,
+          left: MediaQuery.of(context).size.width * 0.05,
+          right: MediaQuery.of(context).size.width * 0.05,
           child: Container(
-            padding: const EdgeInsets.all(16),
+            constraints: BoxConstraints(
+              maxHeight: MediaQuery.of(context).size.height * 0.35,
+            ),
+            padding: EdgeInsets.all(MediaQuery.of(context).size.width * 0.04),
             decoration: BoxDecoration(
               color: Colors.white,
               borderRadius: BorderRadius.circular(12),
@@ -901,147 +924,167 @@ class _ForesterTreeMappingState extends State<ForesterTreeMapping> {
                 ),
               ],
             ),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Text(
-                      'Trees: ${taggedTrees.length}',
-                      style: const TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.green,
-                      ),
-                    ),
-                    if (selectedTreeId != null)
-                      Row(
-                        children: [
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                                horizontal: 8, vertical: 4),
-                            decoration: BoxDecoration(
-                              color: Colors.blue[100],
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                            child: Row(
-                              children: const [
-                                Icon(Icons.route, size: 12, color: Colors.blue),
-                                SizedBox(width: 4),
-                                Text(
-                                  'Route Active',
-                                  style: TextStyle(
-                                    fontSize: 11,
-                                    fontWeight: FontWeight.w600,
-                                    color: Colors.blue,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                          InkWell(
-                            onTap: () {
-                              setState(() {
-                                selectedTreeId = null;
-                                polylines.clear();
-                              });
-                            },
-                            child: Container(
-                              padding: const EdgeInsets.all(4),
-                              decoration: BoxDecoration(
-                                color: Colors.red[100],
-                                borderRadius: BorderRadius.circular(8),
-                              ),
-                              child: const Icon(
-                                Icons.close,
-                                size: 16,
-                                color: Colors.red,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                  ],
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  selectedTreeId == null
-                      ? 'Tap a tree card or marker to display route on map'
-                      : 'Showing route from your location to selected tree',
-                  style: TextStyle(
-                    fontSize: 11,
-                    color: Colors.grey[600],
-                    fontStyle: FontStyle.italic,
-                  ),
-                  textAlign: TextAlign.center,
-                ),
-                if (isLoadingDistanceElevation) ...[
-                  const SizedBox(height: 8),
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
                   Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      const SizedBox(
-                        width: 12,
-                        height: 12,
-                        child: CircularProgressIndicator(strokeWidth: 2),
+                      Flexible(
+                        child: Text(
+                          'Trees: ${taggedTrees.length}',
+                          style: TextStyle(
+                            fontSize: MediaQuery.of(context).size.width * 0.04,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.green,
+                          ),
+                          overflow: TextOverflow.ellipsis,
+                        ),
                       ),
-                      const SizedBox(width: 8),
-                      Text(
-                        'Loading distance & elevation data...',
-                        style: TextStyle(
-                          fontSize: 10,
-                          color: Colors.grey[600],
-                          fontStyle: FontStyle.italic,
+                    if (selectedTreeId != null)
+                      Flexible(
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Flexible(
+                              child: Container(
+                                padding: EdgeInsets.symmetric(
+                                    horizontal: MediaQuery.of(context).size.width * 0.02, 
+                                    vertical: MediaQuery.of(context).size.height * 0.005),
+                                decoration: BoxDecoration(
+                                  color: Colors.blue[100],
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Icon(Icons.route, size: MediaQuery.of(context).size.width * 0.03, color: Colors.blue),
+                                    SizedBox(width: MediaQuery.of(context).size.width * 0.01),
+                                    Flexible(
+                                      child: Text(
+                                        'Route Active',
+                                        style: TextStyle(
+                                          fontSize: MediaQuery.of(context).size.width * 0.028,
+                                          fontWeight: FontWeight.w600,
+                                          color: Colors.blue,
+                                        ),
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                            SizedBox(width: MediaQuery.of(context).size.width * 0.02),
+                            InkWell(
+                              onTap: () {
+                                setState(() {
+                                  selectedTreeId = null;
+                                  polylines.clear();
+                                });
+                              },
+                              child: Container(
+                                padding: EdgeInsets.all(MediaQuery.of(context).size.width * 0.01),
+                                decoration: BoxDecoration(
+                                  color: Colors.red[100],
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                                child: Icon(
+                                  Icons.close,
+                                  size: MediaQuery.of(context).size.width * 0.04,
+                                  color: Colors.red,
+                                ),
+                              ),
+                            ),
+                          ],
                         ),
                       ),
                     ],
                   ),
-                ],
-                const SizedBox(height: 12),
-                if (currentLocation == null)
-                  Padding(
-                    padding: const EdgeInsets.only(bottom: 8.0),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: const [
-                        Icon(Icons.info_outline,
-                            size: 16, color: Colors.orange),
-                        SizedBox(width: 4),
-                        Text(
-                          'Device location unavailable',
-                          style: TextStyle(fontSize: 11, color: Colors.orange),
+                  SizedBox(height: MediaQuery.of(context).size.height * 0.01),
+                  Text(
+                    selectedTreeId == null
+                        ? 'Tap a tree card or marker to display route on map'
+                        : 'Showing route from your location to selected tree',
+                    style: TextStyle(
+                      fontSize: MediaQuery.of(context).size.width * 0.028,
+                      color: Colors.grey[600],
+                      fontStyle: FontStyle.italic,
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
+                  if (isLoadingDistanceElevation) ...[
+                    SizedBox(height: MediaQuery.of(context).size.height * 0.01),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        SizedBox(
+                          width: MediaQuery.of(context).size.width * 0.03,
+                          height: MediaQuery.of(context).size.width * 0.03,
+                          child: const CircularProgressIndicator(strokeWidth: 2),
+                        ),
+                        SizedBox(width: MediaQuery.of(context).size.width * 0.02),
+                        Flexible(
+                          child: Text(
+                            'Loading distance & elevation data...',
+                            style: TextStyle(
+                              fontSize: MediaQuery.of(context).size.width * 0.025,
+                              color: Colors.grey[600],
+                              fontStyle: FontStyle.italic,
+                            ),
+                            overflow: TextOverflow.ellipsis,
+                          ),
                         ),
                       ],
                     ),
-                  ),
-                if (taggedTrees.isNotEmpty)
-                  SizedBox(
-                    height: 100,
-                    child: ListView.builder(
-                      scrollDirection: Axis.horizontal,
-                      itemCount: taggedTrees.length,
-                      itemBuilder: (context, index) {
-                        final tree = taggedTrees[index];
-                        final treeId =
-                            tree['tree_id'] ?? tree['tree_no'] ?? 'N/A';
-                        final isSelected = selectedTreeId == treeId;
-                        final distanceInfo = treeDistanceData[treeId];
-                        final elevation = treeElevationData[treeId];
+                  ],
+                  SizedBox(height: MediaQuery.of(context).size.height * 0.015),
+                  if (currentLocation == null)
+                    Padding(
+                      padding: EdgeInsets.only(bottom: MediaQuery.of(context).size.height * 0.01),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.info_outline,
+                              size: MediaQuery.of(context).size.width * 0.04, color: Colors.orange),
+                          SizedBox(width: MediaQuery.of(context).size.width * 0.01),
+                          Flexible(
+                            child: Text(
+                              'Device location unavailable',
+                              style: TextStyle(fontSize: MediaQuery.of(context).size.width * 0.028, color: Colors.orange),
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  if (taggedTrees.isNotEmpty)
+                    SizedBox(
+                      height: MediaQuery.of(context).size.height * 0.13,
+                      child: ListView.builder(
+                        scrollDirection: Axis.horizontal,
+                        itemCount: taggedTrees.length,
+                        itemBuilder: (context, index) {
+                          final tree = taggedTrees[index];
+                          final treeId =
+                              tree['tree_id'] ?? tree['tree_no'] ?? 'N/A';
+                          final isSelected = selectedTreeId == treeId;
+                          final distanceInfo = treeDistanceData[treeId];
+                          final elevation = treeElevationData[treeId];
 
-                        return GestureDetector(
-                          onTap: () {
-                            final lat = (tree['latitude'] as num?)?.toDouble();
-                            final lng = (tree['longitude'] as num?)?.toDouble();
-                            if (lat != null && lng != null) {
-                              _onTreeMarkerTapped(treeId, lat, lng);
-                            }
-                          },
-                          child: Container(
-                            width: 120,
-                            margin: const EdgeInsets.only(right: 8),
-                            padding: const EdgeInsets.all(8),
+                          return GestureDetector(
+                            onTap: () {
+                              final lat = (tree['latitude'] as num?)?.toDouble();
+                              final lng = (tree['longitude'] as num?)?.toDouble();
+                              if (lat != null && lng != null) {
+                                _onTreeMarkerTapped(treeId, lat, lng);
+                              }
+                            },
+                            child: Container(
+                              width: MediaQuery.of(context).size.width * 0.3,
+                              margin: EdgeInsets.only(right: MediaQuery.of(context).size.width * 0.02),
+                              padding: EdgeInsets.all(MediaQuery.of(context).size.width * 0.02),
                             decoration: BoxDecoration(
                               color: isSelected
                                   ? Colors.blue[100]
@@ -1053,116 +1096,128 @@ class _ForesterTreeMappingState extends State<ForesterTreeMapping> {
                                 width: isSelected ? 2 : 1.5,
                               ),
                             ),
-                            child: Column(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              crossAxisAlignment: CrossAxisAlignment.center,
-                              children: [
-                                if (isSelected)
-                                  const Icon(Icons.near_me,
-                                      size: 14, color: Colors.blue),
-                                Text(
-                                  tree['specie'] ?? 'Unknown',
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  textAlign: TextAlign.center,
-                                  style: TextStyle(
-                                    fontSize: 11,
-                                    fontWeight: FontWeight.bold,
-                                    color: isSelected
-                                        ? Colors.blue
-                                        : Colors.green,
-                                  ),
-                                ),
-                                Text(
-                                  'ID: ${tree['tree_no'] ?? "N/A"}',
-                                  style: const TextStyle(
-                                    fontSize: 9,
-                                    color: Colors.grey,
-                                  ),
-                                ),
-                                if (distanceInfo != null) ...[
-                                  const SizedBox(height: 2),
+                              child: Column(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                crossAxisAlignment: CrossAxisAlignment.center,
+                                children: [
+                                  if (isSelected)
+                                    Icon(Icons.near_me,
+                                        size: MediaQuery.of(context).size.width * 0.035, color: Colors.blue),
                                   Text(
-                                    '🚗 ${distanceInfo['distance']}',
-                                    style: const TextStyle(
-                                      fontSize: 9,
-                                      color: Colors.black87,
-                                      fontWeight: FontWeight.w600,
+                                    tree['specie'] ?? 'Unknown',
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    textAlign: TextAlign.center,
+                                    style: TextStyle(
+                                      fontSize: MediaQuery.of(context).size.width * 0.028,
+                                      fontWeight: FontWeight.bold,
+                                      color: isSelected
+                                          ? Colors.blue
+                                          : Colors.green,
                                     ),
                                   ),
                                   Text(
-                                    '⏱️ ${distanceInfo['duration']}',
-                                    style: const TextStyle(
-                                      fontSize: 8,
+                                    'ID: ${tree['tree_no'] ?? "N/A"}',
+                                    style: TextStyle(
+                                      fontSize: MediaQuery.of(context).size.width * 0.023,
                                       color: Colors.grey,
                                     ),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
                                   ),
-                                ],
-                                if (elevation != null) ...[
-                                  const SizedBox(height: 2),
-                                  Text(
-                                    '⛰️ ${elevation.toStringAsFixed(0)}m',
-                                    style: const TextStyle(
-                                      fontSize: 8,
-                                      color: Colors.grey,
+                                  if (distanceInfo != null) ...[
+                                    SizedBox(height: MediaQuery.of(context).size.height * 0.002),
+                                    Text(
+                                      '🚗 ${distanceInfo['distance']}',
+                                      style: TextStyle(
+                                        fontSize: MediaQuery.of(context).size.width * 0.023,
+                                        color: Colors.black87,
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
                                     ),
-                                  ),
-                                ],
-                                if (currentLocation != null) ...[
-                                  const SizedBox(height: 4),
-                                  GestureDetector(
-                                    onTap: () {
-                                      final lat = (tree['latitude'] as num?)?.toDouble();
-                                      final lng = (tree['longitude'] as num?)?.toDouble();
-                                      if (lat != null && lng != null) {
-                                        // Show visual route on map
-                                        _onTreeMarkerTapped(treeId, lat, lng);
-                                      }
-                                    },
-                                    child: Container(
-                                      padding: const EdgeInsets.symmetric(
-                                        horizontal: 6,
-                                        vertical: 2,
+                                    Text(
+                                      '⏱️ ${distanceInfo['duration']}',
+                                      style: TextStyle(
+                                        fontSize: MediaQuery.of(context).size.width * 0.02,
+                                        color: Colors.grey,
                                       ),
-                                      decoration: BoxDecoration(
-                                        color: isSelected ? Colors.blue : Colors.green,
-                                        borderRadius: BorderRadius.circular(4),
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ],
+                                  if (elevation != null) ...[
+                                    SizedBox(height: MediaQuery.of(context).size.height * 0.002),
+                                    Text(
+                                      '⛰️ ${elevation.toStringAsFixed(0)}m',
+                                      style: TextStyle(
+                                        fontSize: MediaQuery.of(context).size.width * 0.02,
+                                        color: Colors.grey,
                                       ),
-                                      child: Row(
-                                        mainAxisSize: MainAxisSize.min,
-                                        children: [
-                                          Icon(
-                                            isSelected ? Icons.near_me : Icons.route,
-                                            size: 10,
-                                            color: Colors.white,
-                                          ),
-                                          const SizedBox(width: 2),
-                                          Text(
-                                            isSelected ? 'Selected' : 'Show Route',
-                                            style: const TextStyle(
-                                              fontSize: 8,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ],
+                                  if (currentLocation != null) ...[
+                                    SizedBox(height: MediaQuery.of(context).size.height * 0.005),
+                                    GestureDetector(
+                                      onTap: () {
+                                        final lat = (tree['latitude'] as num?)?.toDouble();
+                                        final lng = (tree['longitude'] as num?)?.toDouble();
+                                        if (lat != null && lng != null) {
+                                          // Show visual route on map
+                                          _onTreeMarkerTapped(treeId, lat, lng);
+                                        }
+                                      },
+                                      child: Container(
+                                        padding: EdgeInsets.symmetric(
+                                          horizontal: MediaQuery.of(context).size.width * 0.015,
+                                          vertical: MediaQuery.of(context).size.height * 0.002,
+                                        ),
+                                        decoration: BoxDecoration(
+                                          color: isSelected ? Colors.blue : Colors.green,
+                                          borderRadius: BorderRadius.circular(4),
+                                        ),
+                                        child: Row(
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: [
+                                            Icon(
+                                              isSelected ? Icons.near_me : Icons.route,
+                                              size: MediaQuery.of(context).size.width * 0.025,
                                               color: Colors.white,
-                                              fontWeight: FontWeight.bold,
                                             ),
-                                          ),
-                                        ],
+                                            SizedBox(width: MediaQuery.of(context).size.width * 0.005),
+                                            Flexible(
+                                              child: Text(
+                                                isSelected ? 'Selected' : 'Show Route',
+                                                style: TextStyle(
+                                                  fontSize: MediaQuery.of(context).size.width * 0.02,
+                                                  color: Colors.white,
+                                                  fontWeight: FontWeight.bold,
+                                                ),
+                                                overflow: TextOverflow.ellipsis,
+                                              ),
+                                            ),
+                                          ],
+                                        ),
                                       ),
                                     ),
-                                  ),
+                                  ],
                                 ],
-                              ],
+                              ),
                             ),
-                          ),
-                        );
-                      },
+                          );
+                        },
+                      ),
+                    )
+                  else
+                    Text(
+                      'No tagged trees yet',
+                      style: TextStyle(color: Colors.grey, fontSize: MediaQuery.of(context).size.width * 0.035),
                     ),
-                  )
-                else
-                  const Text(
-                    'No tagged trees yet',
-                    style: TextStyle(color: Colors.grey),
-                  ),
-              ],
+                ],
+              ),
             ),
           ),
         ),
@@ -1199,7 +1254,9 @@ class _ForesterTreeMappingState extends State<ForesterTreeMapping> {
 
   /// 🗺️ Build individual map type button
   Widget _buildMapTypeButton(String type, IconData icon, String label) {
+    final screenWidth = MediaQuery.of(context).size.width;
     final isSelected = _mapType == type;
+    
     return InkWell(
       onTap: () {
         setState(() {
@@ -1207,7 +1264,10 @@ class _ForesterTreeMappingState extends State<ForesterTreeMapping> {
         });
       },
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        padding: EdgeInsets.symmetric(
+          horizontal: screenWidth * 0.03, 
+          vertical: screenWidth * 0.025
+        ),
         decoration: BoxDecoration(
           color: isSelected ? Colors.green[700] : Colors.transparent,
           borderRadius: type == 'street'
@@ -1227,14 +1287,14 @@ class _ForesterTreeMappingState extends State<ForesterTreeMapping> {
           children: [
             Icon(
               icon,
-              size: 20,
+              size: screenWidth * 0.05,
               color: isSelected ? Colors.white : Colors.grey[700],
             ),
-            const SizedBox(width: 8),
+            SizedBox(width: screenWidth * 0.02),
             Text(
               label,
               style: TextStyle(
-                fontSize: 13,
+                fontSize: screenWidth * 0.032,
                 fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
                 color: isSelected ? Colors.white : Colors.grey[700],
               ),
