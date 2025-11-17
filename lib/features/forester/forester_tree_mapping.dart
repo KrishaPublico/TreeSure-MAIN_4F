@@ -570,41 +570,55 @@ class _ForesterTreeMappingState extends State<ForesterTreeMapping> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text(selectedAppointmentId == null
-            ? 'My Appointments'
-            : 'Tree Locations'),
-        backgroundColor: Colors.green.shade700,
-        elevation: 0,
-        leading: selectedAppointmentId != null
-            ? IconButton(
-                icon: const Icon(Icons.arrow_back),
-                onPressed: () {
-                  setState(() {
-                    selectedAppointmentId = null;
-                    selectedTreeId = null;
-                    taggedTrees = [];
-                    markers.clear();
-                    polylines.clear();
-                  });
-                },
-              )
-            : null,
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.refresh),
-            onPressed: isLoading
-                ? null
-                : () {
-                    if (selectedAppointmentId != null) {
-                      _fetchTreesForAppointment(selectedAppointmentId!);
-                    } else {
-                      _fetchTaggedTrees();
-                    }
-                  },
-            tooltip: 'Refresh',
-          ),
-        ],
-      ),
+  backgroundColor: Colors.green,   // ← WHITE APP BAR
+  elevation: 1,                    // slight shadow for visibility
+  
+  iconTheme: const IconThemeData(
+    color: Colors.white,           // ← back button & icons become green
+  ),
+
+  title: Text(
+    selectedAppointmentId == null
+        ? 'My Appointments'
+        : 'Tree Locations',
+    style: const TextStyle(
+      color: Colors.white,         // ← title text color
+      fontWeight: FontWeight.bold,
+    ),
+  ),
+
+  leading: selectedAppointmentId != null
+      ? IconButton(
+          icon: const Icon(Icons.arrow_back),
+          onPressed: () {
+            setState(() {
+              selectedAppointmentId = null;
+              selectedTreeId = null;
+              taggedTrees = [];
+              markers.clear();
+              polylines.clear();
+            });
+          },
+        )
+      : null,
+
+  actions: [
+    IconButton(
+      icon: const Icon(Icons.refresh, color: Colors.green),  // icon becomes green
+      onPressed: isLoading
+          ? null
+          : () {
+              if (selectedAppointmentId != null) {
+                _fetchTreesForAppointment(selectedAppointmentId!);
+              } else {
+                _fetchTaggedTrees();
+              }
+            },
+      tooltip: 'Refresh',
+    ),
+  ],
+),
+
       body: isLoading
           ? const Center(child: CircularProgressIndicator())
           : selectedAppointmentId == null
