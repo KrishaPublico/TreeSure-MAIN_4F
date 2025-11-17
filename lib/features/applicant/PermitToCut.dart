@@ -917,7 +917,7 @@ class _PermitToCutPageState extends State<PermitToCutPage> {
                               ),
                               const SizedBox(width: 8),
                               Text(
-                                '${submission['id']} (${submission['uploadsCount']} files)',
+                                '${submission['id']}',
                                 style: const TextStyle(fontSize: 14),
                               ),
                             ],

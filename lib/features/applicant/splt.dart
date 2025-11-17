@@ -888,7 +888,7 @@ class _SPLTFormPageState extends State<SPLTFormPage> {
                               ),
                               const SizedBox(width: 8),
                               Text(
-                                '${submission['id']} (${submission['uploadsCount']} files)',
+                                '${submission['id']}',
                                 style: const TextStyle(fontSize: 14),
                               ),
                             ],

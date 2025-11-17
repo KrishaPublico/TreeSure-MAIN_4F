@@ -119,15 +119,20 @@ class _ApplicantSummaryPageState extends State<ApplicantSummaryPage> {
 
   @override
   Widget build(BuildContext context) {
+    final screenSize = MediaQuery.of(context).size;
+    final screenWidth = screenSize.width;
+    final screenHeight = screenSize.height;
+
     return Scaffold(
       backgroundColor: Colors.white,
       appBar: AppBar(
         backgroundColor: Colors.green[700],
-        title: const Text(
+        title: Text(
           "Summary Reports",
           style: TextStyle(
             color: Colors.white,
             fontWeight: FontWeight.normal,
+            fontSize: screenWidth * 0.045,
           ),
         ),
         iconTheme: const IconThemeData(color: Colors.white),
@@ -135,14 +140,18 @@ class _ApplicantSummaryPageState extends State<ApplicantSummaryPage> {
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
           : _appointments.isEmpty
-              ? const Center(
-                  child: Text(
-                    "No tree tagging appointments found.",
-                    style: TextStyle(fontSize: 16, color: Colors.grey),
+              ? Center(
+                  child: Padding(
+                    padding: EdgeInsets.all(screenWidth * 0.05),
+                    child: Text(
+                      "No tree tagging appointments found.",
+                      textAlign: TextAlign.center,
+                      style: TextStyle(fontSize: screenWidth * 0.04, color: Colors.grey),
+                    ),
                   ),
                 )
               : Padding(
-                  padding: const EdgeInsets.all(16.0),
+                  padding: EdgeInsets.all(screenWidth * 0.04),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
@@ -164,37 +173,37 @@ class _ApplicantSummaryPageState extends State<ApplicantSummaryPage> {
                           ],
                         ),
                         child: Padding(
-                          padding: const EdgeInsets.all(16.0),
+                          padding: EdgeInsets.all(screenWidth * 0.04),
                           child: Row(
                             children: [
                               Container(
-                                padding: const EdgeInsets.all(10),
+                                padding: EdgeInsets.all(screenWidth * 0.025),
                                 decoration: BoxDecoration(
                                   color: Colors.white.withOpacity(0.3),
                                   borderRadius: BorderRadius.circular(12),
                                 ),
-                                child: const Icon(Icons.person,
-                                    color: Colors.white, size: 32),
+                                child: Icon(Icons.person,
+                                    color: Colors.white, size: screenWidth * 0.08),
                               ),
-                              const SizedBox(width: 12),
+                              SizedBox(width: screenWidth * 0.03),
                               Expanded(
                                 child: Column(
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
                                     Text(
                                       widget.applicantName,
-                                      style: const TextStyle(
-                                        fontSize: 18,
+                                      style: TextStyle(
+                                        fontSize: screenWidth * 0.045,
                                         fontWeight: FontWeight.bold,
                                         color: Colors.white,
                                       ),
                                       overflow: TextOverflow.ellipsis,
                                     ),
-                                    const SizedBox(height: 4),
+                                    SizedBox(height: screenHeight * 0.005),
                                     Container(
-                                      padding: const EdgeInsets.symmetric(
-                                        horizontal: 8,
-                                        vertical: 4,
+                                      padding: EdgeInsets.symmetric(
+                                        horizontal: screenWidth * 0.02,
+                                        vertical: screenHeight * 0.005,
                                       ),
                                       decoration: BoxDecoration(
                                         color: Colors.white.withOpacity(0.3),
@@ -202,8 +211,8 @@ class _ApplicantSummaryPageState extends State<ApplicantSummaryPage> {
                                       ),
                                       child: Text(
                                         "ID: ${widget.applicantId}",
-                                        style: const TextStyle(
-                                          fontSize: 12,
+                                        style: TextStyle(
+                                          fontSize: screenWidth * 0.03,
                                           color: Colors.white,
                                           fontWeight: FontWeight.w500,
                                         ),
@@ -216,27 +225,29 @@ class _ApplicantSummaryPageState extends State<ApplicantSummaryPage> {
                           ),
                         ),
                       ),
-                      const SizedBox(height: 16),
+                      SizedBox(height: screenHeight * 0.02),
 
                       // Appointment Filter Dropdown
                       DropdownButtonFormField<String>(
                         value: _selectedAppointmentId,
                         decoration: InputDecoration(
                           labelText: "Filter by Appointment",
-                          prefixIcon: const Icon(Icons.event_note),
+                          labelStyle: TextStyle(fontSize: screenWidth * 0.035),
+                          prefixIcon: Icon(Icons.event_note, size: screenWidth * 0.05),
                           border: OutlineInputBorder(
                             borderRadius: BorderRadius.circular(12),
                           ),
-                          contentPadding: const EdgeInsets.symmetric(
-                            horizontal: 12,
-                            vertical: 8,
+                          contentPadding: EdgeInsets.symmetric(
+                            horizontal: screenWidth * 0.03,
+                            vertical: screenHeight * 0.01,
                           ),
                         ),
                         isExpanded: true,
+                        style: TextStyle(fontSize: screenWidth * 0.035, color: Colors.black),
                         items: [
-                          const DropdownMenuItem(
+                          DropdownMenuItem(
                             value: 'All',
-                            child: Text('All Appointments'),
+                            child: Text('All Appointments', style: TextStyle(fontSize: screenWidth * 0.035)),
                           ),
                           ..._appointments.map((appointment) {
                             return DropdownMenuItem(
@@ -244,6 +255,7 @@ class _ApplicantSummaryPageState extends State<ApplicantSummaryPage> {
                               child: Text(
                                 '${appointment['displayName']} - ${appointment['applicationID']}',
                                 overflow: TextOverflow.ellipsis,
+                                style: TextStyle(fontSize: screenWidth * 0.035),
                               ),
                             );
                           }),
@@ -254,7 +266,7 @@ class _ApplicantSummaryPageState extends State<ApplicantSummaryPage> {
                           });
                         },
                       ),
-                      const SizedBox(height: 12),
+                      SizedBox(height: screenHeight * 0.015),
 
                       // Tree Status Filter
                       SingleChildScrollView(
@@ -262,15 +274,15 @@ class _ApplicantSummaryPageState extends State<ApplicantSummaryPage> {
                         child: Row(
                           children: [
                             _buildFilterButton('All'),
-                            const SizedBox(width: 8),
+                            SizedBox(width: screenWidth * 0.02),
                             _buildFilterButton('Not Yet Ready'),
-                            const SizedBox(width: 8),
+                            SizedBox(width: screenWidth * 0.02),
                             _buildFilterButton('Ready to Cut'),
-                            const SizedBox(width: 8),
+                            SizedBox(width: screenWidth * 0.02),
                           ],
                         ),
                       ),
-                      const SizedBox(height: 16),
+                      SizedBox(height: screenHeight * 0.02),
 
                       // Trees List
                       Expanded(
@@ -355,7 +367,7 @@ class _ApplicantSummaryPageState extends State<ApplicantSummaryPage> {
                                     ),
                                   ),
                                   child: Padding(
-                                    padding: const EdgeInsets.all(12.0),
+                                    padding: EdgeInsets.all(screenWidth * 0.03),
                                     child: Column(
                                       children: [
                                         Row(
@@ -368,7 +380,7 @@ class _ApplicantSummaryPageState extends State<ApplicantSummaryPage> {
                                                 Colors.green,
                                               ),
                                             ),
-                                            const SizedBox(width: 8),
+                                            SizedBox(width: screenWidth * 0.02),
                                             Expanded(
                                               child: _buildStatItem(
                                                 "Volume",
@@ -379,7 +391,7 @@ class _ApplicantSummaryPageState extends State<ApplicantSummaryPage> {
                                             ),
                                           ],
                                         ),
-                                        const SizedBox(width: 8),
+                                        SizedBox(height: screenHeight * 0.01),
                                         Row(
                                           children: [
                                             Expanded(
@@ -390,7 +402,7 @@ class _ApplicantSummaryPageState extends State<ApplicantSummaryPage> {
                                                 Colors.orange,
                                               ),
                                             ),
-                                            const SizedBox(width: 8),
+                                            SizedBox(width: screenWidth * 0.02),
                                             Expanded(
                                               child: _buildStatItem(
                                                 "Avg H",
@@ -405,7 +417,7 @@ class _ApplicantSummaryPageState extends State<ApplicantSummaryPage> {
                                     ),
                                   ),
                                 ),
-                                const SizedBox(height: 12),
+                                SizedBox(height: screenHeight * 0.015),
 
                                 // Trees List
                                 Expanded(
@@ -430,7 +442,10 @@ class _ApplicantSummaryPageState extends State<ApplicantSummaryPage> {
 
   /// Build filter button for tree status
   Widget _buildFilterButton(String status) {
+    final screenWidth = MediaQuery.of(context).size.width;
+    final screenHeight = MediaQuery.of(context).size.height;
     final isSelected = _selectedStatus == status;
+    
     return ElevatedButton(
       onPressed: () {
         setState(() {
@@ -440,20 +455,29 @@ class _ApplicantSummaryPageState extends State<ApplicantSummaryPage> {
       style: ElevatedButton.styleFrom(
         backgroundColor: isSelected ? Colors.green[800] : Colors.green[100],
         foregroundColor: isSelected ? Colors.white : Colors.green[800],
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        padding: EdgeInsets.symmetric(
+          horizontal: screenWidth * 0.04, 
+          vertical: screenHeight * 0.01
+        ),
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(20),
         ),
       ),
-      child: Text(status),
+      child: Text(status, style: TextStyle(fontSize: screenWidth * 0.032)),
     );
   }
 
   /// Build statistic item widget
   Widget _buildStatItem(
       String label, String value, IconData icon, Color color) {
+    final screenWidth = MediaQuery.of(context).size.width;
+    final screenHeight = MediaQuery.of(context).size.height;
+    
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
+      padding: EdgeInsets.symmetric(
+        horizontal: screenWidth * 0.02, 
+        vertical: screenHeight * 0.012
+      ),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(10),
@@ -472,12 +496,12 @@ class _ApplicantSummaryPageState extends State<ApplicantSummaryPage> {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icon, color: color, size: 22),
-          const SizedBox(height: 4),
+          Icon(icon, color: color, size: screenWidth * 0.055),
+          SizedBox(height: screenHeight * 0.005),
           Text(
             value,
             style: TextStyle(
-              fontSize: 14,
+              fontSize: screenWidth * 0.035,
               fontWeight: FontWeight.bold,
               color: color,
             ),
@@ -488,7 +512,7 @@ class _ApplicantSummaryPageState extends State<ApplicantSummaryPage> {
           Text(
             label,
             style: TextStyle(
-              fontSize: 9,
+              fontSize: screenWidth * 0.022,
               color: Colors.grey[600],
               fontWeight: FontWeight.w500,
             ),
@@ -503,6 +527,8 @@ class _ApplicantSummaryPageState extends State<ApplicantSummaryPage> {
 
   /// Build tree card widget
   Widget _buildTreeCard(Map<String, dynamic> tree) {
+    final screenWidth = MediaQuery.of(context).size.width;
+    final screenHeight = MediaQuery.of(context).size.height;
     final status = tree['tree_status'] ?? 'Not Yet Ready';
     Color statusColor = Colors.grey;
     if (status == 'Ready to Cut') {
@@ -513,7 +539,7 @@ class _ApplicantSummaryPageState extends State<ApplicantSummaryPage> {
 
     return Card(
       elevation: 2,
-      margin: const EdgeInsets.only(bottom: 10),
+      margin: EdgeInsets.only(bottom: screenHeight * 0.012),
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(12),
         side: BorderSide(
@@ -525,13 +551,13 @@ class _ApplicantSummaryPageState extends State<ApplicantSummaryPage> {
         onTap: () => _showTreeDetails(tree),
         borderRadius: BorderRadius.circular(12),
         child: Padding(
-          padding: const EdgeInsets.all(10.0),
+          padding: EdgeInsets.all(screenWidth * 0.025),
           child: Row(
             children: [
               // Tree Icon/Image
               Container(
-                width: 55,
-                height: 55,
+                width: screenWidth * 0.14,
+                height: screenWidth * 0.14,
                 decoration: BoxDecoration(
                   color: statusColor.withOpacity(0.1),
                   borderRadius: BorderRadius.circular(10),
@@ -547,14 +573,14 @@ class _ApplicantSummaryPageState extends State<ApplicantSummaryPage> {
                           tree['photo_url'],
                           fit: BoxFit.cover,
                           errorBuilder: (context, error, stackTrace) {
-                            return const Icon(Icons.park,
-                                size: 32, color: Colors.green);
+                            return Icon(Icons.park,
+                                size: screenWidth * 0.08, color: Colors.green);
                           },
                         ),
                       )
-                    : const Icon(Icons.park, size: 32, color: Colors.green),
+                    : Icon(Icons.park, size: screenWidth * 0.08, color: Colors.green),
               ),
-              const SizedBox(width: 12),
+              SizedBox(width: screenWidth * 0.03),
 
               // Tree Info
               Expanded(
@@ -563,18 +589,20 @@ class _ApplicantSummaryPageState extends State<ApplicantSummaryPage> {
                   children: [
                     Row(
                       children: [
-                        Text(
-                          "Tree #${tree['tree_no']}",
-                          style: const TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.bold,
+                        Expanded(
+                          child: Text(
+                            "Tree #${tree['tree_no']}",
+                            style: TextStyle(
+                              fontSize: screenWidth * 0.04,
+                              fontWeight: FontWeight.bold,
+                            ),
+                            overflow: TextOverflow.ellipsis,
                           ),
                         ),
-                        const Spacer(),
                         Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 8,
-                            vertical: 4,
+                          padding: EdgeInsets.symmetric(
+                            horizontal: screenWidth * 0.02,
+                            vertical: screenHeight * 0.005,
                           ),
                           decoration: BoxDecoration(
                             color: statusColor.withOpacity(0.2),
@@ -583,7 +611,7 @@ class _ApplicantSummaryPageState extends State<ApplicantSummaryPage> {
                           child: Text(
                             status,
                             style: TextStyle(
-                              fontSize: 10,
+                              fontSize: screenWidth * 0.025,
                               fontWeight: FontWeight.bold,
                               color: statusColor,
                             ),
@@ -591,30 +619,31 @@ class _ApplicantSummaryPageState extends State<ApplicantSummaryPage> {
                         ),
                       ],
                     ),
-                    const SizedBox(height: 4),
+                    SizedBox(height: screenHeight * 0.005),
                     Text(
                       tree['specie'],
                       style: TextStyle(
-                        fontSize: 14,
+                        fontSize: screenWidth * 0.035,
                         color: Colors.grey[600],
                         fontStyle: FontStyle.italic,
                       ),
+                      overflow: TextOverflow.ellipsis,
                     ),
-                    const SizedBox(height: 6),
+                    SizedBox(height: screenHeight * 0.008),
                     Wrap(
-                      spacing: 10,
-                      runSpacing: 4,
+                      spacing: screenWidth * 0.025,
+                      runSpacing: screenHeight * 0.005,
                       children: [
                         Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
                             Icon(Icons.straighten,
-                                size: 13, color: Colors.grey[600]),
-                            const SizedBox(width: 3),
+                                size: screenWidth * 0.032, color: Colors.grey[600]),
+                            SizedBox(width: screenWidth * 0.008),
                             Text(
                               "Ø${tree['diameter']}cm",
                               style: TextStyle(
-                                fontSize: 11,
+                                fontSize: screenWidth * 0.028,
                                 color: Colors.grey[700],
                                 fontWeight: FontWeight.w500,
                               ),
@@ -625,12 +654,12 @@ class _ApplicantSummaryPageState extends State<ApplicantSummaryPage> {
                           mainAxisSize: MainAxisSize.min,
                           children: [
                             Icon(Icons.height,
-                                size: 13, color: Colors.grey[600]),
-                            const SizedBox(width: 3),
+                                size: screenWidth * 0.032, color: Colors.grey[600]),
+                            SizedBox(width: screenWidth * 0.008),
                             Text(
                               "${tree['height']}m",
                               style: TextStyle(
-                                fontSize: 11,
+                                fontSize: screenWidth * 0.028,
                                 color: Colors.grey[700],
                                 fontWeight: FontWeight.w500,
                               ),
@@ -641,12 +670,12 @@ class _ApplicantSummaryPageState extends State<ApplicantSummaryPage> {
                           mainAxisSize: MainAxisSize.min,
                           children: [
                             Icon(Icons.inventory_2,
-                                size: 13, color: Colors.grey[600]),
-                            const SizedBox(width: 3),
+                                size: screenWidth * 0.032, color: Colors.grey[600]),
+                            SizedBox(width: screenWidth * 0.008),
                             Text(
                               "${tree['volume'].toStringAsFixed(1)}m³",
                               style: TextStyle(
-                                fontSize: 11,
+                                fontSize: screenWidth * 0.028,
                                 color: Colors.grey[700],
                                 fontWeight: FontWeight.w500,
                               ),
@@ -658,7 +687,7 @@ class _ApplicantSummaryPageState extends State<ApplicantSummaryPage> {
                   ],
                 ),
               ),
-              const Icon(Icons.arrow_forward_ios, size: 16, color: Colors.grey),
+              Icon(Icons.arrow_forward_ios, size: screenWidth * 0.04, color: Colors.grey),
             ],
           ),
         ),
@@ -668,18 +697,21 @@ class _ApplicantSummaryPageState extends State<ApplicantSummaryPage> {
 
   /// Show detailed tree information dialog
   void _showTreeDetails(Map<String, dynamic> tree) {
+    final screenWidth = MediaQuery.of(context).size.width;
+    final screenHeight = MediaQuery.of(context).size.height;
+    
     showDialog(
       context: context,
       builder: (_) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         title: Row(
           children: [
-            const Icon(Icons.park, color: Colors.green, size: 28),
-            const SizedBox(width: 8),
+            Icon(Icons.park, color: Colors.green, size: screenWidth * 0.07),
+            SizedBox(width: screenWidth * 0.02),
             Expanded(
               child: Text(
                 "Tree #${tree['tree_no']}",
-                style: const TextStyle(fontSize: 18),
+                style: TextStyle(fontSize: screenWidth * 0.045),
               ),
             ),
           ],
@@ -691,7 +723,7 @@ class _ApplicantSummaryPageState extends State<ApplicantSummaryPage> {
             children: [
               if (tree['photo_url'] != null)
                 SizedBox(
-                  height: 200,
+                  height: screenHeight * 0.5,
                   width: double.infinity,
                   child: ClipRRect(
                     borderRadius: BorderRadius.circular(8),
@@ -701,14 +733,14 @@ class _ApplicantSummaryPageState extends State<ApplicantSummaryPage> {
                       errorBuilder: (context, error, stackTrace) {
                         return Container(
                           color: Colors.grey[200],
-                          child: const Icon(Icons.park,
-                              size: 64, color: Colors.grey),
+                          child: Icon(Icons.park,
+                              size: screenWidth * 0.16, color: Colors.grey),
                         );
                       },
                     ),
                   ),
                 ),
-              const SizedBox(height: 16),
+              SizedBox(height: screenHeight * 0.02),
               _buildDetailRow("Specie", tree['specie']),
               _buildDetailRow("Status", tree['tree_status']),
               _buildDetailRow("Location", tree['location']),
@@ -722,19 +754,22 @@ class _ApplicantSummaryPageState extends State<ApplicantSummaryPage> {
                   "${tree['latitude'].toStringAsFixed(6)}, ${tree['longitude'].toStringAsFixed(6)}",
                 ),
               if (tree['qr_url'] != null) ...[
-                const SizedBox(height: 12),
-                const Text(
+                SizedBox(height: screenHeight * 0.015),
+                Text(
                   "QR Code:",
-                  style: TextStyle(fontWeight: FontWeight.bold),
+                  style: TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: screenWidth * 0.035,
+                  ),
                 ),
-                const SizedBox(height: 8),
+                SizedBox(height: screenHeight * 0.01),
                 Center(
                   child: Image.network(
                     tree['qr_url'],
-                    height: 150,
-                    width: 150,
+                    height: screenWidth * 0.4,
+                    width: screenWidth * 0.4,
                     errorBuilder: (context, error, stackTrace) {
-                      return const Icon(Icons.qr_code, size: 64);
+                      return Icon(Icons.qr_code, size: screenWidth * 0.16);
                     },
                   ),
                 ),
@@ -745,7 +780,11 @@ class _ApplicantSummaryPageState extends State<ApplicantSummaryPage> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text("Close", style: TextStyle(color: Colors.green)),
+            child: Text("Close", 
+              style: TextStyle(
+                color: Colors.green, 
+                fontSize: screenWidth * 0.04
+              )),
           ),
         ],
       ),
@@ -753,25 +792,28 @@ class _ApplicantSummaryPageState extends State<ApplicantSummaryPage> {
   }
 
   Widget _buildDetailRow(String label, String value) {
+    final screenWidth = MediaQuery.of(context).size.width;
+    final screenHeight = MediaQuery.of(context).size.height;
+    
     return Padding(
-      padding: const EdgeInsets.only(bottom: 8.0),
+      padding: EdgeInsets.only(bottom: screenHeight * 0.01),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           SizedBox(
-            width: 100,
+            width: screenWidth * 0.25,
             child: Text(
               "$label:",
-              style: const TextStyle(
+              style: TextStyle(
                 fontWeight: FontWeight.bold,
-                fontSize: 14,
+                fontSize: screenWidth * 0.035,
               ),
             ),
           ),
           Expanded(
             child: Text(
               value,
-              style: const TextStyle(fontSize: 14),
+              style: TextStyle(fontSize: screenWidth * 0.035),
             ),
           ),
         ],
