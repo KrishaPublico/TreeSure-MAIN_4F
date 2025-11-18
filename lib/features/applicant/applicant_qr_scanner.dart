@@ -1046,7 +1046,6 @@ appBar: AppBar(
         borderRadius: BorderRadius.circular(12),
         border: Border.all(color: Colors.green[200]!),
       ),
-<<<<<<< HEAD
       child: Column(
         children: [
           const Text("📄 Scanned Data:",
@@ -1078,20 +1077,6 @@ ElevatedButton.icon(
 
           ],
         ],
-=======
-      child: SingleChildScrollView(
-        child: Column(
-          children: [
-            Text("📄 Scanned Data:",
-                style: TextStyle(
-                    fontSize: screenWidth * 0.04, fontWeight: FontWeight.bold)),
-            SizedBox(height: screenHeight * 0.01),
-            Text(scannedData!,
-                textAlign: TextAlign.center,
-                style: TextStyle(fontSize: screenWidth * 0.035)),
-          ],
-        ),
->>>>>>> beb8ce31fd1e3fa5814eaaf1aa1b088bd7c3d01f
       ),
     );
   }
@@ -1183,7 +1168,6 @@ ElevatedButton.icon(
             ),
           ),
           if (isLoadingLocation || isLoadingRoute)
-<<<<<<< HEAD
             const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)),
         ],
       ),
@@ -1215,12 +1199,6 @@ ElevatedButton.icon(
                 foregroundColor: Colors.white,
               ),
             ),
-=======
-            SizedBox(
-                width: screenWidth * 0.04,
-                height: screenWidth * 0.04,
-                child: const CircularProgressIndicator(strokeWidth: 2)),
->>>>>>> beb8ce31fd1e3fa5814eaaf1aa1b088bd7c3d01f
         ],
       ),
     );
