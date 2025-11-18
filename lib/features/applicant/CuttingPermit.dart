@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'pltp.dart'; // Ensure this path is correct
+import 'pltp.dart';
 import 'splt.dart';
 
 class CuttingPermitPage extends StatefulWidget {
@@ -38,9 +38,11 @@ class _CuttingPermitPageState extends State<CuttingPermitPage> {
               Navigator.push(
                 context,
                 MaterialPageRoute(
-                  builder: (context) => PLTPFormPage(
-                    applicantId: widget.applicantId,
-                    applicantName: widget.applicantName,
+                  builder: (context) => PltpRegisterTreesPage(
+                    foresterId: widget.applicantId,
+                    foresterName: widget.applicantName,
+                    appointmentId: widget
+                        .applicantId, // You need to provide the appointmentId here
                   ),
                 ),
               );

@@ -250,6 +250,80 @@ class _CovFormPageState extends State<CovFormPage> {
     if (_currentSubmissionId == null) return;
 
     try {
+      final submissionDocRef = FirebaseFirestore.instance
+          .collection('applications')
+          .doc('cov')
+          .collection('applicants')
+          .doc(widget.applicantId)
+          .collection('submissions')
+          .doc(_currentSubmissionId);
+
+      // Get submission document to check for uploads map
+      final submissionSnapshot = await submissionDocRef.get();
+      final submissionData = submissionSnapshot.data();
+      final uploadsMap = submissionData?['uploads'] as Map<String, dynamic>?;
+
+      // Load each document's comments and reuploadAllowed flag
+      for (final label in formLabels) {
+        final title = label['title']!;
+        final sanitizedTitle = _sanitizeDocTitle(title);
+        
+        // Check reuploadAllowed from submission document's uploads map first
+        // Try both original title and sanitized title as keys
+        bool reuploadAllowed = false;
+        if (uploadsMap != null) {
+          Map<String, dynamic>? uploadMapData;
+          
+          // Try original title first
+          if (uploadsMap.containsKey(title)) {
+            uploadMapData = uploadsMap[title] as Map<String, dynamic>?;
+          }
+          // Try sanitized title if original not found
+          else if (uploadsMap.containsKey(sanitizedTitle)) {
+            uploadMapData = uploadsMap[sanitizedTitle] as Map<String, dynamic>?;
+          }
+          
+          if (uploadMapData != null) {
+            reuploadAllowed = uploadMapData['reuploadAllowed'] as bool? ?? false;
+          }
+        }
+        
+        // Get the upload document metadata from subcollection
+        final uploadDoc = await submissionDocRef.collection('uploads').doc(sanitizedTitle).get();
+        
+        if (uploadDoc.exists) {
+          final uploadData = uploadDoc.data();
+          // Override with subcollection value if it exists
+          reuploadAllowed = uploadData?['reuploadAllowed'] as bool? ?? reuploadAllowed;
+        }
+        
+        // Get the most recent comment from subcollection
+        final commentsSnapshot = await submissionDocRef
+            .collection('uploads')
+            .doc(sanitizedTitle)
+            .collection('comments')
+            .orderBy('commentedAt', descending: true)
+            .limit(1)
+            .get();
+        
+        if (commentsSnapshot.docs.isNotEmpty) {
+          final commentDoc = commentsSnapshot.docs.first;
+          final commentData = commentDoc.data();
+          
+          _documentComments[title] = {
+            'reuploadAllowed': reuploadAllowed,
+            'message': commentData['comment'] as String?,
+            'commentedAt': commentData['commentedAt'],
+            'commenterId': commentData['commenterId'] as String?,
+          };
+        } else if (reuploadAllowed) {
+          // Has reuploadAllowed flag but no comments
+          _documentComments[title] = {
+            'reuploadAllowed': reuploadAllowed,
+            'message': null,
+          };
+        }
+      }
       final uploadsRef = FirebaseFirestore.instance
           .collection('applications')
           .doc('cov')
@@ -308,6 +382,11 @@ class _CovFormPageState extends State<CovFormPage> {
     } catch (e) {
       debugPrint('Error loading document comments: $e');
     }
+  }
+
+  /// Sanitize document title to be used as Firestore document ID
+  String _sanitizeDocTitle(String title) {
+    return title.replaceAll(RegExp(r'[.#$/\[\]]'), '-').trim();
   }
 
   Timestamp? _parseCommentTimestamp(dynamic timestamp) {

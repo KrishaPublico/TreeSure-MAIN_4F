@@ -6,7 +6,6 @@ import 'package:firebase_storage/firebase_storage.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:path/path.dart' as path;
 import 'package:url_launcher/url_launcher.dart';
-import 'package:url_launcher/url_launcher.dart';
 import 'package:syncfusion_flutter_pdfviewer/pdfviewer.dart';
 
 class SPLTFormPage extends StatefulWidget {
@@ -262,6 +261,80 @@ class _SPLTFormPageState extends State<SPLTFormPage> {
     if (_currentSubmissionId == null) return;
     
     try {
+      final submissionDocRef = FirebaseFirestore.instance
+          .collection('applications')
+          .doc('splt')
+          .collection('applicants')
+          .doc(widget.applicantId)
+          .collection('submissions')
+          .doc(_currentSubmissionId);
+
+      // Get submission document to check for uploads map
+      final submissionSnapshot = await submissionDocRef.get();
+      final submissionData = submissionSnapshot.data();
+      final uploadsMap = submissionData?['uploads'] as Map<String, dynamic>?;
+
+      // Load each document's comments and reuploadAllowed flag
+      for (final label in formLabels) {
+        final title = label['title']!;
+        final sanitizedTitle = _sanitizeDocTitle(title);
+        
+        // Check reuploadAllowed from submission document's uploads map first
+        // Try both original title and sanitized title as keys
+        bool reuploadAllowed = false;
+        if (uploadsMap != null) {
+          Map<String, dynamic>? uploadMapData;
+          
+          // Try original title first
+          if (uploadsMap.containsKey(title)) {
+            uploadMapData = uploadsMap[title] as Map<String, dynamic>?;
+          }
+          // Try sanitized title if original not found
+          else if (uploadsMap.containsKey(sanitizedTitle)) {
+            uploadMapData = uploadsMap[sanitizedTitle] as Map<String, dynamic>?;
+          }
+          
+          if (uploadMapData != null) {
+            reuploadAllowed = uploadMapData['reuploadAllowed'] as bool? ?? false;
+          }
+        }
+        
+        // Get the upload document metadata from subcollection
+        final uploadDoc = await submissionDocRef.collection('uploads').doc(sanitizedTitle).get();
+        
+        if (uploadDoc.exists) {
+          final uploadData = uploadDoc.data();
+          // Override with subcollection value if it exists
+          reuploadAllowed = uploadData?['reuploadAllowed'] as bool? ?? reuploadAllowed;
+        }
+        
+        // Get the most recent comment from subcollection
+        final commentsSnapshot = await submissionDocRef
+            .collection('uploads')
+            .doc(sanitizedTitle)
+            .collection('comments')
+            .orderBy('commentedAt', descending: true)
+            .limit(1)
+            .get();
+        
+        if (commentsSnapshot.docs.isNotEmpty) {
+          final commentDoc = commentsSnapshot.docs.first;
+          final commentData = commentDoc.data();
+          
+          _documentComments[title] = {
+            'reuploadAllowed': reuploadAllowed,
+            'message': commentData['comment'] as String?,
+            'commentedAt': commentData['commentedAt'],
+            'commenterId': commentData['commenterId'] as String?,
+          };
+        } else if (reuploadAllowed) {
+          // Has reuploadAllowed flag but no comments
+          _documentComments[title] = {
+            'reuploadAllowed': reuploadAllowed,
+            'message': null,
+          };
+        }
+      }
       final uploadsRef = FirebaseFirestore.instance
           .collection('applications')
           .doc('splt')
@@ -327,6 +400,11 @@ class _SPLTFormPageState extends State<SPLTFormPage> {
     } catch (e) {
       print("Error loading document comments: $e");
     }
+  }
+
+  /// Sanitize document title to be used as Firestore document ID
+  String _sanitizeDocTitle(String title) {
+    return title.replaceAll(RegExp(r'[.#$/\[\]]'), '-').trim();
   }
 
   /// Parse comment timestamp (can be Timestamp or String)
@@ -398,7 +476,7 @@ class _SPLTFormPageState extends State<SPLTFormPage> {
   Future<void> uploadSingleFile(String title, PlatformFile file) async {
     if (_currentSubmissionId == null) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('No submission selected')),
+        const SnackBar(content: Text('⚠️ No submission selected. Please create or switch to a submission first.')),
       );
       return;
     }
@@ -406,72 +484,61 @@ class _SPLTFormPageState extends State<SPLTFormPage> {
     setState(() => _isUploading = true);
 
     try {
-      final firestore = FirebaseFirestore.instance;
-      final storage = FirebaseStorage.instance;
-
-      final submissionDoc = firestore
+      final submissionRef = FirebaseFirestore.instance
           .collection('applications')
           .doc('splt')
           .collection('applicants')
           .doc(widget.applicantId)
           .collection('submissions')
-          .doc(_currentSubmissionId!);
-      final userUploadsRef = firestore
-          .collection('users')
-          .doc(widget.applicantId)
-          .collection('splt_uploads');
-      final applicantUploadsRef = submissionDoc.collection('uploads');
+          .doc(_currentSubmissionId);
 
-      final safeTitle = title.replaceAll(RegExp(r'[.#$/\[\]]'), '-').trim();
-      final fileName = "${DateTime.now().millisecondsSinceEpoch}_${file.name}";
-      final ref = storage.ref().child("splt_uploads/$fileName");
+      final sanitizedTitle = _sanitizeDocTitle(title);
+      final uploadDocRef = submissionRef.collection('uploads').doc(sanitizedTitle);
+      
+      // Upload file logic
+      final String fileName = '${widget.applicantId}_${title}_${DateTime.now().millisecondsSinceEpoch}${path.extension(file.name)}';
+      final storageRef = FirebaseStorage.instance
+          .ref()
+          .child('applications/splt/${widget.applicantId}/$_currentSubmissionId/$fileName');
 
-      // Upload file
-      UploadTask uploadTask;
+      String? downloadUrl;
+
       if (kIsWeb) {
-        final bytes = file.bytes;
-        if (bytes == null) throw Exception("File bytes missing");
-        uploadTask = ref.putData(bytes);
+        if (file.bytes != null) {
+          await storageRef.putData(file.bytes!);
+          downloadUrl = await storageRef.getDownloadURL();
+        }
       } else {
-        final pathStr = file.path;
-        if (pathStr == null) throw Exception("File path missing");
-        uploadTask = ref.putFile(File(pathStr));
+        if (file.path != null) {
+          final uploadTask = storageRef.putFile(File(file.path!));
+          final snapshot = await uploadTask;
+          downloadUrl = await snapshot.ref.getDownloadURL();
+        }
       }
 
-      await uploadTask.whenComplete(() {});
-      final url = await ref.getDownloadURL();
+      if (downloadUrl != null) {
+        // Update Firestore with new file and clear reuploadAllowed flag
+        await uploadDocRef.set({
+          'title': title,
+          'fileName': file.name,
+          'url': downloadUrl,
+          'uploadedAt': FieldValue.serverTimestamp(),
+          'reuploadAllowed': false, // Clear reupload flag after successful upload
+        }, SetOptions(merge: true));
 
-      // Save data structure
-      final uploadData = {
-        'title': title,
-        'fileName': file.name,
-        'url': url,
-        'uploadedAt': FieldValue.serverTimestamp(),
-      };
+        setState(() {
+          uploadedFiles[title]!['url'] = downloadUrl;
+          uploadedFiles[title]!['file'] = null;
+          uploadedFiles[title]!['fileName'] = file.name;
+          // Clear the comment data since reupload is done
+          _documentComments[title]?['reuploadAllowed'] = false;
+        });
 
-      // Save to all locations
-      await userUploadsRef.doc(safeTitle).set(uploadData);
-      await applicantUploadsRef.doc(safeTitle).set(uploadData, SetOptions(merge: true));
-
-      // Reset reuploadAllowed flag in submission
-      await submissionDoc.set({
-        'uploads.$safeTitle.reuploadAllowed': false,
-        'lastUpdated': FieldValue.serverTimestamp(),
-      }, SetOptions(merge: true));
-
-      // Update local state
-      uploadedFiles[title]!["url"] = url;
-      uploadedFiles[title]!["file"] = null;
-
-      // Reload comments and uploads
-      await _loadDocumentComments();
-      await _loadExistingUploads();
-
-      if (mounted) {
-        setState(() => _isUploading = false);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text("$title uploaded successfully!")),
-        );
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('✅ $title uploaded successfully!')),
+          );
+        }
       }
     } catch (e) {
       if (mounted) {

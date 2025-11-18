@@ -206,6 +206,78 @@ class _ChainsawRegistrationPageState extends State<ChainsawRegistrationPage> {
     if (_currentSubmissionId == null) return;
 
     try {
+      final submissionDocRef = FirebaseFirestore.instance
+          .collection('applications')
+          .doc('chainsawreg')
+          .collection('applicants')
+          .doc(widget.applicantId)
+          .collection('submissions')
+          .doc(_currentSubmissionId);
+
+      // Get submission document to check for uploads map
+      final submissionSnapshot = await submissionDocRef.get();
+      final submissionData = submissionSnapshot.data();
+      final uploadsMap = submissionData?['uploads'] as Map<String, dynamic>?;
+
+      // Load uploaded files
+      final uploadsSnapshot = await submissionDocRef.collection('uploads').get();
+      
+      for (final uploadDoc in uploadsSnapshot.docs) {
+        final data = uploadDoc.data();
+        final sanitizedTitle = uploadDoc.id;
+        final title = data['title'] as String? ?? sanitizedTitle;
+        
+        if (uploadedFiles.containsKey(title)) {
+          uploadedFiles[title]!['url'] = data['url'];
+          uploadedFiles[title]!['fileName'] = data['fileName'];
+        }
+        
+        // Check reuploadAllowed from submission document's uploads map first
+        // Try both original title and sanitized title as keys
+        bool reuploadAllowed = false;
+        if (uploadsMap != null) {
+          Map<String, dynamic>? uploadMapData;
+          
+          // Try original title first
+          if (uploadsMap.containsKey(title)) {
+            uploadMapData = uploadsMap[title] as Map<String, dynamic>?;
+          }
+          // Try sanitized title if original not found
+          else if (uploadsMap.containsKey(sanitizedTitle)) {
+            uploadMapData = uploadsMap[sanitizedTitle] as Map<String, dynamic>?;
+          }
+          
+          if (uploadMapData != null) {
+            reuploadAllowed = uploadMapData['reuploadAllowed'] as bool? ?? false;
+          }
+        }
+        
+        // Override with subcollection value if it exists
+        reuploadAllowed = data['reuploadAllowed'] as bool? ?? reuploadAllowed;
+        
+        final commentsSnapshot = await uploadDoc.reference
+            .collection('comments')
+            .orderBy('commentedAt', descending: true)
+            .limit(1)
+            .get();
+        
+        if (commentsSnapshot.docs.isNotEmpty) {
+          final commentDoc = commentsSnapshot.docs.first;
+          final commentData = commentDoc.data();
+          
+          _documentComments[title] = {
+            'reuploadAllowed': reuploadAllowed,
+            'message': commentData['comment'] as String?,
+            'commentedAt': commentData['commentedAt'],
+            'commenterId': commentData['commenterId'] as String?,
+          };
+        } else if (reuploadAllowed) {
+          _documentComments[title] = {
+            'reuploadAllowed': reuploadAllowed,
+            'message': null,
+          };
+        }
+      }
       final uploadsRef = FirebaseFirestore.instance
           .collection('applications')
           .doc('chainsaw')
@@ -288,7 +360,7 @@ class _ChainsawRegistrationPageState extends State<ChainsawRegistrationPage> {
   Future<void> uploadSingleFile(String title, PlatformFile file) async {
     if (_currentSubmissionId == null) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('No submission selected')),
+        const SnackBar(content: Text('⚠️ No submission selected')),
       );
       return;
     }
@@ -296,52 +368,61 @@ class _ChainsawRegistrationPageState extends State<ChainsawRegistrationPage> {
     setState(() => _isUploading = true);
 
     try {
-      final firestore = FirebaseFirestore.instance;
-      final storage = FirebaseStorage.instance;
-
-      final safeTitle = title.replaceAll(RegExp(r'[.#$/\[\]]'), '-').trim();
-      final fileName = '${DateTime.now().millisecondsSinceEpoch}_${file.name}';
-      final ref = storage.ref().child('chainsaw_uploads/$fileName');
-
-      UploadTask uploadTask;
-      if (kIsWeb) {
-        final bytes = file.bytes;
-        if (bytes == null) throw Exception('File bytes missing');
-        uploadTask = ref.putData(bytes);
-      } else {
-        final filePath = file.path;
-        if (filePath == null) throw Exception('File path missing');
-        uploadTask = ref.putFile(File(filePath));
-      }
-
-      await uploadTask.whenComplete(() {});
-      final url = await ref.getDownloadURL();
-
-      final uploadData = {
-        'title': title,
-        'fileName': file.name,
-        'url': url,
-        'uploadedAt': FieldValue.serverTimestamp(),
-      };
-
-      await firestore
+      final submissionRef = FirebaseFirestore.instance
           .collection('applications')
-          .doc('chainsaw')
+          .doc('chainsawreg')
           .collection('applicants')
           .doc(widget.applicantId)
           .collection('submissions')
-          .doc(_currentSubmissionId!)
-          .collection('uploads')
-          .doc(safeTitle)
-          .set(uploadData);
+          .doc(_currentSubmissionId);
 
-      uploadedFiles[title]!['url'] = url;
-      uploadedFiles[title]!['file'] = null;
+      final sanitizedTitle = _sanitizeDocTitle(title);
+      final uploadDocRef = submissionRef.collection('uploads').doc(sanitizedTitle);
+      
+      // Upload file logic
+      final String fileName = '${widget.applicantId}_${title}_${DateTime.now().millisecondsSinceEpoch}${path.extension(file.name)}';
+      final storageRef = FirebaseStorage.instance
+          .ref()
+          .child('applications/chainsawreg/${widget.applicantId}/$_currentSubmissionId/$fileName');
 
-      if (mounted) {
-        setState(() => _isUploading = false);
-        ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('$title uploaded successfully!')));
+      String? downloadUrl;
+
+      if (kIsWeb) {
+        if (file.bytes != null) {
+          await storageRef.putData(file.bytes!);
+          downloadUrl = await storageRef.getDownloadURL();
+        }
+      } else {
+        if (file.path != null) {
+          final uploadTask = storageRef.putFile(File(file.path!));
+          final snapshot = await uploadTask;
+          downloadUrl = await snapshot.ref.getDownloadURL();
+        }
+      }
+
+      if (downloadUrl != null) {
+        // Update Firestore with new file and clear reuploadAllowed flag
+        await uploadDocRef.set({
+          'title': title,
+          'fileName': file.name,
+          'url': downloadUrl,
+          'uploadedAt': FieldValue.serverTimestamp(),
+          'reuploadAllowed': false, // Clear reupload flag after successful upload
+        }, SetOptions(merge: true));
+
+        setState(() {
+          uploadedFiles[title]!['url'] = downloadUrl;
+          uploadedFiles[title]!['file'] = null;
+          uploadedFiles[title]!['fileName'] = file.name;
+          // Clear the comment data since reupload is done
+          _documentComments[title]?['reuploadAllowed'] = false;
+        });
+
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('✅ $title uploaded successfully!')),
+          );
+        }
       }
     } catch (e) {
       if (mounted) setState(() => _isUploading = false);
@@ -402,6 +483,11 @@ class _ChainsawRegistrationPageState extends State<ChainsawRegistrationPage> {
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(content: Text('All files uploaded successfully!')),
     );
+  }
+
+  /// Sanitize document title to be used as Firestore document ID
+  String _sanitizeDocTitle(String title) {
+    return title.replaceAll(RegExp(r'[.#$/\[\]]'), '-').trim();
   }
 
   // Helper to zero-pad minutes/hours

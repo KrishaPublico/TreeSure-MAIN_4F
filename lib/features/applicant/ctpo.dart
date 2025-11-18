@@ -278,74 +278,103 @@ class _CTPOUploadPageState extends State<CTPOUploadPage> {
     if (_currentSubmissionId == null) return;
     
     try {
-      final uploadsRef = FirebaseFirestore.instance
+      final submissionDocRef = FirebaseFirestore.instance
           .collection('applications')
           .doc('ctpo')
           .collection('applicants')
           .doc(widget.applicantId)
           .collection('submissions')
-          .doc(_currentSubmissionId!)
-          .collection('uploads');
-      final uploadsSnapshot = await uploadsRef.get();
-      print("📄 Found ${uploadsSnapshot.docs.length} upload documents");
+          .doc(_currentSubmissionId);
 
-      for (final uploadDoc in uploadsSnapshot.docs) {
-        final docKey = uploadDoc.id;
-        final docData = uploadDoc.data();
-        print("📄 Processing document: $docKey");
+      // Get submission document to check for uploads map
+      final submissionSnapshot = await submissionDocRef.get();
+      final submissionData = submissionSnapshot.data();
+      final uploadsMap = submissionData?['uploads'] as Map<String, dynamic>?;
+      
+      print("📄 uploadsMap keys: ${uploadsMap?.keys.toList()}");
+      print("📄 uploadsMap full content: $uploadsMap");
 
-        final reuploadAllowed = docData['reuploadAllowed'] as bool? ?? false;
-        print("📄 reuploadAllowed: $reuploadAllowed");
-
-        final commentsSnapshot = await uploadDoc.reference
+      // Load each document's comments and reuploadAllowed flag
+      for (final label in formLabels) {
+        final title = label['title']!;
+        final sanitizedTitle = _sanitizeDocTitle(title);
+        
+        print("📄 Checking document: $title (sanitized: $sanitizedTitle)");
+        
+        // Check reuploadAllowed from submission document's uploads map first
+        // Try both original title and sanitized title as keys
+        bool reuploadAllowed = false;
+        if (uploadsMap != null) {
+          Map<String, dynamic>? uploadMapData;
+          
+          // Try original title first
+          if (uploadsMap.containsKey(title)) {
+            uploadMapData = uploadsMap[title] as Map<String, dynamic>?;
+            print("📄 Found using original title: $title");
+          }
+          // Try sanitized title if original not found
+          else if (uploadsMap.containsKey(sanitizedTitle)) {
+            uploadMapData = uploadsMap[sanitizedTitle] as Map<String, dynamic>?;
+            print("📄 Found using sanitized title: $sanitizedTitle");
+          }
+          
+          if (uploadMapData != null) {
+            reuploadAllowed = uploadMapData['reuploadAllowed'] as bool? ?? false;
+            print("📄 Found in uploads map - reuploadAllowed: $reuploadAllowed");
+          } else {
+            print("📄 Not found in uploads map (tried both '$title' and '$sanitizedTitle')");
+          }
+        } else {
+          print("📄 Not found in uploads map (sanitizedTitle: $sanitizedTitle)");
+        }
+        
+        // Get the upload document metadata from subcollection
+        final uploadDoc = await submissionDocRef.collection('uploads').doc(sanitizedTitle).get();
+        
+        if (uploadDoc.exists) {
+          final uploadData = uploadDoc.data();
+          // Override with subcollection value if it exists
+          reuploadAllowed = uploadData?['reuploadAllowed'] as bool? ?? reuploadAllowed;
+        }
+        
+        // Get the most recent comment from subcollection
+        final commentsSnapshot = await submissionDocRef
+            .collection('uploads')
+            .doc(sanitizedTitle)
             .collection('comments')
-            .orderBy('createdAt', descending: true)
+            .orderBy('commentedAt', descending: true)
             .limit(1)
             .get();
-
-        Map<String, dynamic>? mostRecentComment;
+        
         if (commentsSnapshot.docs.isNotEmpty) {
           final commentDoc = commentsSnapshot.docs.first;
-          mostRecentComment = commentDoc.data();
-          print("📄 Most recent comment: ${mostRecentComment['message']}");
-        }
-
-        String? matchingTitle;
-        if (uploadedFiles.containsKey(docKey)) {
-          matchingTitle = docKey;
-          print("✅ Exact match found: $docKey");
-        } else {
-          for (final label in formLabels) {
-            final title = label["title"]!;
-            final safeTitle =
-                title.replaceAll(RegExp(r'[.#$/\[\]]'), '-').trim();
-            if (docKey == safeTitle) {
-              matchingTitle = title;
-              print("✅ Safe title match: $docKey -> $title");
-              break;
-            }
-          }
-        }
-
-        if (matchingTitle != null) {
-          _documentComments[matchingTitle] = {
+          final commentData = commentDoc.data();
+          
+          _documentComments[title] = {
             'reuploadAllowed': reuploadAllowed,
-            'from': mostRecentComment?['from'] as String? ?? 'Admin',
-            'message': mostRecentComment?['message'] as String? ?? '',
-            'createdAt':
-                _parseCommentTimestamp(mostRecentComment?['createdAt']),
+            'message': commentData['comment'] as String?,
+            'commentedAt': commentData['commentedAt'],
+            'commenterId': commentData['commenterId'] as String?,
           };
-          print("✅ Stored comment for $matchingTitle");
-        } else {
-          print("❌ No matching title found for docKey: $docKey");
+        } else if (reuploadAllowed) {
+          // Has reuploadAllowed flag but no comments
+          _documentComments[title] = {
+            'reuploadAllowed': reuploadAllowed,
+            'message': null,
+          };
         }
       }
-
+      
       print("📄 Final _documentComments: $_documentComments");
       setState(() {});
     } catch (e) {
       print("❌ Error loading document comments: $e");
     }
+  }
+
+  /// Sanitize document title to be used as Firestore document ID
+  String _sanitizeDocTitle(String title) {
+    return title.replaceAll(RegExp(r'[.#$/\[\]]'), '-').trim();
   }
 
   /// Parse comment timestamp (can be Timestamp or String)
