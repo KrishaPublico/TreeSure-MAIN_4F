@@ -64,8 +64,10 @@ class _PltpRegisterTreesPageState extends State<PltpRegisterTreesPage> {
 
   // Tree dropdown variables
   List<Map<String, dynamic>> ctpoTrees = [];
-  String? selectedTreeId;
-  String? selectedTreeTaggingAppointmentId; // ✅ Doc ID of tree_tagging_appointment
+  String? selectedTreeId; // Original tree doc ID (T1, T2, etc.)
+  String? selectedDropdownId; // Unique dropdown ID for UI
+  String?
+      selectedTreeTaggingAppointmentId; // ✅ Doc ID of tree_tagging_appointment
   String? treeStatus = 'Not Yet Ready'; // ✅ Tree cutting status
   bool isLoadingTrees = false;
 
@@ -172,83 +174,38 @@ class _PltpRegisterTreesPageState extends State<PltpRegisterTreesPage> {
     volumeController.text = volume > 0 ? volume.toStringAsFixed(2) : '';
   }
 
-  /// ✅ Load tagged trees from tree_tagging_appointment matching applicantId
+  /// ✅ Load trees from the current PLTP appointment's tree_inventory
   Future<void> _loadCtpoTrees() async {
     setState(() {
       isLoadingTrees = true;
     });
 
     try {
-      // First, fetch the cutting_appointment to get applicantId
-      final cuttingAppointmentDoc = await FirebaseFirestore.instance
+      print('✅ Loading trees from appointment: ${widget.appointmentId}');
+
+      // Get all trees from the current appointment's tree_inventory sub-collection
+      final treeInventorySnapshot = await FirebaseFirestore.instance
           .collection('appointments')
           .doc(widget.appointmentId)
+          .collection('tree_inventory')
           .get();
 
-      if (!cuttingAppointmentDoc.exists) {
-        _showDialog('Error', '⚠️ Appointment not found');
-        setState(() {
-          isLoadingTrees = false;
-        });
-        return;
-      }
-
-      final cuttingAppointmentData = cuttingAppointmentDoc.data()!;
-      final applicantId = cuttingAppointmentData['applicantId'] as String?;
-
-      if (applicantId == null || applicantId.isEmpty) {
-        _showDialog('Error', '⚠️ Applicant ID not found in appointment');
-        setState(() {
-          isLoadingTrees = false;
-        });
-        return;
-      }
-
-      print('✅ Looking for tree_tagging_appointment with applicantId: $applicantId');
-
-      // Find all tree_tagging_appointment documents in the appointments collection that match applicantId
-      final treeTaggingSnapshot = await FirebaseFirestore.instance
-          .collection('appointments')
-          .where('applicantId', isEqualTo: applicantId)
-          .where('appointmentType', isEqualTo: 'Tree Tagging')
-          .get();
+      print(
+          '✅ Found ${treeInventorySnapshot.docs.length} trees in tree_inventory');
 
       final allTrees = <Map<String, dynamic>>[];
 
-      if (treeTaggingSnapshot.docs.isEmpty) {
-        print('⚠️ No tree_tagging_appointment found for applicantId: $applicantId');
-        _showDialog('Info', '⚠️ No tagged trees found for this applicant');
-        setState(() {
-          isLoadingTrees = false;
+      for (var treeDoc in treeInventorySnapshot.docs) {
+        final treeData = treeDoc.data();
+        final specie = treeData['specie'] ?? 'N/A';
+        print('✅ Adding tree: ${treeDoc.id} - $specie');
+
+        allTrees.add({
+          ...treeData,
+          'docId': treeDoc.id,
+          'treeDocId': treeDoc.id,
+          'appointmentId': widget.appointmentId,
         });
-        return;
-      }
-
-      // For each tree_tagging_appointment with matching applicantId
-      for (var appointmentDoc in treeTaggingSnapshot.docs) {
-        print('✅ Found tree_tagging_appointment: ${appointmentDoc.id}');
-
-        // Get all trees from the tree_inventory sub-collection
-        final treeInventorySnapshot = await FirebaseFirestore.instance
-            .collection('appointments')
-            .doc(appointmentDoc.id)
-            .collection('tree_inventory')
-            .get();
-
-        print('✅ Found ${treeInventorySnapshot.docs.length} trees in tree_inventory');
-
-        for (var treeDoc in treeInventorySnapshot.docs) {
-          final treeData = treeDoc.data();
-          final specie = treeData['specie'] ?? treeData['specie'] ?? 'N/A';
-          print('✅ Adding tree: ${treeDoc.id} - $specie');
-
-          allTrees.add({
-            ...treeData,
-            'docId': treeDoc.id,
-            'source': 'tree-tagging-appointment',
-            'appointmentId': appointmentDoc.id,
-          });
-        }
       }
 
       setState(() {
@@ -257,7 +214,7 @@ class _PltpRegisterTreesPageState extends State<PltpRegisterTreesPage> {
       });
 
       if (allTrees.isEmpty) {
-        _showDialog('Info', '⚠️ No tagged trees found in the appointment');
+        _showDialog('Info', '⚠️ No trees found in this appointment');
       } else {
         print('✅ Total trees loaded: ${allTrees.length}');
       }
@@ -271,27 +228,30 @@ class _PltpRegisterTreesPageState extends State<PltpRegisterTreesPage> {
   }
 
   /// ✅ Auto-fill form when tree is selected from dropdown
-  void _onTreeSelected(String? treeId) {
-    if (treeId == null) return;
+  void _onTreeSelected(String? uniqueId) {
+    if (uniqueId == null) return;
 
     final selectedTree = ctpoTrees.firstWhere(
-      (tree) => tree['docId'] == treeId,
+      (tree) => tree['docId'] == uniqueId,
       orElse: () => {},
     );
 
     if (selectedTree.isNotEmpty) {
       setState(() {
-        selectedTreeId = treeId;
+        selectedDropdownId = uniqueId; // Store unique ID for dropdown
+        selectedTreeId = selectedTree['treeDocId']; // Use original tree doc ID
         // ✅ Store the tree_tagging_appointment doc ID
         selectedTreeTaggingAppointmentId = selectedTree['appointmentId'];
-        specieController.text = selectedTree['specie'] ?? selectedTree['specie'] ?? '';
+        specieController.text =
+            selectedTree['specie'] ?? selectedTree['specie'] ?? '';
         diameterController.text = selectedTree['diameter']?.toString() ?? '';
         heightController.text = selectedTree['height']?.toString() ?? '';
-        volumeController.text = selectedTree['volume']?.toStringAsFixed(2) ?? '';
-        
+        volumeController.text =
+            selectedTree['volume']?.toStringAsFixed(2) ?? '';
+
         final lat = (selectedTree['latitude'] as num?)?.toDouble();
         final lng = (selectedTree['longitude'] as num?)?.toDouble();
-        
+
         if (lat != null && lng != null) {
           latController.text = lat.toStringAsFixed(6);
           longController.text = lng.toStringAsFixed(6);
@@ -348,7 +308,8 @@ class _PltpRegisterTreesPageState extends State<PltpRegisterTreesPage> {
         await _fetchTreeFromFirestore(ctpoTreeId);
       } else {
         setState(() {
-          scannedData = "❌ Invalid QR code format. Expected tree ID like 'T1', 'T2', etc.";
+          scannedData =
+              "❌ Invalid QR code format. Expected tree ID like 'T1', 'T2', etc.";
         });
       }
     } catch (e) {
@@ -403,12 +364,15 @@ Timestamp: ${treeData['timestamp'] != null ? (treeData['timestamp'] as Timestamp
           }
         });
 
-        _showDialog('Success', '✅ Tree data loaded successfully!\nSpecie and other details auto-filled.');
+        _showDialog('Success',
+            '✅ Tree data loaded successfully!\nSpecie and other details auto-filled.');
       } else {
         setState(() {
-          scannedData = "❌ Tree with ID '$treeId' not found in this appointment.";
+          scannedData =
+              "❌ Tree with ID '$treeId' not found in this appointment.";
         });
-        _showDialog('Not Found', "❌ Tree with ID '$treeId' not found in this appointment.");
+        _showDialog('Not Found',
+            "❌ Tree with ID '$treeId' not found in this appointment.");
       }
     } catch (e) {
       print('Error fetching tree data: $e');
@@ -420,7 +384,8 @@ Timestamp: ${treeData['timestamp'] != null ? (treeData['timestamp'] as Timestamp
   }
 
   /// ✅ Generate QR, upload to Storage, and return the download URL
-  Future<String?> _generateAndUploadQr(String treeId, Map<String, dynamic> data) async {
+  Future<String?> _generateAndUploadQr(
+      String treeId, Map<String, dynamic> data) async {
     try {
       final qrPayload = {
         'format': 'treesure.v2',
@@ -428,7 +393,8 @@ Timestamp: ${treeData['timestamp'] != null ? (treeData['timestamp'] as Timestamp
         'appointment_id': data['appointment_id'],
         'tree_id': data['tree_id'],
         'tree_no': data['tree_no'],
-        'tree_tagging_appointment_id': data['tree_tagging_appointment_id'] ?? '',
+        'tree_tagging_appointment_id':
+            data['tree_tagging_appointment_id'] ?? '',
         'tree_status': data['tree_status'] ?? 'Not Yet Ready',
         'specie': data['specie'],
         'diameter': data['diameter'],
@@ -452,7 +418,8 @@ Timestamp: ${treeData['timestamp'] != null ? (treeData['timestamp'] as Timestamp
       final picData = await qrPainter.toImageData(300);
       final Uint8List bytes = picData!.buffer.asUint8List();
 
-      final ref = FirebaseStorage.instance.ref().child('tree_qrcodes/$treeId.png');
+      final ref =
+          FirebaseStorage.instance.ref().child('tree_qrcodes/$treeId.png');
 
       UploadTask uploadTask;
       if (kIsWeb) {
@@ -488,11 +455,6 @@ Timestamp: ${treeData['timestamp'] != null ? (treeData['timestamp'] as Timestamp
     final volume = double.tryParse(volumeController.text);
     final appointmentId = widget.appointmentId;
 
-    if (selectedTreeId == null) {
-      _showDialog('Validation Error', '⚠️ Please select a tree from the dropdown.');
-      return;
-    }
-
     if (latitude == null ||
         longitude == null ||
         specie.isEmpty ||
@@ -513,8 +475,22 @@ Timestamp: ${treeData['timestamp'] != null ? (treeData['timestamp'] as Timestamp
     );
 
     try {
-      // Use selectedTreeId as both treeId and docId
-      final treeId = selectedTreeId!;
+      // ✅ If no tree is selected, generate a new tree ID
+      String treeId;
+      if (selectedTreeId == null) {
+        // Generate new tree ID for manually entered tree
+        final treeCollection = FirebaseFirestore.instance
+            .collection('appointments')
+            .doc(appointmentId)
+            .collection('tree_inventory');
+
+        final count = await treeCollection.count().get();
+        treeId = 'T${(count.count ?? 0) + 1}'; // Format as T1, T2, etc.
+      } else {
+        // Use the selected tree ID
+        treeId = selectedTreeId!;
+      }
+
       // ✅ Get the tree_tagging_appointment doc ID to store as a field
       final treeTaggingAppointmentId = selectedTreeTaggingAppointmentId;
 
@@ -621,6 +597,7 @@ Timestamp: ${treeData['timestamp'] != null ? (treeData['timestamp'] as Timestamp
       scannedTreeId = null;
       scannedTreeLocation = null;
       selectedTreeId = null;
+      selectedDropdownId = null; // ✅ Clear the dropdown ID
       selectedTreeTaggingAppointmentId = null; // ✅ Clear the appointment ID
       treeStatus = 'Not Yet Ready'; // ✅ Reset status
     });
@@ -665,8 +642,9 @@ Timestamp: ${treeData['timestamp'] != null ? (treeData['timestamp'] as Timestamp
   Future<void> _completeTreeTagging() async {
     try {
       // ✅ Use the tree_tagging_appointment doc ID if available
-      final appointmentIdToUse = selectedTreeTaggingAppointmentId ?? widget.appointmentId;
-      
+      final appointmentIdToUse =
+          selectedTreeTaggingAppointmentId ?? widget.appointmentId;
+
       final appointmentRef = FirebaseFirestore.instance
           .collection('appointments')
           .doc(appointmentIdToUse);
@@ -678,9 +656,10 @@ Timestamp: ${treeData['timestamp'] != null ? (treeData['timestamp'] as Timestamp
       }
 
       final appointmentData = appointmentDoc.data()!;
-      final foresterIds = List<String>.from(appointmentData['foresterIds'] ?? []);
-      
-      Map<String, dynamic> completionStatus = 
+      final foresterIds =
+          List<String>.from(appointmentData['foresterIds'] ?? []);
+
+      Map<String, dynamic> completionStatus =
           Map<String, dynamic>.from(appointmentData['completionStatus'] ?? {});
 
       completionStatus[widget.foresterId] = {
@@ -701,9 +680,8 @@ Timestamp: ${treeData['timestamp'] != null ? (treeData['timestamp'] as Timestamp
 
         _showDialog('Success', '✅ Tree tagging completed by all foresters!');
       } else {
-        final completedCount = completionStatus.values
-            .where((v) => v['completed'] == true)
-            .length;
+        final completedCount =
+            completionStatus.values.where((v) => v['completed'] == true).length;
         final totalCount = foresterIds.length;
 
         await appointmentRef.update({
@@ -711,7 +689,8 @@ Timestamp: ${treeData['timestamp'] != null ? (treeData['timestamp'] as Timestamp
           'status': 'In Progress',
         });
 
-        _showDialog('Info', '✅ Marked as completed. Waiting for other foresters ($completedCount/$totalCount)');
+        _showDialog('Info',
+            '✅ Marked as completed. Waiting for other foresters ($completedCount/$totalCount)');
       }
     } catch (e) {
       _showDialog('Error', '❌ Error completing tree tagging: $e');
@@ -980,13 +959,6 @@ Timestamp: ${treeData['timestamp'] != null ? (treeData['timestamp'] as Timestamp
           title: const Text("Tree Inventory - PLTP"),
           backgroundColor: Colors.green[800],
           foregroundColor: Colors.white,
-          bottom: const TabBar(
-            tabs: [
-              Tab(icon: Icon(Icons.edit), text: "Register Tree"),
-              Tab(icon: Icon(Icons.qr_code_scanner), text: "Scan QR"),
-              Tab(icon: Icon(Icons.map), text: "Map View"),
-            ],
-          ),
         ),
         body: TabBarView(
           children: [
@@ -999,14 +971,23 @@ Timestamp: ${treeData['timestamp'] != null ? (treeData['timestamp'] as Timestamp
                       style: const TextStyle(
                           fontWeight: FontWeight.bold, fontSize: 16)),
                   const SizedBox(height: 20),
-                  
+
                   // ✅ Tree Selection Dropdown
                   const Text(
-                    'Select Tree from Tree Tagging Appointment',
+                    'Select Tree (Optional)',
                     style: TextStyle(
                       fontWeight: FontWeight.w600,
                       color: Colors.black87,
                       fontSize: 14,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  const Text(
+                    'Choose from existing trees or leave blank to register a new tree',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: Colors.grey,
+                      fontStyle: FontStyle.italic,
                     ),
                   ),
                   const SizedBox(height: 8),
@@ -1023,13 +1004,18 @@ Timestamp: ${treeData['timestamp'] != null ? (treeData['timestamp'] as Timestamp
                           ),
                           child: DropdownButton<String>(
                             isExpanded: true,
-                            value: selectedTreeId,
-                            hint: const Text('Choose a tree...'),
+                            value: selectedDropdownId,
+                            hint: const Text(
+                                'Choose a tree or skip to register new...'),
                             items: ctpoTrees.map((tree) {
-                              final treeId = tree['docId'] ?? 'Unknown';
-                              final specie = tree['specie'] ?? tree['specie'] ?? 'N/A';
+                              final uniqueId = tree['docId'] ?? 'Unknown';
+                              final treeId = tree['treeDocId'] ??
+                                  tree['tree_id'] ??
+                                  'Unknown';
+                              final specie =
+                                  tree['specie'] ?? tree['specie'] ?? 'N/A';
                               return DropdownMenuItem<String>(
-                                value: treeId,
+                                value: uniqueId,
                                 child: Text('$treeId - $specie'),
                               );
                             }).toList(),
@@ -1037,14 +1023,41 @@ Timestamp: ${treeData['timestamp'] != null ? (treeData['timestamp'] as Timestamp
                             underline: const SizedBox(),
                           ),
                         ),
+                  if (selectedDropdownId != null)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 8.0),
+                      child: TextButton.icon(
+                        icon: const Icon(Icons.clear, size: 16),
+                        label:
+                            const Text('Clear Selection & Register New Tree'),
+                        onPressed: () {
+                          setState(() {
+                            selectedDropdownId = null;
+                            selectedTreeId = null;
+                            selectedTreeTaggingAppointmentId = null;
+                            specieController.clear();
+                            diameterController.clear();
+                            heightController.clear();
+                            volumeController.clear();
+                            latController.clear();
+                            longController.clear();
+                            scannedTreeLocation = null;
+                          });
+                        },
+                        style: TextButton.styleFrom(
+                          foregroundColor: Colors.orange[700],
+                        ),
+                      ),
+                    ),
                   const SizedBox(height: 20),
-                  
+
                   buildTextField("Specie", specieController,
                       focusNode: specieFocus),
                   Row(
                     children: [
                       Expanded(
-                        child: buildTextField("Diameter (cm)", diameterController,
+                        child: buildTextField(
+                            "Diameter (cm)", diameterController,
                             keyboardType: TextInputType.number),
                       ),
                       const SizedBox(width: 12),
@@ -1057,7 +1070,7 @@ Timestamp: ${treeData['timestamp'] != null ? (treeData['timestamp'] as Timestamp
                   buildTextField("Volume (CU m)", volumeController,
                       enabled: false),
                   const SizedBox(height: 12),
-                   
+
                   // ✅ Tree Status Dropdown
                   const Text(
                     'Tree Status',
@@ -1100,14 +1113,12 @@ Timestamp: ${treeData['timestamp'] != null ? (treeData['timestamp'] as Timestamp
                     children: [
                       Expanded(
                         child: buildTextField("Latitude", latController,
-                            enabled: false,
-                            keyboardType: TextInputType.number),
+                            enabled: false, keyboardType: TextInputType.number),
                       ),
                       const SizedBox(width: 12),
                       Expanded(
                         child: buildTextField("Longitude", longController,
-                            enabled: false,
-                            keyboardType: TextInputType.number),
+                            enabled: false, keyboardType: TextInputType.number),
                       ),
                     ],
                   ),
@@ -1137,8 +1148,7 @@ Timestamp: ${treeData['timestamp'] != null ? (treeData['timestamp'] as Timestamp
                         backgroundColor: Colors.green[800],
                         padding: const EdgeInsets.symmetric(vertical: 16)),
                     child: const Text("Submit",
-                        style:
-                            TextStyle(color: Colors.white, fontSize: 16)),
+                        style: TextStyle(color: Colors.white, fontSize: 16)),
                   ),
                   const SizedBox(height: 10),
                   ElevatedButton(
@@ -1147,8 +1157,7 @@ Timestamp: ${treeData['timestamp'] != null ? (treeData['timestamp'] as Timestamp
                         backgroundColor: Colors.green[800],
                         padding: const EdgeInsets.symmetric(vertical: 16)),
                     child: const Text("View Summary",
-                        style:
-                            TextStyle(color: Colors.white, fontSize: 16)),
+                        style: TextStyle(color: Colors.white, fontSize: 16)),
                   ),
                   const SizedBox(height: 15),
                   ElevatedButton(
@@ -1157,8 +1166,7 @@ Timestamp: ${treeData['timestamp'] != null ? (treeData['timestamp'] as Timestamp
                         backgroundColor: Colors.orange[700],
                         padding: const EdgeInsets.symmetric(vertical: 16)),
                     child: const Text("Tree Tagging Completed",
-                        style:
-                            TextStyle(color: Colors.white, fontSize: 16)),
+                        style: TextStyle(color: Colors.white, fontSize: 16)),
                   ),
                 ],
               ),
@@ -1179,7 +1187,8 @@ Timestamp: ${treeData['timestamp'] != null ? (treeData['timestamp'] as Timestamp
                       child: Column(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
-                          Icon(Icons.qr_code, size: 100, color: Colors.green[800]),
+                          Icon(Icons.qr_code,
+                              size: 100, color: Colors.green[800]),
                           const SizedBox(height: 20),
                           const Text(
                             "Ready to scan QR codes",
@@ -1209,8 +1218,7 @@ Timestamp: ${treeData['timestamp'] != null ? (treeData['timestamp'] as Timestamp
                           backgroundColor: Colors.red[700],
                           padding: const EdgeInsets.symmetric(vertical: 12)),
                       child: const Text("Stop Scanning",
-                          style:
-                              TextStyle(color: Colors.white, fontSize: 16)),
+                          style: TextStyle(color: Colors.white, fontSize: 16)),
                     ),
                   ),
                 if (scannedData != null)

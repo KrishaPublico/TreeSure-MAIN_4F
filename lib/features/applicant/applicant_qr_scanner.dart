@@ -739,6 +739,10 @@ appBar: AppBar(
   }
 
   Widget _buildScannerTab() {
+    final screenSize = MediaQuery.of(context).size;
+    final screenWidth = screenSize.width;
+    final screenHeight = screenSize.height;
+
     return Column(
       children: [
         if (isScanning) ...[
@@ -751,14 +755,16 @@ appBar: AppBar(
                 ),
                 _buildScannerOverlay(),
                 Positioned(
-                  top: 16,
-                  right: 16,
+                  top: 8,
+                  right: 8,
                   child: SafeArea(
                     child: CircleAvatar(
                       backgroundColor: Colors.black54,
+                      radius: screenWidth * 0.06,
                       child: IconButton(
                         icon: const Icon(Icons.close, color: Colors.white),
                         tooltip: 'Stop scanning',
+                        iconSize: screenWidth * 0.06,
                         onPressed: _stopScanning,
                       ),
                     ),
@@ -769,29 +775,46 @@ appBar: AppBar(
           ),
         ] else ...[
           Expanded(
-            child: Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(Icons.qr_code_scanner,
-                      size: 100, color: Colors.grey[400]),
-                  const SizedBox(height: 20),
-                  const Text("Tap the scanner icon to start scanning QR codes",
-                      textAlign: TextAlign.center),
-                  const SizedBox(height: 20),
-                  ElevatedButton.icon(
-                    icon:
-                        const Icon(Icons.qr_code_scanner, color: Colors.white),
-                    label: const Text("Start Scanning",
-                        style: TextStyle(color: Colors.white)),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.green[800],
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 24, vertical: 16),
-                    ),
-                    onPressed: _startScanning,
+            child: SingleChildScrollView(
+              child: Padding(
+                padding: EdgeInsets.symmetric(
+                  horizontal: screenWidth * 0.05,
+                  vertical: screenHeight * 0.05,
+                ),
+                child: Center(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(Icons.qr_code_scanner,
+                          size: screenWidth * 0.25, color: Colors.grey[400]),
+                      SizedBox(height: screenHeight * 0.025),
+                      Padding(
+                        padding: EdgeInsets.symmetric(horizontal: screenWidth * 0.08),
+                        child: Text(
+                          "Tap the scanner icon to start scanning QR codes",
+                          textAlign: TextAlign.center,
+                          style: TextStyle(fontSize: screenWidth * 0.04),
+                        ),
+                      ),
+                      SizedBox(height: screenHeight * 0.03),
+                      ElevatedButton.icon(
+                        icon: Icon(Icons.qr_code_scanner,
+                            color: Colors.white, size: screenWidth * 0.05),
+                        label: Text("Start Scanning",
+                            style: TextStyle(
+                                color: Colors.white, fontSize: screenWidth * 0.04)),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.green[800],
+                          padding: EdgeInsets.symmetric(
+                              horizontal: screenWidth * 0.06,
+                              vertical: screenHeight * 0.018),
+                          minimumSize: Size(screenWidth * 0.5, screenHeight * 0.06),
+                        ),
+                        onPressed: _startScanning,
+                      ),
+                    ],
                   ),
-                ],
+                ),
               ),
             ),
           ),
@@ -802,62 +825,83 @@ appBar: AppBar(
   }
 
   Widget _buildUploadTab() {
+    final screenSize = MediaQuery.of(context).size;
+    final screenWidth = screenSize.width;
+    final screenHeight = screenSize.height;
+
     return Column(
       children: [
         Expanded(
-          child: Center(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(Icons.upload_file, size: 100, color: Colors.grey[400]),
-                const SizedBox(height: 20),
-                Text(
-                  kIsWeb
-                      ? "Upload QR images (Mobile Only)"
-                      : "Upload a QR code image to scan",
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    fontSize: 16,
-                    color: kIsWeb ? Colors.orange[800] : Colors.black87,
-                  ),
-                ),
-                if (kIsWeb) ...[
-                  const SizedBox(height: 8),
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 32),
-                    child: Text(
-                      "Image QR scanning is not supported on web browsers. Please use the 'Scan' tab or the mobile app.",
-                      textAlign: TextAlign.center,
-                      style: TextStyle(
-                        fontSize: 13,
-                        color: Colors.grey[600],
-                        fontStyle: FontStyle.italic,
+          child: SingleChildScrollView(
+            child: Padding(
+              padding: EdgeInsets.symmetric(
+                horizontal: screenWidth * 0.05,
+                vertical: screenHeight * 0.05,
+              ),
+              child: Center(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(Icons.upload_file,
+                        size: screenWidth * 0.25, color: Colors.grey[400]),
+                    SizedBox(height: screenHeight * 0.025),
+                    Padding(
+                      padding: EdgeInsets.symmetric(horizontal: screenWidth * 0.08),
+                      child: Text(
+                        kIsWeb
+                            ? "Upload QR images (Mobile Only)"
+                            : "Upload a QR code image to scan",
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          fontSize: screenWidth * 0.04,
+                          color: kIsWeb ? Colors.orange[800] : Colors.black87,
+                        ),
                       ),
                     ),
-                  ),
-                ],
-                const SizedBox(height: 20),
-                ElevatedButton.icon(
-                  icon: const Icon(Icons.upload_file, color: Colors.white),
-                  label: Text(
-                    kIsWeb ? "Upload (Not Available)" : "Upload QR Image",
-                    style: const TextStyle(color: Colors.white),
-                  ),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: kIsWeb ? Colors.grey : Colors.green[800],
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 24, vertical: 16),
-                  ),
-                  onPressed: (isUploading || kIsWeb) ? null : _uploadQrImage,
+                    if (kIsWeb) ...[
+                      SizedBox(height: screenHeight * 0.01),
+                      Padding(
+                        padding: EdgeInsets.symmetric(horizontal: screenWidth * 0.08),
+                        child: Text(
+                          "Image QR scanning is not supported on web browsers. Please use the 'Scan' tab or the mobile app.",
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            fontSize: screenWidth * 0.032,
+                            color: Colors.grey[600],
+                            fontStyle: FontStyle.italic,
+                          ),
+                        ),
+                      ),
+                    ],
+                    SizedBox(height: screenHeight * 0.03),
+                    ElevatedButton.icon(
+                      icon: Icon(Icons.upload_file,
+                          color: Colors.white, size: screenWidth * 0.05),
+                      label: Text(
+                        kIsWeb ? "Upload (Not Available)" : "Upload QR Image",
+                        style: TextStyle(
+                            color: Colors.white, fontSize: screenWidth * 0.04),
+                      ),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: kIsWeb ? Colors.grey : Colors.green[800],
+                        padding: EdgeInsets.symmetric(
+                            horizontal: screenWidth * 0.06,
+                            vertical: screenHeight * 0.018),
+                        minimumSize: Size(screenWidth * 0.5, screenHeight * 0.06),
+                      ),
+                      onPressed: (isUploading || kIsWeb) ? null : _uploadQrImage,
+                    ),
+                    if (isUploading) ...[
+                      SizedBox(height: screenHeight * 0.025),
+                      const CircularProgressIndicator(),
+                      SizedBox(height: screenHeight * 0.012),
+                      Text("Processing image...",
+                          style: TextStyle(fontSize: screenWidth * 0.035)),
+                    ],
+                    if (uploadedImage != null) _buildUploadedImagePreview(),
+                  ],
                 ),
-                if (isUploading) ...[
-                  const SizedBox(height: 20),
-                  const CircularProgressIndicator(),
-                  const SizedBox(height: 10),
-                  const Text("Processing image..."),
-                ],
-                if (uploadedImage != null) _buildUploadedImagePreview(),
-              ],
+              ),
             ),
           ),
         ),
@@ -867,12 +911,15 @@ appBar: AppBar(
   }
 
   Widget _buildScannerOverlay() {
+    final screenSize = MediaQuery.of(context).size;
+    final overlaySize = screenSize.width * 0.65;
+
     return Container(
       decoration: BoxDecoration(color: Colors.black.withOpacity(0.5)),
       child: Center(
         child: Container(
-          width: 250,
-          height: 250,
+          width: overlaySize,
+          height: overlaySize,
           decoration: BoxDecoration(
             border: Border.all(color: Colors.green, width: 3),
             borderRadius: BorderRadius.circular(12),
@@ -889,14 +936,17 @@ appBar: AppBar(
   }
 
   Widget _buildCornerIndicators() {
+    final screenWidth = MediaQuery.of(context).size.width;
+    final cornerSize = screenWidth * 0.08;
+
     return Stack(
       children: [
         Positioned(
           top: 0,
           left: 0,
           child: Container(
-            width: 30,
-            height: 30,
+            width: cornerSize,
+            height: cornerSize,
             decoration: const BoxDecoration(
               border: Border(
                 top: BorderSide(color: Colors.green, width: 5),
@@ -909,8 +959,8 @@ appBar: AppBar(
           top: 0,
           right: 0,
           child: Container(
-            width: 30,
-            height: 30,
+            width: cornerSize,
+            height: cornerSize,
             decoration: const BoxDecoration(
               border: Border(
                 top: BorderSide(color: Colors.green, width: 5),
@@ -923,8 +973,8 @@ appBar: AppBar(
           bottom: 0,
           left: 0,
           child: Container(
-            width: 30,
-            height: 30,
+            width: cornerSize,
+            height: cornerSize,
             decoration: const BoxDecoration(
               border: Border(
                 bottom: BorderSide(color: Colors.green, width: 5),
@@ -937,8 +987,8 @@ appBar: AppBar(
           bottom: 0,
           right: 0,
           child: Container(
-            width: 30,
-            height: 30,
+            width: cornerSize,
+            height: cornerSize,
             decoration: const BoxDecoration(
               border: Border(
                 bottom: BorderSide(color: Colors.green, width: 5),
@@ -952,11 +1002,14 @@ appBar: AppBar(
   }
 
   Widget _buildScanningLine() {
+    final screenSize = MediaQuery.of(context).size;
+    final overlaySize = screenSize.width * 0.65;
+
     return AnimatedBuilder(
       animation: _animation!,
       builder: (context, child) {
         return Positioned(
-          top: _animation!.value * 250,
+          top: _animation!.value * overlaySize,
           left: 0,
           right: 0,
           child: Container(
@@ -978,14 +1031,22 @@ appBar: AppBar(
   }
 
   Widget _buildScannedDataCard() {
+    final screenSize = MediaQuery.of(context).size;
+    final screenWidth = screenSize.width;
+    final screenHeight = screenSize.height;
+
     return Container(
-      padding: const EdgeInsets.all(16),
-      margin: const EdgeInsets.all(16),
+      padding: EdgeInsets.all(screenWidth * 0.04),
+      margin: EdgeInsets.all(screenWidth * 0.04),
+      constraints: BoxConstraints(
+        maxHeight: screenHeight * 0.4,
+      ),
       decoration: BoxDecoration(
         color: Colors.green[50],
         borderRadius: BorderRadius.circular(12),
         border: Border.all(color: Colors.green[200]!),
       ),
+<<<<<<< HEAD
       child: Column(
         children: [
           const Text("📄 Scanned Data:",
@@ -1017,14 +1078,33 @@ ElevatedButton.icon(
 
           ],
         ],
+=======
+      child: SingleChildScrollView(
+        child: Column(
+          children: [
+            Text("📄 Scanned Data:",
+                style: TextStyle(
+                    fontSize: screenWidth * 0.04, fontWeight: FontWeight.bold)),
+            SizedBox(height: screenHeight * 0.01),
+            Text(scannedData!,
+                textAlign: TextAlign.center,
+                style: TextStyle(fontSize: screenWidth * 0.035)),
+          ],
+        ),
+>>>>>>> beb8ce31fd1e3fa5814eaaf1aa1b088bd7c3d01f
       ),
     );
   }
 
   Widget _buildUploadedImagePreview() {
+    final screenSize = MediaQuery.of(context).size;
+    final screenWidth = screenSize.width;
+    final screenHeight = screenSize.height;
+    final imageSize = screenWidth * 0.5;
+
     return Container(
-      padding: const EdgeInsets.all(16),
-      margin: const EdgeInsets.only(top: 20),
+      padding: EdgeInsets.all(screenWidth * 0.04),
+      margin: EdgeInsets.only(top: screenHeight * 0.025),
       decoration: BoxDecoration(
         color: Colors.grey[100],
         borderRadius: BorderRadius.circular(12),
@@ -1032,16 +1112,17 @@ ElevatedButton.icon(
       ),
       child: Column(
         children: [
-          const Text("📷 Uploaded Image:",
-              style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
-          const SizedBox(height: 8),
+          Text("📷 Uploaded Image:",
+              style: TextStyle(
+                  fontSize: screenWidth * 0.035, fontWeight: FontWeight.bold)),
+          SizedBox(height: screenHeight * 0.01),
           ClipRRect(
             borderRadius: BorderRadius.circular(8),
             child: kIsWeb
                 ? Image.network(uploadedImage!.path,
-                    width: 200, height: 200, fit: BoxFit.cover)
+                    width: imageSize, height: imageSize, fit: BoxFit.cover)
                 : Image.file(io.File(uploadedImage!.path),
-                    width: 200, height: 200, fit: BoxFit.cover),
+                    width: imageSize, height: imageSize, fit: BoxFit.cover),
           ),
         ],
       ),
@@ -1058,14 +1139,18 @@ ElevatedButton.icon(
   }
 
   Widget _buildLocationHeader() {
+    final screenSize = MediaQuery.of(context).size;
+    final screenWidth = screenSize.width;
+
     return Container(
-      padding: const EdgeInsets.all(16),
+      padding: EdgeInsets.all(screenWidth * 0.04),
       color: Colors.grey[100],
       child: Row(
         children: [
           Icon(Icons.location_on,
+              size: screenWidth * 0.06,
               color: currentLocation != null ? Colors.green : Colors.red),
-          const SizedBox(width: 8),
+          SizedBox(width: screenWidth * 0.02),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -1074,29 +1159,31 @@ ElevatedButton.icon(
                   currentLocation != null
                       ? "Your Location: ${currentLocation!.latitude.toStringAsFixed(4)}, ${currentLocation!.longitude.toStringAsFixed(4)}"
                       : "Location: ${locationError ?? 'Loading...'}",
-                  style: const TextStyle(fontSize: 12),
+                  style: TextStyle(fontSize: screenWidth * 0.03),
                 ),
                 if (treeLocation != null)
                   Text(
                     "Tree Location: ${treeLocation!.latitude.toStringAsFixed(4)}, ${treeLocation!.longitude.toStringAsFixed(4)}",
-                    style: const TextStyle(fontSize: 12, color: Colors.blue),
+                    style: TextStyle(
+                        fontSize: screenWidth * 0.03, color: Colors.blue),
                   ),
                 if (isLoadingRoute)
-                  const Text("🔄 Loading route...",
+                  Text("🔄 Loading route...",
                       style: TextStyle(
-                          fontSize: 11,
+                          fontSize: screenWidth * 0.028,
                           color: Colors.orange,
                           fontStyle: FontStyle.italic))
                 else if (routePoints.isNotEmpty)
                   Text("✅ Route displayed (${routePoints.length} points)",
-                      style: const TextStyle(
-                          fontSize: 11,
+                      style: TextStyle(
+                          fontSize: screenWidth * 0.028,
                           color: Colors.green,
                           fontStyle: FontStyle.italic)),
               ],
             ),
           ),
           if (isLoadingLocation || isLoadingRoute)
+<<<<<<< HEAD
             const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)),
         ],
       ),
@@ -1128,20 +1215,31 @@ ElevatedButton.icon(
                 foregroundColor: Colors.white,
               ),
             ),
+=======
+            SizedBox(
+                width: screenWidth * 0.04,
+                height: screenWidth * 0.04,
+                child: const CircularProgressIndicator(strokeWidth: 2)),
+>>>>>>> beb8ce31fd1e3fa5814eaaf1aa1b088bd7c3d01f
         ],
       ),
     );
   }
 
   Widget _buildMap() {
+    final screenSize = MediaQuery.of(context).size;
+    final screenWidth = screenSize.width;
+    final screenHeight = screenSize.height;
+
     if (isLoadingLocation) {
-      return const Center(
+      return Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            CircularProgressIndicator(),
-            SizedBox(height: 16),
-            Text("Loading location..."),
+            const CircularProgressIndicator(),
+            SizedBox(height: screenHeight * 0.02),
+            Text("Loading location...",
+                style: TextStyle(fontSize: screenWidth * 0.04)),
           ],
         ),
       );
@@ -1149,28 +1247,43 @@ ElevatedButton.icon(
 
     if (locationError != null) {
       return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            const Icon(Icons.location_off, size: 64, color: Colors.red),
-            const SizedBox(height: 16),
-            Text("Location Error: $locationError"),
-            const SizedBox(height: 16),
-            ElevatedButton(
-                onPressed: _getCurrentLocation, child: const Text("Retry")),
-          ],
+        child: Padding(
+          padding: EdgeInsets.all(screenWidth * 0.05),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(Icons.location_off,
+                  size: screenWidth * 0.16, color: Colors.red),
+              SizedBox(height: screenHeight * 0.02),
+              Text("Location Error: $locationError",
+                  textAlign: TextAlign.center,
+                  style: TextStyle(fontSize: screenWidth * 0.035)),
+              SizedBox(height: screenHeight * 0.02),
+              ElevatedButton(
+                  onPressed: _getCurrentLocation,
+                  style: ElevatedButton.styleFrom(
+                    padding: EdgeInsets.symmetric(
+                        horizontal: screenWidth * 0.06,
+                        vertical: screenHeight * 0.015),
+                  ),
+                  child: Text("Retry",
+                      style: TextStyle(fontSize: screenWidth * 0.04))),
+            ],
+          ),
         ),
       );
     }
 
     if (currentLocation == null) {
-      return const Center(
+      return Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(Icons.location_searching, size: 64, color: Colors.grey),
-            SizedBox(height: 16),
-            Text("Unable to get current location"),
+            Icon(Icons.location_searching,
+                size: screenWidth * 0.16, color: Colors.grey),
+            SizedBox(height: screenHeight * 0.02),
+            Text("Unable to get current location",
+                style: TextStyle(fontSize: screenWidth * 0.04)),
           ],
         ),
       );
@@ -1200,8 +1313,8 @@ ElevatedButton.icon(
         ),
         // Map type selector
         Positioned(
-          top: 16,
-          right: 16,
+          top: screenHeight * 0.02,
+          right: screenWidth * 0.04,
           child: _buildMapTypeSelector(),
         ),
       ],
@@ -1237,7 +1350,9 @@ ElevatedButton.icon(
 
   /// 🗺️ Build individual map type button
   Widget _buildMapTypeButton(String type, IconData icon, String label) {
+    final screenWidth = MediaQuery.of(context).size.width;
     final isSelected = _mapType == type;
+
     return InkWell(
       onTap: () {
         setState(() {
@@ -1245,7 +1360,8 @@ ElevatedButton.icon(
         });
       },
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        padding: EdgeInsets.symmetric(
+            horizontal: screenWidth * 0.03, vertical: screenWidth * 0.025),
         decoration: BoxDecoration(
           color: isSelected ? Colors.green[700] : Colors.transparent,
           borderRadius: type == 'street'
@@ -1265,14 +1381,14 @@ ElevatedButton.icon(
           children: [
             Icon(
               icon,
-              size: 20,
+              size: screenWidth * 0.05,
               color: isSelected ? Colors.white : Colors.grey[700],
             ),
-            const SizedBox(width: 8),
+            SizedBox(width: screenWidth * 0.02),
             Text(
               label,
               style: TextStyle(
-                fontSize: 13,
+                fontSize: screenWidth * 0.032,
                 fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
                 color: isSelected ? Colors.white : Colors.grey[700],
               ),
