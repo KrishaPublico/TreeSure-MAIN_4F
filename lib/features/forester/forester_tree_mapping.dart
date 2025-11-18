@@ -39,12 +39,12 @@ class _ForesterTreeMappingState extends State<ForesterTreeMapping> {
   bool isLoading = true;
   bool _hasTriggeredInitialAppointmentFetch = false;
   bool _hasAppliedInitialTreeFocus = false;
-  
+
   // Distance and elevation data
   Map<String, Map<String, dynamic>> treeDistanceData = {};
   Map<String, double?> treeElevationData = {};
   bool isLoadingDistanceElevation = false;
-  
+
   // Map type selection
   String _mapType = 'street'; // 'street', 'satellite', 'terrain'
 
@@ -135,7 +135,7 @@ class _ForesterTreeMappingState extends State<ForesterTreeMapping> {
       for (var doc in appointmentsSnapshot.docs) {
         final data = doc.data();
         data['id'] = doc.id;
-        
+
         // Get actual tree count from tree_inventory subcollection
         final treeCount = await FirebaseFirestore.instance
             .collection('appointments')
@@ -143,7 +143,7 @@ class _ForesterTreeMappingState extends State<ForesterTreeMapping> {
             .collection('tree_inventory')
             .count()
             .get();
-        
+
         data['actual_tree_count'] = treeCount.count ?? 0;
         appointmentsList.add(data);
       }
@@ -193,7 +193,8 @@ class _ForesterTreeMappingState extends State<ForesterTreeMapping> {
         trees.add(treeData);
       }
 
-      debugPrint('✅ Fetched ${trees.length} trees for appointment $appointmentId');
+      debugPrint(
+          '✅ Fetched ${trees.length} trees for appointment $appointmentId');
 
       setState(() {
         taggedTrees = trees;
@@ -203,22 +204,23 @@ class _ForesterTreeMappingState extends State<ForesterTreeMapping> {
       // Add markers for trees
       _setMarkers();
       _attemptInitialTreeFocus();
-      
+
       // Fetch distance matrix and elevations if we have current location
       setState(() {
         isLoadingDistanceElevation = true;
       });
-      
+
       if (currentLocation != null && trees.isNotEmpty) {
-        final origin = LatLng(currentLocation!.latitude!, currentLocation!.longitude!);
+        final origin =
+            LatLng(currentLocation!.latitude!, currentLocation!.longitude!);
         await _fetchDistanceMatrix(origin, trees);
       }
-      
+
       // Fetch elevations for all trees
       if (trees.isNotEmpty) {
         await _fetchElevations(trees);
       }
-      
+
       setState(() {
         isLoadingDistanceElevation = false;
       });
@@ -236,8 +238,8 @@ class _ForesterTreeMappingState extends State<ForesterTreeMapping> {
     final targetAppointmentId = widget.appointmentId;
     if (targetAppointmentId == null) return;
 
-    final hasAppointment =
-        appointments.any((appointment) => appointment['id'] == targetAppointmentId);
+    final hasAppointment = appointments
+        .any((appointment) => appointment['id'] == targetAppointmentId);
     if (!hasAppointment) return;
 
     _hasTriggeredInitialAppointmentFetch = true;
@@ -279,7 +281,8 @@ class _ForesterTreeMappingState extends State<ForesterTreeMapping> {
     if (currentLocation != null) {
       newMarkers.add(
         Marker(
-          point: LatLng(currentLocation!.latitude!, currentLocation!.longitude!),
+          point:
+              LatLng(currentLocation!.latitude!, currentLocation!.longitude!),
           width: 48,
           height: 48,
           alignment: Alignment.bottomCenter,
@@ -302,17 +305,19 @@ class _ForesterTreeMappingState extends State<ForesterTreeMapping> {
       if (lat != null && lng != null) {
         // Build tooltip text with distance and elevation
         String tooltipText = 'Tree: $specie\nID: ${tree['tree_no'] ?? "N/A"}';
-        
+
         final distanceInfo = treeDistanceData[treeId];
         if (distanceInfo != null) {
-          tooltipText += '\n🚗 ${distanceInfo['distance']} • ${distanceInfo['duration']}';
+          tooltipText +=
+              '\n🚗 ${distanceInfo['distance']} • ${distanceInfo['duration']}';
         }
-        
+
         final elevation = treeElevationData[treeId];
         if (elevation != null) {
-          tooltipText += '\n⛰️ ${elevation.toStringAsFixed(1)}m above sea level';
+          tooltipText +=
+              '\n⛰️ ${elevation.toStringAsFixed(1)}m above sea level';
         }
-        
+
         newMarkers.add(
           Marker(
             point: LatLng(lat, lng),
@@ -335,15 +340,16 @@ class _ForesterTreeMappingState extends State<ForesterTreeMapping> {
       markers = newMarkers;
       polylines = newPolylines;
     });
-    
+
     // After adding markers, fit camera to show all points
     _fitMapToAllMarkers();
   }
 
   void _onTreeMarkerTapped(String treeId, double lat, double lng) {
     debugPrint('🎯 Tree marker tapped: $treeId at ($lat, $lng)');
-    debugPrint('📍 Current location: ${currentLocation?.latitude}, ${currentLocation?.longitude}');
-    
+    debugPrint(
+        '📍 Current location: ${currentLocation?.latitude}, ${currentLocation?.longitude}');
+
     setState(() {
       selectedTreeId = treeId;
       polylines.clear();
@@ -374,8 +380,9 @@ class _ForesterTreeMappingState extends State<ForesterTreeMapping> {
         return;
       }
 
-      debugPrint('🗺️ Drawing route from ${origin.latitude},${origin.longitude} to ${destination.latitude},${destination.longitude}');
-      
+      debugPrint(
+          '🗺️ Drawing route from ${origin.latitude},${origin.longitude} to ${destination.latitude},${destination.longitude}');
+
       final result = await _fetchDirections(origin, destination);
 
       debugPrint('📍 Route points fetched: ${result.length} points');
@@ -412,24 +419,24 @@ class _ForesterTreeMappingState extends State<ForesterTreeMapping> {
       debugPrint('🌐 Fetching directions from OSRM...');
       final response = await http.get(url);
       debugPrint('📡 API Response status: ${response.statusCode}');
-      
+
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body) as Map<String, dynamic>;
         final routes = data['routes'] as List<dynamic>?;
-        
+
         if (routes == null || routes.isEmpty) {
           debugPrint('❌ No routes found in response');
           return [];
         }
-        
+
         final route = routes.first as Map<String, dynamic>;
         final geometry = route['geometry'] as String?;
-        
+
         if (geometry == null) {
           debugPrint('❌ No geometry in route');
           return [];
         }
-        
+
         final points = _decodePolyline(geometry);
         debugPrint('✅ Decoded ${points.length} polyline points');
 
@@ -481,7 +488,7 @@ class _ForesterTreeMappingState extends State<ForesterTreeMapping> {
 
   void _fitCameraToRoute(List<LatLng> routePoints) {
     if (routePoints.isEmpty) return;
-    
+
     try {
       if (_allPointsCoincident(routePoints)) {
         _controller.move(routePoints.first, 17);
@@ -498,17 +505,18 @@ class _ForesterTreeMappingState extends State<ForesterTreeMapping> {
   }
 
   /// 🚗 Calculate straight-line distances from current location to trees
-  Future<void> _fetchDistanceMatrix(LatLng origin, List<Map<String, dynamic>> trees) async {
+  Future<void> _fetchDistanceMatrix(
+      LatLng origin, List<Map<String, dynamic>> trees) async {
     if (trees.isEmpty) return;
 
     try {
       for (var tree in trees) {
         final lat = (tree['latitude'] as num?)?.toDouble();
         final lng = (tree['longitude'] as num?)?.toDouble();
-        
+
         if (lat != null && lng != null) {
           final treeId = tree['tree_id'] ?? tree['tree_no'] ?? 'unknown';
-          
+
           // Calculate straight-line distance using Haversine formula
           final distance = _calculateDistance(
             origin.latitude,
@@ -516,10 +524,10 @@ class _ForesterTreeMappingState extends State<ForesterTreeMapping> {
             lat,
             lng,
           );
-          
+
           // Estimate driving time (assuming ~40 km/h average speed in forest terrain)
           final durationMinutes = (distance / 40 * 60).round();
-          
+
           treeDistanceData[treeId] = {
             'distance': '${distance.toStringAsFixed(2)} km',
             'distance_value': (distance * 1000).round(),
@@ -536,20 +544,21 @@ class _ForesterTreeMappingState extends State<ForesterTreeMapping> {
   }
 
   /// Calculate distance between two points using Haversine formula (in km)
-  double _calculateDistance(double lat1, double lon1, double lat2, double lon2) {
+  double _calculateDistance(
+      double lat1, double lon1, double lat2, double lon2) {
     const double earthRadius = 6371; // Earth's radius in km
-    
+
     final dLat = _degreesToRadians(lat2 - lat1);
     final dLon = _degreesToRadians(lon2 - lon1);
-    
+
     final a = (math.sin(dLat / 2) * math.sin(dLat / 2)) +
         (math.cos(_degreesToRadians(lat1)) *
             math.cos(_degreesToRadians(lat2)) *
             math.sin(dLon / 2) *
             math.sin(dLon / 2));
-    
+
     final c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a));
-    
+
     return earthRadius * c;
   }
 
@@ -611,7 +620,8 @@ class _ForesterTreeMappingState extends State<ForesterTreeMapping> {
       case 'satellite':
         // Using ESRI World Imagery (satellite)
         return TileLayer(
-          urlTemplate: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+          urlTemplate:
+              'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
           userAgentPackageName: 'com.treesure.app',
           maxZoom: 19,
         );
@@ -640,65 +650,21 @@ class _ForesterTreeMappingState extends State<ForesterTreeMapping> {
 
     return Scaffold(
       appBar: AppBar(
-<<<<<<< HEAD
-  backgroundColor: Colors.green,   // ← WHITE APP BAR
-  elevation: 1,                    // slight shadow for visibility
-  
-  iconTheme: const IconThemeData(
-    color: Colors.white,           // ← back button & icons become green
-  ),
+        backgroundColor: Colors.green, // ← WHITE APP BAR
+        elevation: 1, // slight shadow for visibility
 
-  title: Text(
-    selectedAppointmentId == null
-        ? 'My Appointments'
-        : 'Tree Locations',
-    style: const TextStyle(
-      color: Colors.white,         // ← title text color
-      fontWeight: FontWeight.bold,
-    ),
-  ),
-
-  leading: selectedAppointmentId != null
-      ? IconButton(
-          icon: const Icon(Icons.arrow_back),
-          onPressed: () {
-            setState(() {
-              selectedAppointmentId = null;
-              selectedTreeId = null;
-              taggedTrees = [];
-              markers.clear();
-              polylines.clear();
-            });
-          },
-        )
-      : null,
-
-  actions: [
-    IconButton(
-      icon: const Icon(Icons.refresh, color: Colors.green),  // icon becomes green
-      onPressed: isLoading
-          ? null
-          : () {
-              if (selectedAppointmentId != null) {
-                _fetchTreesForAppointment(selectedAppointmentId!);
-              } else {
-                _fetchTaggedTrees();
-              }
-            },
-      tooltip: 'Refresh',
-    ),
-  ],
-),
-
-=======
-        title: Text(
-          selectedAppointmentId == null
-              ? 'My Appointments'
-              : 'Tree Locations',
-          style: TextStyle(fontSize: screenWidth * 0.045),
+        iconTheme: const IconThemeData(
+          color: Colors.white, // ← back button & icons become green
         ),
-        backgroundColor: Colors.green.shade700,
-        elevation: 0,
+
+        title: Text(
+          selectedAppointmentId == null ? 'My Appointments' : 'Tree Locations',
+          style: const TextStyle(
+            color: Colors.white, // ← title text color
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+
         leading: selectedAppointmentId != null
             ? IconButton(
                 icon: const Icon(Icons.arrow_back),
@@ -713,9 +679,11 @@ class _ForesterTreeMappingState extends State<ForesterTreeMapping> {
                 },
               )
             : null,
+
         actions: [
           IconButton(
-            icon: const Icon(Icons.refresh),
+            icon: const Icon(Icons.refresh,
+                color: Colors.green), // icon becomes green
             onPressed: isLoading
                 ? null
                 : () {
@@ -729,7 +697,6 @@ class _ForesterTreeMappingState extends State<ForesterTreeMapping> {
           ),
         ],
       ),
->>>>>>> beb8ce31fd1e3fa5814eaaf1aa1b088bd7c3d01f
       body: isLoading
           ? const Center(child: CircularProgressIndicator())
           : selectedAppointmentId == null
@@ -749,7 +716,8 @@ class _ForesterTreeMappingState extends State<ForesterTreeMapping> {
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Icon(Icons.assignment_outlined, size: screenWidth * 0.16, color: Colors.grey),
+              Icon(Icons.assignment_outlined,
+                  size: screenWidth * 0.16, color: Colors.grey),
               SizedBox(height: screenHeight * 0.02),
               Text(
                 'No appointments found',
@@ -763,7 +731,8 @@ class _ForesterTreeMappingState extends State<ForesterTreeMapping> {
               SizedBox(height: screenHeight * 0.01),
               Text(
                 'Forester ID: ${widget.foresterId}',
-                style: TextStyle(fontSize: screenWidth * 0.035, color: Colors.grey),
+                style: TextStyle(
+                    fontSize: screenWidth * 0.035, color: Colors.grey),
                 textAlign: TextAlign.center,
               ),
             ],
@@ -829,7 +798,8 @@ class _ForesterTreeMappingState extends State<ForesterTreeMapping> {
                       SizedBox(width: screenWidth * 0.02),
                       Container(
                         padding: EdgeInsets.symmetric(
-                            horizontal: screenWidth * 0.02, vertical: screenHeight * 0.005),
+                            horizontal: screenWidth * 0.02,
+                            vertical: screenHeight * 0.005),
                         decoration: BoxDecoration(
                           color: statusColor.withOpacity(0.2),
                           borderRadius: BorderRadius.circular(12),
@@ -866,7 +836,8 @@ class _ForesterTreeMappingState extends State<ForesterTreeMapping> {
                   SizedBox(height: screenHeight * 0.01),
                   Row(
                     children: [
-                      Icon(Icons.park, size: screenWidth * 0.04, color: Colors.grey),
+                      Icon(Icons.park,
+                          size: screenWidth * 0.04, color: Colors.grey),
                       SizedBox(width: screenWidth * 0.01),
                       Text(
                         '$actualTreeCount trees',
@@ -876,7 +847,8 @@ class _ForesterTreeMappingState extends State<ForesterTreeMapping> {
                         ),
                       ),
                       const Spacer(),
-                      Icon(Icons.chevron_right, size: screenWidth * 0.05, color: Colors.green),
+                      Icon(Icons.chevron_right,
+                          size: screenWidth * 0.05, color: Colors.green),
                     ],
                   ),
                 ],
@@ -914,7 +886,8 @@ class _ForesterTreeMappingState extends State<ForesterTreeMapping> {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(Icons.map_outlined, size: screenWidth * 0.16, color: Colors.grey),
+            Icon(Icons.map_outlined,
+                size: screenWidth * 0.16, color: Colors.grey),
             SizedBox(height: screenHeight * 0.02),
             Text(
               'No tree locations found',
@@ -994,64 +967,84 @@ class _ForesterTreeMappingState extends State<ForesterTreeMapping> {
                           overflow: TextOverflow.ellipsis,
                         ),
                       ),
-                    if (selectedTreeId != null)
-                      Flexible(
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Flexible(
-                              child: Container(
-                                padding: EdgeInsets.symmetric(
-                                    horizontal: MediaQuery.of(context).size.width * 0.02, 
-                                    vertical: MediaQuery.of(context).size.height * 0.005),
-                                decoration: BoxDecoration(
-                                  color: Colors.blue[100],
-                                  borderRadius: BorderRadius.circular(12),
-                                ),
-                                child: Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    Icon(Icons.route, size: MediaQuery.of(context).size.width * 0.03, color: Colors.blue),
-                                    SizedBox(width: MediaQuery.of(context).size.width * 0.01),
-                                    Flexible(
-                                      child: Text(
-                                        'Route Active',
-                                        style: TextStyle(
-                                          fontSize: MediaQuery.of(context).size.width * 0.028,
-                                          fontWeight: FontWeight.w600,
-                                          color: Colors.blue,
+                      if (selectedTreeId != null)
+                        Flexible(
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Flexible(
+                                child: Container(
+                                  padding: EdgeInsets.symmetric(
+                                      horizontal:
+                                          MediaQuery.of(context).size.width *
+                                              0.02,
+                                      vertical:
+                                          MediaQuery.of(context).size.height *
+                                              0.005),
+                                  decoration: BoxDecoration(
+                                    color: Colors.blue[100],
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Icon(Icons.route,
+                                          size: MediaQuery.of(context)
+                                                  .size
+                                                  .width *
+                                              0.03,
+                                          color: Colors.blue),
+                                      SizedBox(
+                                          width: MediaQuery.of(context)
+                                                  .size
+                                                  .width *
+                                              0.01),
+                                      Flexible(
+                                        child: Text(
+                                          'Route Active',
+                                          style: TextStyle(
+                                            fontSize: MediaQuery.of(context)
+                                                    .size
+                                                    .width *
+                                                0.028,
+                                            fontWeight: FontWeight.w600,
+                                            color: Colors.blue,
+                                          ),
+                                          overflow: TextOverflow.ellipsis,
                                         ),
-                                        overflow: TextOverflow.ellipsis,
                                       ),
-                                    ),
-                                  ],
+                                    ],
+                                  ),
                                 ),
                               ),
-                            ),
-                            SizedBox(width: MediaQuery.of(context).size.width * 0.02),
-                            InkWell(
-                              onTap: () {
-                                setState(() {
-                                  selectedTreeId = null;
-                                  polylines.clear();
-                                });
-                              },
-                              child: Container(
-                                padding: EdgeInsets.all(MediaQuery.of(context).size.width * 0.01),
-                                decoration: BoxDecoration(
-                                  color: Colors.red[100],
-                                  borderRadius: BorderRadius.circular(8),
-                                ),
-                                child: Icon(
-                                  Icons.close,
-                                  size: MediaQuery.of(context).size.width * 0.04,
-                                  color: Colors.red,
+                              SizedBox(
+                                  width:
+                                      MediaQuery.of(context).size.width * 0.02),
+                              InkWell(
+                                onTap: () {
+                                  setState(() {
+                                    selectedTreeId = null;
+                                    polylines.clear();
+                                  });
+                                },
+                                child: Container(
+                                  padding: EdgeInsets.all(
+                                      MediaQuery.of(context).size.width * 0.01),
+                                  decoration: BoxDecoration(
+                                    color: Colors.red[100],
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
+                                  child: Icon(
+                                    Icons.close,
+                                    size: MediaQuery.of(context).size.width *
+                                        0.04,
+                                    color: Colors.red,
+                                  ),
                                 ),
                               ),
-                            ),
-                          ],
+                            ],
+                          ),
                         ),
-                      ),
                     ],
                   ),
                   SizedBox(height: MediaQuery.of(context).size.height * 0.01),
@@ -1074,14 +1067,17 @@ class _ForesterTreeMappingState extends State<ForesterTreeMapping> {
                         SizedBox(
                           width: MediaQuery.of(context).size.width * 0.03,
                           height: MediaQuery.of(context).size.width * 0.03,
-                          child: const CircularProgressIndicator(strokeWidth: 2),
+                          child:
+                              const CircularProgressIndicator(strokeWidth: 2),
                         ),
-                        SizedBox(width: MediaQuery.of(context).size.width * 0.02),
+                        SizedBox(
+                            width: MediaQuery.of(context).size.width * 0.02),
                         Flexible(
                           child: Text(
                             'Loading distance & elevation data...',
                             style: TextStyle(
-                              fontSize: MediaQuery.of(context).size.width * 0.025,
+                              fontSize:
+                                  MediaQuery.of(context).size.width * 0.025,
                               color: Colors.grey[600],
                               fontStyle: FontStyle.italic,
                             ),
@@ -1094,17 +1090,23 @@ class _ForesterTreeMappingState extends State<ForesterTreeMapping> {
                   SizedBox(height: MediaQuery.of(context).size.height * 0.015),
                   if (currentLocation == null)
                     Padding(
-                      padding: EdgeInsets.only(bottom: MediaQuery.of(context).size.height * 0.01),
+                      padding: EdgeInsets.only(
+                          bottom: MediaQuery.of(context).size.height * 0.01),
                       child: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
                           Icon(Icons.info_outline,
-                              size: MediaQuery.of(context).size.width * 0.04, color: Colors.orange),
-                          SizedBox(width: MediaQuery.of(context).size.width * 0.01),
+                              size: MediaQuery.of(context).size.width * 0.04,
+                              color: Colors.orange),
+                          SizedBox(
+                              width: MediaQuery.of(context).size.width * 0.01),
                           Flexible(
                             child: Text(
                               'Device location unavailable',
-                              style: TextStyle(fontSize: MediaQuery.of(context).size.width * 0.028, color: Colors.orange),
+                              style: TextStyle(
+                                  fontSize:
+                                      MediaQuery.of(context).size.width * 0.028,
+                                  color: Colors.orange),
                               overflow: TextOverflow.ellipsis,
                             ),
                           ),
@@ -1127,41 +1129,51 @@ class _ForesterTreeMappingState extends State<ForesterTreeMapping> {
 
                           return GestureDetector(
                             onTap: () {
-                              final lat = (tree['latitude'] as num?)?.toDouble();
-                              final lng = (tree['longitude'] as num?)?.toDouble();
+                              final lat =
+                                  (tree['latitude'] as num?)?.toDouble();
+                              final lng =
+                                  (tree['longitude'] as num?)?.toDouble();
                               if (lat != null && lng != null) {
                                 _onTreeMarkerTapped(treeId, lat, lng);
                               }
                             },
                             child: Container(
                               width: MediaQuery.of(context).size.width * 0.3,
-                              margin: EdgeInsets.only(right: MediaQuery.of(context).size.width * 0.02),
-                              padding: EdgeInsets.all(MediaQuery.of(context).size.width * 0.02),
-                            decoration: BoxDecoration(
-                              color: isSelected
-                                  ? Colors.blue[100]
-                                  : Colors.green[50],
-                              borderRadius: BorderRadius.circular(8),
-                              border: Border.all(
-                                color:
-                                    isSelected ? Colors.blue : Colors.green,
-                                width: isSelected ? 2 : 1.5,
+                              margin: EdgeInsets.only(
+                                  right:
+                                      MediaQuery.of(context).size.width * 0.02),
+                              padding: EdgeInsets.all(
+                                  MediaQuery.of(context).size.width * 0.02),
+                              decoration: BoxDecoration(
+                                color: isSelected
+                                    ? Colors.blue[100]
+                                    : Colors.green[50],
+                                borderRadius: BorderRadius.circular(8),
+                                border: Border.all(
+                                  color:
+                                      isSelected ? Colors.blue : Colors.green,
+                                  width: isSelected ? 2 : 1.5,
+                                ),
                               ),
-                            ),
                               child: Column(
                                 mainAxisAlignment: MainAxisAlignment.center,
                                 crossAxisAlignment: CrossAxisAlignment.center,
                                 children: [
                                   if (isSelected)
                                     Icon(Icons.near_me,
-                                        size: MediaQuery.of(context).size.width * 0.035, color: Colors.blue),
+                                        size:
+                                            MediaQuery.of(context).size.width *
+                                                0.035,
+                                        color: Colors.blue),
                                   Text(
                                     tree['specie'] ?? 'Unknown',
                                     maxLines: 1,
                                     overflow: TextOverflow.ellipsis,
                                     textAlign: TextAlign.center,
                                     style: TextStyle(
-                                      fontSize: MediaQuery.of(context).size.width * 0.028,
+                                      fontSize:
+                                          MediaQuery.of(context).size.width *
+                                              0.028,
                                       fontWeight: FontWeight.bold,
                                       color: isSelected
                                           ? Colors.blue
@@ -1171,18 +1183,25 @@ class _ForesterTreeMappingState extends State<ForesterTreeMapping> {
                                   Text(
                                     'ID: ${tree['tree_no'] ?? "N/A"}',
                                     style: TextStyle(
-                                      fontSize: MediaQuery.of(context).size.width * 0.023,
+                                      fontSize:
+                                          MediaQuery.of(context).size.width *
+                                              0.023,
                                       color: Colors.grey,
                                     ),
                                     maxLines: 1,
                                     overflow: TextOverflow.ellipsis,
                                   ),
                                   if (distanceInfo != null) ...[
-                                    SizedBox(height: MediaQuery.of(context).size.height * 0.002),
+                                    SizedBox(
+                                        height:
+                                            MediaQuery.of(context).size.height *
+                                                0.002),
                                     Text(
                                       '🚗 ${distanceInfo['distance']}',
                                       style: TextStyle(
-                                        fontSize: MediaQuery.of(context).size.width * 0.023,
+                                        fontSize:
+                                            MediaQuery.of(context).size.width *
+                                                0.023,
                                         color: Colors.black87,
                                         fontWeight: FontWeight.w600,
                                       ),
@@ -1192,7 +1211,9 @@ class _ForesterTreeMappingState extends State<ForesterTreeMapping> {
                                     Text(
                                       '⏱️ ${distanceInfo['duration']}',
                                       style: TextStyle(
-                                        fontSize: MediaQuery.of(context).size.width * 0.02,
+                                        fontSize:
+                                            MediaQuery.of(context).size.width *
+                                                0.02,
                                         color: Colors.grey,
                                       ),
                                       maxLines: 1,
@@ -1200,11 +1221,16 @@ class _ForesterTreeMappingState extends State<ForesterTreeMapping> {
                                     ),
                                   ],
                                   if (elevation != null) ...[
-                                    SizedBox(height: MediaQuery.of(context).size.height * 0.002),
+                                    SizedBox(
+                                        height:
+                                            MediaQuery.of(context).size.height *
+                                                0.002),
                                     Text(
                                       '⛰️ ${elevation.toStringAsFixed(0)}m',
                                       style: TextStyle(
-                                        fontSize: MediaQuery.of(context).size.width * 0.02,
+                                        fontSize:
+                                            MediaQuery.of(context).size.width *
+                                                0.02,
                                         color: Colors.grey,
                                       ),
                                       maxLines: 1,
@@ -1212,11 +1238,16 @@ class _ForesterTreeMappingState extends State<ForesterTreeMapping> {
                                     ),
                                   ],
                                   if (currentLocation != null) ...[
-                                    SizedBox(height: MediaQuery.of(context).size.height * 0.005),
+                                    SizedBox(
+                                        height:
+                                            MediaQuery.of(context).size.height *
+                                                0.005),
                                     GestureDetector(
                                       onTap: () {
-                                        final lat = (tree['latitude'] as num?)?.toDouble();
-                                        final lng = (tree['longitude'] as num?)?.toDouble();
+                                        final lat = (tree['latitude'] as num?)
+                                            ?.toDouble();
+                                        final lng = (tree['longitude'] as num?)
+                                            ?.toDouble();
                                         if (lat != null && lng != null) {
                                           // Show visual route on map
                                           _onTreeMarkerTapped(treeId, lat, lng);
@@ -1224,27 +1255,51 @@ class _ForesterTreeMappingState extends State<ForesterTreeMapping> {
                                       },
                                       child: Container(
                                         padding: EdgeInsets.symmetric(
-                                          horizontal: MediaQuery.of(context).size.width * 0.015,
-                                          vertical: MediaQuery.of(context).size.height * 0.002,
+                                          horizontal: MediaQuery.of(context)
+                                                  .size
+                                                  .width *
+                                              0.015,
+                                          vertical: MediaQuery.of(context)
+                                                  .size
+                                                  .height *
+                                              0.002,
                                         ),
                                         decoration: BoxDecoration(
-                                          color: isSelected ? Colors.blue : Colors.green,
-                                          borderRadius: BorderRadius.circular(4),
+                                          color: isSelected
+                                              ? Colors.blue
+                                              : Colors.green,
+                                          borderRadius:
+                                              BorderRadius.circular(4),
                                         ),
                                         child: Row(
                                           mainAxisSize: MainAxisSize.min,
                                           children: [
                                             Icon(
-                                              isSelected ? Icons.near_me : Icons.route,
-                                              size: MediaQuery.of(context).size.width * 0.025,
+                                              isSelected
+                                                  ? Icons.near_me
+                                                  : Icons.route,
+                                              size: MediaQuery.of(context)
+                                                      .size
+                                                      .width *
+                                                  0.025,
                                               color: Colors.white,
                                             ),
-                                            SizedBox(width: MediaQuery.of(context).size.width * 0.005),
+                                            SizedBox(
+                                                width: MediaQuery.of(context)
+                                                        .size
+                                                        .width *
+                                                    0.005),
                                             Flexible(
                                               child: Text(
-                                                isSelected ? 'Selected' : 'Show Route',
+                                                isSelected
+                                                    ? 'Selected'
+                                                    : 'Show Route',
                                                 style: TextStyle(
-                                                  fontSize: MediaQuery.of(context).size.width * 0.02,
+                                                  fontSize:
+                                                      MediaQuery.of(context)
+                                                              .size
+                                                              .width *
+                                                          0.02,
                                                   color: Colors.white,
                                                   fontWeight: FontWeight.bold,
                                                 ),
@@ -1266,7 +1321,9 @@ class _ForesterTreeMappingState extends State<ForesterTreeMapping> {
                   else
                     Text(
                       'No tagged trees yet',
-                      style: TextStyle(color: Colors.grey, fontSize: MediaQuery.of(context).size.width * 0.035),
+                      style: TextStyle(
+                          color: Colors.grey,
+                          fontSize: MediaQuery.of(context).size.width * 0.035),
                     ),
                 ],
               ),
@@ -1308,7 +1365,7 @@ class _ForesterTreeMappingState extends State<ForesterTreeMapping> {
   Widget _buildMapTypeButton(String type, IconData icon, String label) {
     final screenWidth = MediaQuery.of(context).size.width;
     final isSelected = _mapType == type;
-    
+
     return InkWell(
       onTap: () {
         setState(() {
@@ -1317,9 +1374,7 @@ class _ForesterTreeMappingState extends State<ForesterTreeMapping> {
       },
       child: Container(
         padding: EdgeInsets.symmetric(
-          horizontal: screenWidth * 0.03, 
-          vertical: screenWidth * 0.025
-        ),
+            horizontal: screenWidth * 0.03, vertical: screenWidth * 0.025),
         decoration: BoxDecoration(
           color: isSelected ? Colors.green[700] : Colors.transparent,
           borderRadius: type == 'street'
