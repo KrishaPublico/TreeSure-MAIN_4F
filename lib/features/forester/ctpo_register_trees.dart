@@ -46,6 +46,13 @@ class _CtpoRegisterTreesPageState extends State<CtpoRegisterTreesPage> {
   String? lastSubmittedTreeId;
   String? qrUrl;
 
+  // Tree dropdown variables for revisit appointments
+  List<Map<String, dynamic>> existingTrees = [];
+  String? selectedTreeId; // Original tree doc ID (T1, T2, etc.)
+  String? selectedDropdownId; // Unique dropdown ID for UI
+  bool isLoadingTrees = false;
+  String appointmentType = 'Tree Tagging'; // Default to Tree Tagging
+
   /// ✅ Show notification dialog
   void _showDialog(String title, String message) {
     showDialog(
@@ -68,6 +75,114 @@ class _CtpoRegisterTreesPageState extends State<CtpoRegisterTreesPage> {
     super.initState();
     diameterController.addListener(_updateVolume);
     heightController.addListener(_updateVolume);
+    _loadAppointmentType();
+  }
+
+  /// ✅ Load appointment type and trees if it's a revisit
+  Future<void> _loadAppointmentType() async {
+    try {
+      final appointmentDoc = await FirebaseFirestore.instance
+          .collection('appointments')
+          .doc(widget.appointmentId)
+          .get();
+
+      if (appointmentDoc.exists) {
+        final data = appointmentDoc.data()!;
+        setState(() {
+          appointmentType = data['appointmentType'] ?? 'Tree Tagging';
+        });
+
+        // Load trees only if it's a revisit appointment
+        if (appointmentType == 'Revisit') {
+          await _loadExistingTrees();
+        }
+      }
+    } catch (e) {
+      print('❌ Error loading appointment type: $e');
+    }
+  }
+
+  /// ✅ Load existing trees from tree_revisit subcollection for revisit appointments
+  Future<void> _loadExistingTrees() async {
+    setState(() {
+      isLoadingTrees = true;
+    });
+
+    try {
+      print('✅ Loading trees from appointment: ${widget.appointmentId}');
+
+      // For revisit appointments, load from tree_revisit subcollection
+      final treeRevisitSnapshot = await FirebaseFirestore.instance
+          .collection('appointments')
+          .doc(widget.appointmentId)
+          .collection('tree_revisit')
+          .get();
+
+      print('✅ Found ${treeRevisitSnapshot.docs.length} trees in tree_revisit');
+
+      final allTrees = <Map<String, dynamic>>[];
+
+      for (var treeDoc in treeRevisitSnapshot.docs) {
+        final treeData = treeDoc.data();
+        // Get old data from the 'old' map
+        final oldData = treeData['old'] as Map<String, dynamic>?;
+        
+        allTrees.add({
+          'docId': treeDoc.id,
+          'tree_id': treeData['treeId'] ?? treeDoc.id,
+          'tree_no': oldData?['tree_no'] ?? treeDoc.id,
+          'specie': oldData?['specie'] ?? 'Unknown',
+          'diameter': oldData?['diameter'] ?? 0.0,
+          'height': oldData?['height'] ?? 0.0,
+          'volume': oldData?['volume'] ?? 0.0,
+          'latitude': oldData?['latitude'] ?? 0.0,
+          'longitude': oldData?['longitude'] ?? 0.0,
+          'tree_status': oldData?['tree_status'] ?? 'Not Yet Ready',
+          'tree_tagging_ref': treeData['tree_tagging_ref'] ?? '',
+        });
+      }
+
+      setState(() {
+        existingTrees = allTrees;
+        isLoadingTrees = false;
+      });
+
+      if (allTrees.isEmpty) {
+        _showDialog('Info', '⚠️ No trees found in this appointment');
+      } else {
+        print('✅ Loaded ${allTrees.length} trees from tree_revisit');
+      }
+    } catch (e) {
+      print('❌ Error loading trees: $e');
+      setState(() {
+        isLoadingTrees = false;
+      });
+      _showDialog('Error', '❌ Failed to load trees: $e');
+    }
+  }
+
+  /// ✅ Auto-fill form when tree is selected from dropdown
+  void _onTreeSelected(String? uniqueId) {
+    if (uniqueId == null) return;
+
+    final selectedTree = existingTrees.firstWhere(
+      (tree) => tree['docId'] == uniqueId,
+      orElse: () => {},
+    );
+
+    if (selectedTree.isNotEmpty) {
+      setState(() {
+        selectedDropdownId = uniqueId;
+        selectedTreeId = selectedTree['tree_id'];
+        specieController.text = selectedTree['specie'] ?? '';
+        diameterController.text = selectedTree['diameter']?.toString() ?? '';
+        heightController.text = selectedTree['height']?.toString() ?? '';
+        volumeController.text = selectedTree['volume']?.toString() ?? '';
+        latController.text = selectedTree['latitude']?.toString() ?? '';
+        longController.text = selectedTree['longitude']?.toString() ?? '';
+      });
+      _showDialog('Success', '✅ Tree data loaded successfully!');
+    }
   }
 
   @override
@@ -177,14 +292,22 @@ class _CtpoRegisterTreesPageState extends State<CtpoRegisterTreesPage> {
     final volume = double.tryParse(volumeController.text);
     final appointmentId = widget.appointmentId;
 
-    // ✅ Get the count of existing trees in the appointment and generate the new tree ID
-    final treeCollection = FirebaseFirestore.instance
-        .collection('appointments')
-        .doc(appointmentId)
-        .collection('tree_inventory');
+    String treeId;
+    
+    // ✅ For revisit appointments, use selected tree ID or generate new one
+    if (appointmentType == 'Revisit' && selectedTreeId != null) {
+      treeId = selectedTreeId!;
+    } else {
+      // For new trees, get the count and generate ID
+      final collectionName = appointmentType == 'Revisit' ? 'tree_revisit' : 'tree_inventory';
+      final treeCollection = FirebaseFirestore.instance
+          .collection('appointments')
+          .doc(appointmentId)
+          .collection(collectionName);
 
-    final count = await treeCollection.count().get();
-    final treeId = 'T${(count.count ?? 0) + 1}'; // Format as T1, T2, etc.
+      final count = await treeCollection.count().get();
+      treeId = 'T${(count.count ?? 0) + 1}'; // Format as T1, T2, etc.
+    }
 
     if (latitude == null ||
         longitude == null ||
@@ -206,26 +329,69 @@ class _CtpoRegisterTreesPageState extends State<CtpoRegisterTreesPage> {
     );
 
     try {
-      // ✅ Save the tree info first
-      final newDocId = await _treeService.sendTreeInfo(
-        lat: latitude,
-        lng: longitude,
-        treeId: treeId, // Pass the generated treeId
-        treeNo: treeId, // Use the same ID as tree number
-        specie: specie,
-        diameter: diameter,
-        height: height,
-        volume: volume,
-        foresterId: widget.foresterId,
-        forester: widget.foresterName,
-        imageFile: imageFile, appointmentId: appointmentId,
-      );
+      String newDocId;
+      
+      // ✅ For revisit appointments, update tree_revisit subcollection
+      if (appointmentType == 'Revisit' && selectedTreeId != null) {
+        newDocId = selectedDropdownId ?? selectedTreeId!;
+        
+        // Upload photo if provided
+        String? photoUrl;
+        if (imageFile != null) {
+          final storageRef = FirebaseStorage.instance
+              .ref()
+              .child('tree_photos/${widget.appointmentId}/$newDocId.jpg');
+          
+          if (kIsWeb) {
+            final bytes = await imageFile!.readAsBytes();
+            await storageRef.putData(bytes);
+          } else {
+            await storageRef.putFile(File(imageFile!.path));
+          }
+          photoUrl = await storageRef.getDownloadURL();
+        }
+        
+        // Update the tree_revisit document with new data
+        await FirebaseFirestore.instance
+            .collection('appointments')
+            .doc(widget.appointmentId)
+            .collection('tree_revisit')
+            .doc(newDocId)
+            .update({
+          'specie': specie,
+          'diameter': diameter,
+          'height': height,
+          'volume': volume,
+          'forester_id': widget.foresterId,
+          'forester_name': widget.foresterName,
+          'updatedAt': FieldValue.serverTimestamp(),
+          if (photoUrl != null) 'photo_url': photoUrl,
+          // Note: old data remains in 'old' map, only updating new fields
+        });
+      } else {
+        // ✅ For tree tagging appointments, save normally
+        newDocId = await _treeService.sendTreeInfo(
+          lat: latitude,
+          lng: longitude,
+          treeId: treeId,
+          treeNo: treeId,
+          specie: specie,
+          diameter: diameter,
+          height: height,
+          volume: volume,
+          foresterId: widget.foresterId,
+          forester: widget.foresterName,
+          imageFile: imageFile,
+          appointmentId: appointmentId,
+        );
+      }
 
-      // ✅ Fetch the complete tree document to get all fields including photo_url and timestamp
+      // ✅ Fetch the complete tree document
+      final collectionName = appointmentType == 'Revisit' ? 'tree_revisit' : 'tree_inventory';
       final treeDoc = await FirebaseFirestore.instance
           .collection('appointments')
           .doc(widget.appointmentId)
-          .collection('tree_inventory')
+          .collection(collectionName)
           .doc(newDocId)
           .get();
 
@@ -235,34 +401,57 @@ class _CtpoRegisterTreesPageState extends State<CtpoRegisterTreesPage> {
 
       // ✅ Prepare QR data with all fields from the saved document
       final treeData = treeDoc.data()!;
-      final data = {
-        'tree_id': treeData['tree_id'] ?? treeId,
-        'tree_no': treeData['tree_no'] ?? treeId,
-        'appointment_id': treeData['appointment_id'] ?? appointmentId,
-        'specie': treeData['specie'] ?? specie,
-        'diameter': treeData['diameter'] ?? diameter,
-        'height': treeData['height'] ?? height,
-        'volume': treeData['volume'] ?? volume,
-        'latitude': treeData['latitude'] ?? latitude,
-        'longitude': treeData['longitude'] ?? longitude,
-        'forester_id': treeData['forester_id'] ?? widget.foresterId,
-        'forester_name': treeData['forester_name'] ?? widget.foresterName,
-        'photo_url': treeData['photo_url'] ?? '',
-        'tree_status': treeData['tree_status'] ?? 'Not Yet Ready',
-        'tree_tagging_appointment_id':
-            treeData['tree_tagging_appointment_id'] ?? '',
-        'timestamp': treeData['timestamp']?.toDate().toString() ?? DateTime.now().toString(),
-      };
+      
+      // For revisit appointments, use old data for QR if new data is null
+      Map<String, dynamic> qrData;
+      if (appointmentType == 'Revisit') {
+        final oldData = treeData['old'] as Map<String, dynamic>?;
+        qrData = {
+          'tree_id': treeData['treeId'] ?? treeId,
+          'tree_no': oldData?['tree_no'] ?? treeId,
+          'appointment_id': widget.appointmentId,
+          'specie': treeData['specie'] ?? oldData?['specie'] ?? specie,
+          'diameter': treeData['diameter'] ?? oldData?['diameter'] ?? diameter,
+          'height': treeData['height'] ?? oldData?['height'] ?? height,
+          'volume': treeData['volume'] ?? oldData?['volume'] ?? volume,
+          'latitude': latitude,
+          'longitude': longitude,
+          'forester_id': treeData['forester_id'] ?? widget.foresterId,
+          'forester_name': treeData['forester_name'] ?? widget.foresterName,
+          'photo_url': treeData['photo_url'] ?? '',
+          'tree_status': treeData['tree_status'] ?? oldData?['tree_status'] ?? 'Not Yet Ready',
+          'tree_tagging_ref': treeData['tree_tagging_ref'] ?? '',
+          'timestamp': treeData['updatedAt']?.toDate().toString() ?? DateTime.now().toString(),
+        };
+      } else {
+        qrData = {
+          'tree_id': treeData['tree_id'] ?? treeId,
+          'tree_no': treeData['tree_no'] ?? treeId,
+          'appointment_id': treeData['appointment_id'] ?? appointmentId,
+          'specie': treeData['specie'] ?? specie,
+          'diameter': treeData['diameter'] ?? diameter,
+          'height': treeData['height'] ?? height,
+          'volume': treeData['volume'] ?? volume,
+          'latitude': treeData['latitude'] ?? latitude,
+          'longitude': treeData['longitude'] ?? longitude,
+          'forester_id': treeData['forester_id'] ?? widget.foresterId,
+          'forester_name': treeData['forester_name'] ?? widget.foresterName,
+          'photo_url': treeData['photo_url'] ?? '',
+          'tree_status': treeData['tree_status'] ?? 'Not Yet Ready',
+          'tree_tagging_appointment_id': treeData['tree_tagging_appointment_id'] ?? '',
+          'timestamp': treeData['timestamp']?.toDate().toString() ?? DateTime.now().toString(),
+        };
+      }
 
       // ✅ Generate and upload QR
-      final qrDownloadUrl = await _generateAndUploadQr(newDocId, data);
+      final qrDownloadUrl = await _generateAndUploadQr(newDocId, qrData);
 
       // ✅ Update Firestore with QR URL
       if (qrDownloadUrl != null) {
         await FirebaseFirestore.instance
             .collection('appointments')
             .doc(widget.appointmentId)
-            .collection('tree_inventory')
+            .collection(collectionName)
             .doc(newDocId)
             .update({'qr_url': qrDownloadUrl});
       }
@@ -281,7 +470,10 @@ class _CtpoRegisterTreesPageState extends State<CtpoRegisterTreesPage> {
       // Close the "Submitting" dialog
       Navigator.of(context).pop();
 
-      _showDialog('Success', '✅ Tree and QR successfully saved!');
+      final successMessage = appointmentType == 'Revisit' 
+          ? '✅ Tree revisit data updated successfully!'
+          : '✅ Tree and QR successfully saved!';
+      _showDialog('Success', successMessage);
 
       _clearFields();
     } catch (e) {
@@ -302,6 +494,8 @@ class _CtpoRegisterTreesPageState extends State<CtpoRegisterTreesPage> {
     setState(() {
       imageFile = null;
       qrUrl = null;
+      selectedTreeId = null;
+      selectedDropdownId = null;
     });
   }
 
@@ -462,6 +656,45 @@ class _CtpoRegisterTreesPageState extends State<CtpoRegisterTreesPage> {
                 style:
                     const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
             const SizedBox(height: 20),
+            
+            // ✅ Show tree dropdown only for revisit appointments
+            if (appointmentType == 'Revisit') ...[
+              const Text(
+                "Select Existing Tree (Revisit)",
+                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+              ),
+              const SizedBox(height: 8),
+              isLoadingTrees
+                  ? const Center(child: CircularProgressIndicator())
+                  : existingTrees.isEmpty
+                      ? const Text(
+                          "No existing trees found",
+                          style: TextStyle(color: Colors.grey),
+                        )
+                      : DropdownButtonFormField<String>(
+                          value: selectedDropdownId,
+                          decoration: InputDecoration(
+                            labelText: "Select Tree",
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            prefixIcon: const Icon(Icons.nature, color: Colors.green),
+                          ),
+                          items: existingTrees.map((tree) {
+                            final treeId = tree['tree_id'] ?? tree['docId'];
+                            final specie = tree['specie'] ?? 'Unknown';
+                            return DropdownMenuItem<String>(
+                              value: tree['docId'],
+                              child: Text('$treeId - $specie'),
+                            );
+                          }).toList(),
+                          onChanged: _onTreeSelected,
+                        ),
+              const SizedBox(height: 16),
+              const Divider(),
+              const SizedBox(height: 16),
+            ],
+            
             buildTextField("Specie", specieController, focusNode: specieFocus),
             Row(
               children: [
