@@ -640,6 +640,57 @@ class _ForesterTreeMappingState extends State<ForesterTreeMapping> {
 
     return Scaffold(
       appBar: AppBar(
+<<<<<<< HEAD
+  backgroundColor: Colors.green,   // ← WHITE APP BAR
+  elevation: 1,                    // slight shadow for visibility
+  
+  iconTheme: const IconThemeData(
+    color: Colors.white,           // ← back button & icons become green
+  ),
+
+  title: Text(
+    selectedAppointmentId == null
+        ? 'My Appointments'
+        : 'Tree Locations',
+    style: const TextStyle(
+      color: Colors.white,         // ← title text color
+      fontWeight: FontWeight.bold,
+    ),
+  ),
+
+  leading: selectedAppointmentId != null
+      ? IconButton(
+          icon: const Icon(Icons.arrow_back),
+          onPressed: () {
+            setState(() {
+              selectedAppointmentId = null;
+              selectedTreeId = null;
+              taggedTrees = [];
+              markers.clear();
+              polylines.clear();
+            });
+          },
+        )
+      : null,
+
+  actions: [
+    IconButton(
+      icon: const Icon(Icons.refresh, color: Colors.green),  // icon becomes green
+      onPressed: isLoading
+          ? null
+          : () {
+              if (selectedAppointmentId != null) {
+                _fetchTreesForAppointment(selectedAppointmentId!);
+              } else {
+                _fetchTaggedTrees();
+              }
+            },
+      tooltip: 'Refresh',
+    ),
+  ],
+),
+
+=======
         title: Text(
           selectedAppointmentId == null
               ? 'My Appointments'
@@ -678,6 +729,7 @@ class _ForesterTreeMappingState extends State<ForesterTreeMapping> {
           ),
         ],
       ),
+>>>>>>> beb8ce31fd1e3fa5814eaaf1aa1b088bd7c3d01f
       body: isLoading
           ? const Center(child: CircularProgressIndicator())
           : selectedAppointmentId == null

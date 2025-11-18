@@ -704,25 +704,26 @@ Location: ${lat != null ? '${lat.toStringAsFixed(6)}, ${lng!.toStringAsFixed(6)}
     return DefaultTabController(
       length: 3,
       child: Scaffold(
-        appBar: AppBar(
-          backgroundColor: Colors.green[800],
-          iconTheme:
-              const IconThemeData(color: Colors.white), // back button color
-          title: const Text(
-            'Tree QR Scanner',
-            style: TextStyle(color: Colors.white), // title color
-          ),
-          bottom: const TabBar(
-            labelColor: Colors.white, // selected tab text color
-            unselectedLabelColor: Colors.white70, // unselected tab text color
-            indicatorColor: Colors.white, // underline indicator color
-            tabs: [
-              Tab(icon: Icon(Icons.qr_code_scanner), text: "Scan"),
-              Tab(icon: Icon(Icons.upload_file), text: "Upload"),
-              Tab(icon: Icon(Icons.map), text: "Map"),
-            ],
-          ),
-        ),
+appBar: AppBar(
+  backgroundColor: Colors.green[800],
+  iconTheme: const IconThemeData(color: Colors.white), // back button color
+  title: const Text(
+    'QR Scanner & Tree Location',
+    style: TextStyle(color: Colors.white), // title color
+  ),
+  bottom: const TabBar(
+    labelColor: Colors.white, // selected tab text color
+    unselectedLabelColor: Colors.white70, // unselected tab text color
+    indicatorColor: Colors.white, // underline indicator color
+    tabs: [
+      Tab(icon: Icon(Icons.qr_code_scanner), text: "Scan"),
+      Tab(icon: Icon(Icons.upload_file), text: "Upload"),
+      Tab(icon: Icon(Icons.map), text: "Map"),
+    ],
+  ),
+),
+
+
         body: TabBarView(
           children: [
             // Scanner Tab
@@ -1045,6 +1046,39 @@ Location: ${lat != null ? '${lat.toStringAsFixed(6)}, ${lng!.toStringAsFixed(6)}
         borderRadius: BorderRadius.circular(12),
         border: Border.all(color: Colors.green[200]!),
       ),
+<<<<<<< HEAD
+      child: Column(
+        children: [
+          const Text("📄 Scanned Data:",
+              style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+          const SizedBox(height: 8),
+          Text(scannedData!, textAlign: TextAlign.center, style: const TextStyle(fontSize: 14)),
+          if (treeLocation != null) ...[
+            const SizedBox(height: 16),
+ElevatedButton.icon(
+  icon: const Icon(Icons.map, color: Colors.white), // white icon
+  label: const Text(
+    "View Tree Location",
+    style: TextStyle(color: Colors.white), // white text
+  ),
+  style: ElevatedButton.styleFrom(
+    backgroundColor: Colors.green[700], // green background
+    padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+  ),
+  onPressed: () {
+    final tabController = DefaultTabController.of(context);
+    if (tabController != null) {
+      tabController.animateTo(2); // Map tab index
+    }
+  },
+),
+
+
+
+
+          ],
+        ],
+=======
       child: SingleChildScrollView(
         child: Column(
           children: [
@@ -1057,6 +1091,7 @@ Location: ${lat != null ? '${lat.toStringAsFixed(6)}, ${lng!.toStringAsFixed(6)}
                 style: TextStyle(fontSize: screenWidth * 0.035)),
           ],
         ),
+>>>>>>> beb8ce31fd1e3fa5814eaaf1aa1b088bd7c3d01f
       ),
     );
   }
@@ -1148,10 +1183,44 @@ Location: ${lat != null ? '${lat.toStringAsFixed(6)}, ${lng!.toStringAsFixed(6)}
             ),
           ),
           if (isLoadingLocation || isLoadingRoute)
+<<<<<<< HEAD
+            const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildMapActions() {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+        children: [
+          ElevatedButton.icon(
+            icon: const Icon(Icons.refresh),
+            label: const Text("Refresh Location"),
+            onPressed: _getCurrentLocation,
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.green[700],
+              foregroundColor: Colors.white,
+            ),
+          ),
+          if (currentLocation != null && treeLocation != null)
+            ElevatedButton.icon(
+              icon: const Icon(Icons.route),
+              label: const Text("Show Route"),
+              onPressed: isLoadingRoute ? null : _fetchRoute,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.blue[700],
+                foregroundColor: Colors.white,
+              ),
+            ),
+=======
             SizedBox(
                 width: screenWidth * 0.04,
                 height: screenWidth * 0.04,
                 child: const CircularProgressIndicator(strokeWidth: 2)),
+>>>>>>> beb8ce31fd1e3fa5814eaaf1aa1b088bd7c3d01f
         ],
       ),
     );
