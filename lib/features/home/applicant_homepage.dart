@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:treesure_app/features/applicant/ctpo.dart';
 import 'package:treesure_app/features/applicant/CuttingPermit.dart';
-import 'package:treesure_app/features/applicant/testQR.dart'; // ✅ Correct import
-import 'package:treesure_app/features/applicant/cov.dart';
+import 'package:treesure_app/features/applicant/applicant_qr_scanner.dart'; // ✅ Correct import
+import 'package:treesure_app/features/applicant/cov.dart  ';
 import 'package:treesure_app/features/applicant/chainsawreg.dart';
 
 class ApplicantHomepage extends StatelessWidget {
@@ -80,7 +80,7 @@ class ApplicantHomepage extends StatelessWidget {
                         Navigator.push(
                           context,
                           MaterialPageRoute(
-                            builder: (context) => const QrUploadScanner(),
+                            builder: (context) => const ApplicantQrScanner(),
                           ),
                         );
                       },

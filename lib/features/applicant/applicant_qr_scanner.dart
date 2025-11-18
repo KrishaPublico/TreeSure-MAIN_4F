@@ -11,27 +11,26 @@ import 'package:geolocator/geolocator.dart';
 import 'package:http/http.dart' as http;
 import 'package:latlong2/latlong.dart';
 
-class QrUploadScanner extends StatefulWidget {
-  const QrUploadScanner({super.key});
+class ApplicantQrScanner extends StatefulWidget {
+  const ApplicantQrScanner({super.key});
 
   @override
-  State<QrUploadScanner> createState() => _QrUploadScannerState();
+  State<ApplicantQrScanner> createState() => _ApplicantQrScannerState();
 }
 
-class _QrUploadScannerState extends State<QrUploadScanner>
+class _ApplicantQrScannerState extends State<ApplicantQrScanner>
     with SingleTickerProviderStateMixin {
   String? scannedData;
   bool isScanning = false;
   bool isUploading = false;
   XFile? uploadedImage;
-  MobileScannerController? controller;
+  late final MobileScannerController _scannerController;
 
   // Map and location variables
   LatLng? currentLocation;
   LatLng? treeLocation;
   bool isLoadingLocation = false;
   String? locationError;
-  bool showMapView = false;
   List<LatLng> routePoints = [];
   bool isLoadingRoute = false;
   final MapController _mapController = MapController();
@@ -50,7 +49,7 @@ class _QrUploadScannerState extends State<QrUploadScanner>
   @override
   void initState() {
     super.initState();
-    controller = MobileScannerController();
+    _scannerController = MobileScannerController();
     _getCurrentLocation();
 
     _animationController = AnimationController(
@@ -65,7 +64,7 @@ class _QrUploadScannerState extends State<QrUploadScanner>
 
   @override
   void dispose() {
-    controller?.dispose();
+    _scannerController.dispose();
     _animationController?.dispose();
     super.dispose();
   }
@@ -78,7 +77,7 @@ class _QrUploadScannerState extends State<QrUploadScanner>
           scannedData = barcode.rawValue!;
           isScanning = false;
         });
-        controller?.stop();
+        _scannerController.stop();
         _fetchTreeDataFromQR(barcode.rawValue!);
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('✅ QR Code scanned successfully!')),
@@ -92,25 +91,14 @@ class _QrUploadScannerState extends State<QrUploadScanner>
       isScanning = true;
       scannedData = null;
     });
+    _scannerController.start();
   }
 
   void _stopScanning() {
     setState(() {
       isScanning = false;
     });
-    controller?.stop();
-  }
-
-  void _showMapView() {
-    setState(() {
-      showMapView = true;
-    });
-  }
-
-  void _hideMapView() {
-    setState(() {
-      showMapView = false;
-    });
+    _scannerController.stop();
   }
 
   Future<void> _getCurrentLocation() async {
@@ -163,6 +151,18 @@ class _QrUploadScannerState extends State<QrUploadScanner>
   Future<void> _fetchRoute() async {
     if (currentLocation == null || treeLocation == null) {
       debugPrint('⚠️ Cannot fetch route: missing location data');
+      return;
+    }
+
+    if (_locationsMatch(currentLocation, treeLocation)) {
+      setState(() {
+        isLoadingRoute = false;
+        routePoints = [];
+        polylines = [];
+        routeDistanceKm = 0;
+        routeDuration = Duration.zero;
+      });
+      _fitCameraToPoints([currentLocation!, treeLocation!]);
       return;
     }
 
@@ -277,6 +277,83 @@ class _QrUploadScannerState extends State<QrUploadScanner>
     return points;
   }
 
+  bool _locationsMatch(LatLng? a, LatLng? b, {double tolerance = 1e-5}) {
+    if (a == null || b == null) return false;
+    return (a.latitude - b.latitude).abs() <= tolerance &&
+        (a.longitude - b.longitude).abs() <= tolerance;
+  }
+
+  bool _allPointsCoincident(List<LatLng> points, {double tolerance = 1e-6}) {
+    if (points.isEmpty) return true;
+    final first = points.first;
+    for (final point in points.skip(1)) {
+      if ((point.latitude - first.latitude).abs() > tolerance ||
+          (point.longitude - first.longitude).abs() > tolerance) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  String _normalizeKey(String rawKey) {
+    return rawKey.trim().toLowerCase().replaceAll(RegExp(r'[^a-z0-9]+'), '_');
+  }
+
+  Map<String, String> _parseQrFields(String qrData) {
+    final result = <String, String>{};
+    final sanitized = qrData.replaceAll('\r\n', '\n').trim();
+    if (sanitized.isEmpty) {
+      return result;
+    }
+
+    bool parsedAsJson = false;
+    if (sanitized.startsWith('{') && sanitized.endsWith('}')) {
+      try {
+        final dynamic decoded = jsonDecode(sanitized);
+        if (decoded is Map) {
+          decoded.forEach((key, value) {
+            result[_normalizeKey(key.toString())] = value?.toString() ?? '';
+          });
+          parsedAsJson = true;
+        }
+      } catch (_) {
+        parsedAsJson = false;
+      }
+    }
+
+    if (parsedAsJson) {
+      return result;
+    }
+
+    final working = sanitized.contains('\n')
+        ? sanitized
+        : sanitized.replaceAll(', ', '\n').replaceAll(',', '\n');
+
+    final segments = working.split('\n');
+    for (final rawSegment in segments) {
+      final segment = rawSegment.trim();
+      if (segment.isEmpty) continue;
+      var separatorIndex = segment.indexOf(':');
+      if (separatorIndex == -1) {
+        separatorIndex = segment.indexOf('=');
+      }
+      if (separatorIndex == -1) continue;
+
+      final key = _normalizeKey(segment.substring(0, separatorIndex));
+      if (key.isEmpty) continue;
+
+      var value = segment.substring(separatorIndex + 1).trim();
+      if ((value.startsWith('"') && value.endsWith('"')) ||
+          (value.startsWith("'") && value.endsWith("'"))) {
+        value = value.substring(1, value.length - 1);
+      }
+
+      result[key] = value;
+    }
+
+    return result;
+  }
+
   /// 🗺️ Update markers on the map
   void _updateMarkers() {
     final updatedMarkers = <Marker>[];
@@ -336,13 +413,15 @@ class _QrUploadScannerState extends State<QrUploadScanner>
         ),
       );
     } else if (currentLocation != null && treeLocation != null) {
-      updatedPolylines.add(
-        Polyline(
-          points: [currentLocation!, treeLocation!],
-          color: Colors.blueGrey.withOpacity(0.6),
-          strokeWidth: 3,
-        ),
-      );
+      if (!_locationsMatch(currentLocation, treeLocation)) {
+        updatedPolylines.add(
+          Polyline(
+            points: [currentLocation!, treeLocation!],
+            color: Colors.blueGrey.withOpacity(0.6),
+            strokeWidth: 3,
+          ),
+        );
+      }
     }
 
     setState(() {
@@ -386,6 +465,11 @@ class _QrUploadScannerState extends State<QrUploadScanner>
 
     if (points.length == 1) {
       _mapController.move(points.first, 15);
+      return;
+    }
+
+    if (_allPointsCoincident(points)) {
+      _mapController.move(points.first, 17);
       return;
     }
 
@@ -504,35 +588,31 @@ class _QrUploadScannerState extends State<QrUploadScanner>
 
   Future<void> _fetchTreeDataFromQR(String qrData) async {
     try {
-      String? treeId;
-      String? appointmentId;
+      final parsedFields = _parseQrFields(qrData);
+      String? treeId = parsedFields['tree_id'] ?? parsedFields['treeid'];
+      String? documentId =
+          parsedFields['inventory_doc_id'] ?? parsedFields['doc_id'];
+      String? appointmentId =
+          parsedFields['appointment_id'] ?? parsedFields['appointmentid'];
 
-      final lines = qrData.split('\n');
-      for (var line in lines) {
-        line = line.trim();
-        if (line.isEmpty) continue;
-
-        if (line.startsWith('tree_id:')) {
-          treeId = line.substring('tree_id:'.length).trim();
-        } else if (line.startsWith('appointment_id:')) {
-          appointmentId = line.substring('appointment_id:'.length).trim();
-        }
-      }
-
-      if (treeId == null) {
-        final treeIdMatch = RegExp(r'Tree ID: (T\d+)').firstMatch(qrData);
+      if (treeId == null || treeId.isEmpty) {
+        final treeIdMatch =
+            RegExp(r'Tree\s*ID[:=]\s*(T\w+)').firstMatch(qrData);
         if (treeIdMatch != null) {
           treeId = treeIdMatch.group(1);
-        } else if (RegExp(r'^T\d+$').hasMatch(qrData.trim())) {
+        } else if (RegExp(r'^T\w+$').hasMatch(qrData.trim())) {
           treeId = qrData.trim();
         }
       }
 
-      if (treeId != null) {
-        await _fetchTreeFromFirestore(treeId, appointmentId);
+      final lookupId =
+          (documentId != null && documentId.isNotEmpty) ? documentId : treeId;
+
+      if (lookupId != null && lookupId.isNotEmpty) {
+        await _fetchTreeFromFirestore(lookupId, appointmentId);
       } else {
         setState(() {
-          scannedData = "❌ Invalid QR code format. No tree_id found.";
+          scannedData = '❌ Invalid QR code format. No tree_id found.';
         });
       }
     } catch (e) {
@@ -624,25 +704,26 @@ Location: ${lat != null ? '${lat.toStringAsFixed(6)}, ${lng!.toStringAsFixed(6)}
     return DefaultTabController(
       length: 3,
       child: Scaffold(
-        appBar: AppBar(
-          backgroundColor: Colors.green[800],
-          iconTheme:
-              const IconThemeData(color: Colors.white), // back button color
-          title: const Text(
-            'QR Scanner & Tree Location',
-            style: TextStyle(color: Colors.white), // title color
-          ),
-          bottom: const TabBar(
-            labelColor: Colors.white, // selected tab text color
-            unselectedLabelColor: Colors.white70, // unselected tab text color
-            indicatorColor: Colors.white, // underline indicator color
-            tabs: [
-              Tab(icon: Icon(Icons.qr_code_scanner), text: "Scan"),
-              Tab(icon: Icon(Icons.upload_file), text: "Upload"),
-              Tab(icon: Icon(Icons.map), text: "Map"),
-            ],
-          ),
-        ),
+appBar: AppBar(
+  backgroundColor: Colors.green[800],
+  iconTheme: const IconThemeData(color: Colors.white), // back button color
+  title: const Text(
+    'QR Scanner & Tree Location',
+    style: TextStyle(color: Colors.white), // title color
+  ),
+  bottom: const TabBar(
+    labelColor: Colors.white, // selected tab text color
+    unselectedLabelColor: Colors.white70, // unselected tab text color
+    indicatorColor: Colors.white, // underline indicator color
+    tabs: [
+      Tab(icon: Icon(Icons.qr_code_scanner), text: "Scan"),
+      Tab(icon: Icon(Icons.upload_file), text: "Upload"),
+      Tab(icon: Icon(Icons.map), text: "Map"),
+    ],
+  ),
+),
+
+
         body: TabBarView(
           children: [
             // Scanner Tab
@@ -665,10 +746,24 @@ Location: ${lat != null ? '${lat.toStringAsFixed(6)}, ${lng!.toStringAsFixed(6)}
             child: Stack(
               children: [
                 MobileScanner(
-                  controller: controller!,
+                  controller: _scannerController,
                   onDetect: _onDetect,
                 ),
                 _buildScannerOverlay(),
+                Positioned(
+                  top: 16,
+                  right: 16,
+                  child: SafeArea(
+                    child: CircleAvatar(
+                      backgroundColor: Colors.black54,
+                      child: IconButton(
+                        icon: const Icon(Icons.close, color: Colors.white),
+                        tooltip: 'Stop scanning',
+                        onPressed: _stopScanning,
+                      ),
+                    ),
+                  ),
+                ),
               ],
             ),
           ),
@@ -896,29 +991,30 @@ Location: ${lat != null ? '${lat.toStringAsFixed(6)}, ${lng!.toStringAsFixed(6)}
           const Text("📄 Scanned Data:",
               style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
           const SizedBox(height: 8),
-          Text(scannedData!,
-              textAlign: TextAlign.center,
-              style: const TextStyle(fontSize: 14)),
+          Text(scannedData!, textAlign: TextAlign.center, style: const TextStyle(fontSize: 14)),
           if (treeLocation != null) ...[
             const SizedBox(height: 16),
-            ElevatedButton.icon(
-              icon: const Icon(Icons.map, color: Colors.white), // white icon
-              label: const Text(
-                "View Tree Location",
-                style: TextStyle(color: Colors.white), // white text
-              ),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.green[700], // green background
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
-              ),
-              onPressed: () {
-                final tabController = DefaultTabController.of(context);
-                if (tabController != null) {
-                  tabController.animateTo(2); // Map tab index
-                }
-              },
-            ),
+ElevatedButton.icon(
+  icon: const Icon(Icons.map, color: Colors.white), // white icon
+  label: const Text(
+    "View Tree Location",
+    style: TextStyle(color: Colors.white), // white text
+  ),
+  style: ElevatedButton.styleFrom(
+    backgroundColor: Colors.green[700], // green background
+    padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+  ),
+  onPressed: () {
+    final tabController = DefaultTabController.of(context);
+    if (tabController != null) {
+      tabController.animateTo(2); // Map tab index
+    }
+  },
+),
+
+
+
+
           ],
         ],
       ),
@@ -957,7 +1053,6 @@ Location: ${lat != null ? '${lat.toStringAsFixed(6)}, ${lng!.toStringAsFixed(6)}
       children: [
         _buildLocationHeader(),
         Expanded(child: _buildMap()),
-        _buildMapActions(),
       ],
     );
   }
@@ -1002,10 +1097,7 @@ Location: ${lat != null ? '${lat.toStringAsFixed(6)}, ${lng!.toStringAsFixed(6)}
             ),
           ),
           if (isLoadingLocation || isLoadingRoute)
-            const SizedBox(
-                width: 16,
-                height: 16,
-                child: CircularProgressIndicator(strokeWidth: 2)),
+            const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)),
         ],
       ),
     );

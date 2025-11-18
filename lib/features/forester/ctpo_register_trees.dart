@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 
@@ -104,28 +105,32 @@ class _CtpoRegisterTreesPageState extends State<CtpoRegisterTreesPage> {
 
   /// ✅ Generate QR, upload to Storage, and return the download URL
   Future<String?> _generateAndUploadQr(
-      String treeId, Map<String, dynamic> data) async {
+      String documentId, Map<String, dynamic> data) async {
     try {
-      // Generate QR data text with all tree_inventory fields (except qr_url)
-      final qrData = '''
-tree_id: $treeId
-tree_no: ${data['tree_no']}
-appointment_id: ${data['appointment_id']}
-specie: ${data['specie']}
-diameter: ${data['diameter']}
-height: ${data['height']}
-volume: ${data['volume']}
-latitude: ${data['latitude']}
-longitude: ${data['longitude']}
-forester_id: ${data['forester_id']}
-forester_name: ${data['forester_name']}
-photo_url: ${data['photo_url'] ?? 'N/A'}
-timestamp: ${data['timestamp']}
-''';
+      final qrPayload = {
+        'format': 'treesure.v2',
+        'inventory_doc_id': documentId,
+        'appointment_id': data['appointment_id'],
+        'tree_id': data['tree_id'],
+        'tree_no': data['tree_no'],
+        'tree_status': data['tree_status'] ?? 'Not Yet Ready',
+        'tree_tagging_appointment_id':
+            data['tree_tagging_appointment_id'] ?? '',
+        'specie': data['specie'],
+        'diameter': data['diameter'],
+        'height': data['height'],
+        'volume': data['volume'],
+        'latitude': data['latitude'],
+        'longitude': data['longitude'],
+        'forester_id': data['forester_id'],
+        'forester_name': data['forester_name'],
+        'photo_url': data['photo_url'] ?? '',
+        'timestamp': data['timestamp'],
+        'generated_at': DateTime.now().toIso8601String(),
+      };
 
-      // Generate QR image as bytes
       final qrPainter = QrPainter(
-        data: qrData,
+        data: jsonEncode(qrPayload),
         version: QrVersions.auto,
         gapless: true,
       );
@@ -134,7 +139,7 @@ timestamp: ${data['timestamp']}
 
       // Upload bytes directly to Firebase Storage
       final ref =
-          FirebaseStorage.instance.ref().child('tree_qrcodes/$treeId.png');
+          FirebaseStorage.instance.ref().child('tree_qrcodes/$documentId.png');
 
       UploadTask uploadTask;
       if (kIsWeb) {
@@ -142,7 +147,7 @@ timestamp: ${data['timestamp']}
       } else {
         // For mobile — use path_provider
         final dir = await getTemporaryDirectory();
-        final file = File('${dir.path}/$treeId.png');
+        final file = File('${dir.path}/$documentId.png');
         await file.writeAsBytes(bytes);
         uploadTask = ref.putFile(file);
       }
@@ -243,6 +248,9 @@ timestamp: ${data['timestamp']}
         'forester_id': treeData['forester_id'] ?? widget.foresterId,
         'forester_name': treeData['forester_name'] ?? widget.foresterName,
         'photo_url': treeData['photo_url'] ?? '',
+        'tree_status': treeData['tree_status'] ?? 'Not Yet Ready',
+        'tree_tagging_appointment_id':
+            treeData['tree_tagging_appointment_id'] ?? '',
         'timestamp': treeData['timestamp']?.toDate().toString() ?? DateTime.now().toString(),
       };
 

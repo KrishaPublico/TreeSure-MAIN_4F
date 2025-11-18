@@ -9,22 +9,22 @@ import 'package:location/location.dart';
 import 'package:http/http.dart' as http;
 import 'package:cloud_firestore/cloud_firestore.dart';
 
-class ForesterTreeMapping extends StatefulWidget {
+class ApplicantTreeMapping extends StatefulWidget {
   final String? appointmentId;
   final String? initialTreeId;
   final String foresterId;
 
-  const ForesterTreeMapping(
+  const ApplicantTreeMapping(
       {super.key,
       required this.foresterId,
       this.appointmentId,
       this.initialTreeId});
 
   @override
-  _ForesterTreeMappingState createState() => _ForesterTreeMappingState();
+  _ApplicantTreeMappingState createState() => _ApplicantTreeMappingState();
 }
 
-class _ForesterTreeMappingState extends State<ForesterTreeMapping> {
+class _ApplicantTreeMappingState extends State<ApplicantTreeMapping> {
   final MapController _controller = MapController();
   Location location = Location();
   LocationData? currentLocation;
@@ -39,12 +39,12 @@ class _ForesterTreeMappingState extends State<ForesterTreeMapping> {
   bool isLoading = true;
   bool _hasTriggeredInitialAppointmentFetch = false;
   bool _hasAppliedInitialTreeFocus = false;
-  
+
   // Distance and elevation data
   Map<String, Map<String, dynamic>> treeDistanceData = {};
   Map<String, double?> treeElevationData = {};
   bool isLoadingDistanceElevation = false;
-  
+
   // Map type selection
   String _mapType = 'street'; // 'street', 'satellite', 'terrain'
 
@@ -135,7 +135,7 @@ class _ForesterTreeMappingState extends State<ForesterTreeMapping> {
       for (var doc in appointmentsSnapshot.docs) {
         final data = doc.data();
         data['id'] = doc.id;
-        
+
         // Get actual tree count from tree_inventory subcollection
         final treeCount = await FirebaseFirestore.instance
             .collection('appointments')
@@ -143,7 +143,7 @@ class _ForesterTreeMappingState extends State<ForesterTreeMapping> {
             .collection('tree_inventory')
             .count()
             .get();
-        
+
         data['actual_tree_count'] = treeCount.count ?? 0;
         appointmentsList.add(data);
       }
@@ -159,6 +159,7 @@ class _ForesterTreeMappingState extends State<ForesterTreeMapping> {
         selectedAppointmentId = null;
         selectedTreeId = null;
       });
+
       _attemptInitialAppointmentSelection();
     } catch (e) {
       debugPrint('❌ Error fetching appointments: $e');
@@ -193,7 +194,8 @@ class _ForesterTreeMappingState extends State<ForesterTreeMapping> {
         trees.add(treeData);
       }
 
-      debugPrint('✅ Fetched ${trees.length} trees for appointment $appointmentId');
+      debugPrint(
+          '✅ Fetched ${trees.length} trees for appointment $appointmentId');
 
       setState(() {
         taggedTrees = trees;
@@ -203,22 +205,23 @@ class _ForesterTreeMappingState extends State<ForesterTreeMapping> {
       // Add markers for trees
       _setMarkers();
       _attemptInitialTreeFocus();
-      
+
       // Fetch distance matrix and elevations if we have current location
       setState(() {
         isLoadingDistanceElevation = true;
       });
-      
+
       if (currentLocation != null && trees.isNotEmpty) {
-        final origin = LatLng(currentLocation!.latitude!, currentLocation!.longitude!);
+        final origin =
+            LatLng(currentLocation!.latitude!, currentLocation!.longitude!);
         await _fetchDistanceMatrix(origin, trees);
       }
-      
+
       // Fetch elevations for all trees
       if (trees.isNotEmpty) {
         await _fetchElevations(trees);
       }
-      
+
       setState(() {
         isLoadingDistanceElevation = false;
       });
@@ -279,7 +282,8 @@ class _ForesterTreeMappingState extends State<ForesterTreeMapping> {
     if (currentLocation != null) {
       newMarkers.add(
         Marker(
-          point: LatLng(currentLocation!.latitude!, currentLocation!.longitude!),
+          point:
+              LatLng(currentLocation!.latitude!, currentLocation!.longitude!),
           width: 48,
           height: 48,
           alignment: Alignment.bottomCenter,
@@ -302,17 +306,19 @@ class _ForesterTreeMappingState extends State<ForesterTreeMapping> {
       if (lat != null && lng != null) {
         // Build tooltip text with distance and elevation
         String tooltipText = 'Tree: $specie\nID: ${tree['tree_no'] ?? "N/A"}';
-        
+
         final distanceInfo = treeDistanceData[treeId];
         if (distanceInfo != null) {
-          tooltipText += '\n🚗 ${distanceInfo['distance']} • ${distanceInfo['duration']}';
+          tooltipText +=
+              '\n🚗 ${distanceInfo['distance']} • ${distanceInfo['duration']}';
         }
-        
+
         final elevation = treeElevationData[treeId];
         if (elevation != null) {
-          tooltipText += '\n⛰️ ${elevation.toStringAsFixed(1)}m above sea level';
+          tooltipText +=
+              '\n⛰️ ${elevation.toStringAsFixed(1)}m above sea level';
         }
-        
+
         newMarkers.add(
           Marker(
             point: LatLng(lat, lng),
@@ -335,15 +341,16 @@ class _ForesterTreeMappingState extends State<ForesterTreeMapping> {
       markers = newMarkers;
       polylines = newPolylines;
     });
-    
+
     // After adding markers, fit camera to show all points
     _fitMapToAllMarkers();
   }
 
   void _onTreeMarkerTapped(String treeId, double lat, double lng) {
     debugPrint('🎯 Tree marker tapped: $treeId at ($lat, $lng)');
-    debugPrint('📍 Current location: ${currentLocation?.latitude}, ${currentLocation?.longitude}');
-    
+    debugPrint(
+        '📍 Current location: ${currentLocation?.latitude}, ${currentLocation?.longitude}');
+
     setState(() {
       selectedTreeId = treeId;
       polylines.clear();
@@ -374,8 +381,9 @@ class _ForesterTreeMappingState extends State<ForesterTreeMapping> {
         return;
       }
 
-      debugPrint('🗺️ Drawing route from ${origin.latitude},${origin.longitude} to ${destination.latitude},${destination.longitude}');
-      
+      debugPrint(
+          '🗺️ Drawing route from ${origin.latitude},${origin.longitude} to ${destination.latitude},${destination.longitude}');
+
       final result = await _fetchDirections(origin, destination);
 
       debugPrint('📍 Route points fetched: ${result.length} points');
@@ -412,24 +420,24 @@ class _ForesterTreeMappingState extends State<ForesterTreeMapping> {
       debugPrint('🌐 Fetching directions from OSRM...');
       final response = await http.get(url);
       debugPrint('📡 API Response status: ${response.statusCode}');
-      
+
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body) as Map<String, dynamic>;
         final routes = data['routes'] as List<dynamic>?;
-        
+
         if (routes == null || routes.isEmpty) {
           debugPrint('❌ No routes found in response');
           return [];
         }
-        
+
         final route = routes.first as Map<String, dynamic>;
         final geometry = route['geometry'] as String?;
-        
+
         if (geometry == null) {
           debugPrint('❌ No geometry in route');
           return [];
         }
-        
+
         final points = _decodePolyline(geometry);
         debugPrint('✅ Decoded ${points.length} polyline points');
 
@@ -481,7 +489,7 @@ class _ForesterTreeMappingState extends State<ForesterTreeMapping> {
 
   void _fitCameraToRoute(List<LatLng> routePoints) {
     if (routePoints.isEmpty) return;
-    
+
     try {
       if (_allPointsCoincident(routePoints)) {
         _controller.move(routePoints.first, 17);
@@ -498,17 +506,18 @@ class _ForesterTreeMappingState extends State<ForesterTreeMapping> {
   }
 
   /// 🚗 Calculate straight-line distances from current location to trees
-  Future<void> _fetchDistanceMatrix(LatLng origin, List<Map<String, dynamic>> trees) async {
+  Future<void> _fetchDistanceMatrix(
+      LatLng origin, List<Map<String, dynamic>> trees) async {
     if (trees.isEmpty) return;
 
     try {
       for (var tree in trees) {
         final lat = (tree['latitude'] as num?)?.toDouble();
         final lng = (tree['longitude'] as num?)?.toDouble();
-        
+
         if (lat != null && lng != null) {
           final treeId = tree['tree_id'] ?? tree['tree_no'] ?? 'unknown';
-          
+
           // Calculate straight-line distance using Haversine formula
           final distance = _calculateDistance(
             origin.latitude,
@@ -516,10 +525,10 @@ class _ForesterTreeMappingState extends State<ForesterTreeMapping> {
             lat,
             lng,
           );
-          
+
           // Estimate driving time (assuming ~40 km/h average speed in forest terrain)
           final durationMinutes = (distance / 40 * 60).round();
-          
+
           treeDistanceData[treeId] = {
             'distance': '${distance.toStringAsFixed(2)} km',
             'distance_value': (distance * 1000).round(),
@@ -536,20 +545,21 @@ class _ForesterTreeMappingState extends State<ForesterTreeMapping> {
   }
 
   /// Calculate distance between two points using Haversine formula (in km)
-  double _calculateDistance(double lat1, double lon1, double lat2, double lon2) {
+  double _calculateDistance(
+      double lat1, double lon1, double lat2, double lon2) {
     const double earthRadius = 6371; // Earth's radius in km
-    
+
     final dLat = _degreesToRadians(lat2 - lat1);
     final dLon = _degreesToRadians(lon2 - lon1);
-    
+
     final a = (math.sin(dLat / 2) * math.sin(dLat / 2)) +
         (math.cos(_degreesToRadians(lat1)) *
             math.cos(_degreesToRadians(lat2)) *
             math.sin(dLon / 2) *
             math.sin(dLon / 2));
-    
+
     final c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a));
-    
+
     return earthRadius * c;
   }
 
@@ -611,7 +621,8 @@ class _ForesterTreeMappingState extends State<ForesterTreeMapping> {
       case 'satellite':
         // Using ESRI World Imagery (satellite)
         return TileLayer(
-          urlTemplate: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+          urlTemplate:
+              'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
           userAgentPackageName: 'com.treesure.app',
           maxZoom: 19,
         );
@@ -637,55 +648,41 @@ class _ForesterTreeMappingState extends State<ForesterTreeMapping> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-  backgroundColor: Colors.green,   // ← WHITE APP BAR
-  elevation: 1,                    // slight shadow for visibility
-  
-  iconTheme: const IconThemeData(
-    color: Colors.white,           // ← back button & icons become green
-  ),
-
-  title: Text(
-    selectedAppointmentId == null
-        ? 'My Appointments'
-        : 'Tree Locations',
-    style: const TextStyle(
-      color: Colors.white,         // ← title text color
-      fontWeight: FontWeight.bold,
-    ),
-  ),
-
-  leading: selectedAppointmentId != null
-      ? IconButton(
-          icon: const Icon(Icons.arrow_back),
-          onPressed: () {
-            setState(() {
-              selectedAppointmentId = null;
-              selectedTreeId = null;
-              taggedTrees = [];
-              markers.clear();
-              polylines.clear();
-            });
-          },
-        )
-      : null,
-
-  actions: [
-    IconButton(
-      icon: const Icon(Icons.refresh, color: Colors.green),  // icon becomes green
-      onPressed: isLoading
-          ? null
-          : () {
-              if (selectedAppointmentId != null) {
-                _fetchTreesForAppointment(selectedAppointmentId!);
-              } else {
-                _fetchTaggedTrees();
-              }
-            },
-      tooltip: 'Refresh',
-    ),
-  ],
-),
-
+        title: Text(selectedAppointmentId == null
+            ? 'My Appointments'
+            : 'Tree Locations'),
+        backgroundColor: Colors.green.shade700,
+        elevation: 0,
+        leading: selectedAppointmentId != null
+            ? IconButton(
+                icon: const Icon(Icons.arrow_back),
+                onPressed: () {
+                  setState(() {
+                    selectedAppointmentId = null;
+                    selectedTreeId = null;
+                    taggedTrees = [];
+                    markers.clear();
+                    polylines.clear();
+                  });
+                },
+              )
+            : null,
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.refresh),
+            onPressed: isLoading
+                ? null
+                : () {
+                    if (selectedAppointmentId != null) {
+                      _fetchTreesForAppointment(selectedAppointmentId!);
+                    } else {
+                      _fetchTaggedTrees();
+                    }
+                  },
+            tooltip: 'Refresh',
+          ),
+        ],
+      ),
       body: isLoading
           ? const Center(child: CircularProgressIndicator())
           : selectedAppointmentId == null
@@ -1062,8 +1059,7 @@ class _ForesterTreeMappingState extends State<ForesterTreeMapping> {
                                   : Colors.green[50],
                               borderRadius: BorderRadius.circular(8),
                               border: Border.all(
-                                color:
-                                    isSelected ? Colors.blue : Colors.green,
+                                color: isSelected ? Colors.blue : Colors.green,
                                 width: isSelected ? 2 : 1.5,
                               ),
                             ),
@@ -1082,9 +1078,8 @@ class _ForesterTreeMappingState extends State<ForesterTreeMapping> {
                                   style: TextStyle(
                                     fontSize: 11,
                                     fontWeight: FontWeight.bold,
-                                    color: isSelected
-                                        ? Colors.blue
-                                        : Colors.green,
+                                    color:
+                                        isSelected ? Colors.blue : Colors.green,
                                   ),
                                 ),
                                 Text(
@@ -1126,8 +1121,10 @@ class _ForesterTreeMappingState extends State<ForesterTreeMapping> {
                                   const SizedBox(height: 4),
                                   GestureDetector(
                                     onTap: () {
-                                      final lat = (tree['latitude'] as num?)?.toDouble();
-                                      final lng = (tree['longitude'] as num?)?.toDouble();
+                                      final lat = (tree['latitude'] as num?)
+                                          ?.toDouble();
+                                      final lng = (tree['longitude'] as num?)
+                                          ?.toDouble();
                                       if (lat != null && lng != null) {
                                         // Show visual route on map
                                         _onTreeMarkerTapped(treeId, lat, lng);
@@ -1139,20 +1136,26 @@ class _ForesterTreeMappingState extends State<ForesterTreeMapping> {
                                         vertical: 2,
                                       ),
                                       decoration: BoxDecoration(
-                                        color: isSelected ? Colors.blue : Colors.green,
+                                        color: isSelected
+                                            ? Colors.blue
+                                            : Colors.green,
                                         borderRadius: BorderRadius.circular(4),
                                       ),
                                       child: Row(
                                         mainAxisSize: MainAxisSize.min,
                                         children: [
                                           Icon(
-                                            isSelected ? Icons.near_me : Icons.route,
+                                            isSelected
+                                                ? Icons.near_me
+                                                : Icons.route,
                                             size: 10,
                                             color: Colors.white,
                                           ),
                                           const SizedBox(width: 2),
                                           Text(
-                                            isSelected ? 'Selected' : 'Show Route',
+                                            isSelected
+                                                ? 'Selected'
+                                                : 'Show Route',
                                             style: const TextStyle(
                                               fontSize: 8,
                                               color: Colors.white,
