@@ -54,7 +54,7 @@ dependencies:
   screenshot: ^3.0.0
   permission_handler: ^11.3.1
   share_plus: ^10.1.2
-  syncfusion_flutter_pdfviewer: ^31.2.12
+  syncfusion_flutter_pdfviewer: ^31.1.19
   pdfx: ^2.9.2
 
 dev_dependencies: 
