@@ -38,11 +38,9 @@ class _CuttingPermitPageState extends State<CuttingPermitPage> {
               Navigator.push(
                 context,
                 MaterialPageRoute(
-                  builder: (context) => PltpRegisterTreesPage(
-                    foresterId: widget.applicantId,
-                    foresterName: widget.applicantName,
-                    appointmentId: widget
-                        .applicantId, // You need to provide the appointmentId here
+                  builder: (context) => PLTPFormPage(
+                    applicantId: widget.applicantId,
+                    applicantName: widget.applicantName,
                   ),
                 ),
               );
