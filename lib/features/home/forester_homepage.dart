@@ -74,9 +74,7 @@ class _ForesterHomepageState extends State<ForesterHomepage> {
                       Navigator.push(
                         context,
                         MaterialPageRoute(
-                          builder: (context) => ForesterQrScanner(
-                            foresterId: widget.foresterId,
-                          ),
+                          builder: (context) => const ForesterQrScanner(),
                         ),
                       );
                     },
