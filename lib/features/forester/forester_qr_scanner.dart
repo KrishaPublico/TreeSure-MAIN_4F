@@ -250,7 +250,8 @@ class _ForesterQrScannerState extends State<ForesterQrScanner>
           parsedFields['appointment_id'] ?? parsedFields['appointmentid'];
 
       if (treeId == null || treeId.isEmpty) {
-        final treeIdMatch = RegExp(r'Tree\s*ID[:=]\s*(T\w+)').firstMatch(qrData);
+        final treeIdMatch =
+            RegExp(r'Tree\s*ID[:=]\s*(T\w+)').firstMatch(qrData);
         if (treeIdMatch != null) {
           treeId = treeIdMatch.group(1);
         } else if (RegExp(r'^T\w+', multiLine: false).hasMatch(qrData.trim())) {
@@ -402,151 +403,208 @@ Location: ${lat != null && lng != null ? '${lat.toStringAsFixed(6)}, ${lng.toStr
             ],
           ),
         ),
-        body: TabBarView(
-          children: [
-            _buildScannerTab(),
-            _buildUploadTab(),
-          ],
+        body: SafeArea(
+          child: TabBarView(
+            children: [
+              _buildScannerTab(),
+              _buildUploadTab(),
+            ],
+          ),
         ),
+        bottomNavigationBar: scannedData != null
+            ? Container(
+                padding: const EdgeInsets.all(16),
+                color: Colors.white,
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                  children: [
+                    if (_canOpenMapping)
+                      Flexible(
+                        child: ElevatedButton.icon(
+                          icon: const Icon(Icons.map, color: Colors.white),
+                          label: const Text(
+                            'View Tree Location',
+                            style: TextStyle(color: Colors.white),
+                          ),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.green[700],
+                            padding: EdgeInsets.symmetric(
+                              horizontal:
+                                  MediaQuery.of(context).size.width > 600
+                                      ? 24
+                                      : 16,
+                              vertical: 12,
+                            ),
+                          ),
+                          onPressed: _navigateToTreeMapping,
+                        ),
+                      ),
+                  ],
+                ),
+              )
+            : null,
       ),
     );
   }
 
   Widget _buildScannerTab() {
-    return Column(
-      children: [
-        if (isScanning) ...[
-          Expanded(
-            child: Stack(
-              children: [
-                MobileScanner(
-                  controller: _scannerController,
-                  onDetect: _onDetect,
-                ),
-                _buildScannerOverlay(),
-                Positioned(
-                  top: 16,
-                  right: 16,
-                  child: SafeArea(
-                    child: CircleAvatar(
-                      backgroundColor: Colors.black54,
-                      child: IconButton(
-                        icon: const Icon(Icons.close, color: Colors.white),
-                        tooltip: 'Stop scanning',
-                        onPressed: _stopScanning,
+    return SingleChildScrollView(
+      child: Column(
+        children: [
+          if (isScanning) ...[
+            Container(
+              height: MediaQuery.of(context).size.height * 0.7,
+              child: Stack(
+                children: [
+                  MobileScanner(
+                    controller: _scannerController,
+                    onDetect: _onDetect,
+                  ),
+                  _buildScannerOverlay(),
+                  Positioned(
+                    top: 16,
+                    right: 16,
+                    child: SafeArea(
+                      child: CircleAvatar(
+                        backgroundColor: Colors.black54,
+                        child: IconButton(
+                          icon: const Icon(Icons.close, color: Colors.white),
+                          tooltip: 'Stop scanning',
+                          onPressed: _stopScanning,
+                        ),
                       ),
                     ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ] else ...[
-          Expanded(
-            child: Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(Icons.qr_code_scanner, size: 100, color: Colors.grey[400]),
-                  const SizedBox(height: 20),
-                  const Text(
-                    'Tap the scanner icon to start scanning QR codes',
-                    textAlign: TextAlign.center,
-                  ),
-                  const SizedBox(height: 20),
-                  ElevatedButton.icon(
-                    icon: const Icon(Icons.qr_code_scanner, color: Colors.white),
-                    label: const Text('Start Scanning',
-                        style: TextStyle(color: Colors.white)),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.green[800],
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 24, vertical: 16),
-                    ),
-                    onPressed: _startScanning,
                   ),
                 ],
               ),
             ),
+          ] else if (scannedData == null) ...[
+            Container(
+              height: MediaQuery.of(context).size.height * 0.5,
+              child: Center(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(Icons.qr_code_scanner,
+                        size: 48, color: Colors.grey[400]),
+                    const SizedBox(height: 8),
+                    const Text(
+                      'Tap the scanner icon to start scanning QR codes',
+                      textAlign: TextAlign.center,
+                    ),
+                    const SizedBox(height: 8),
+                    ElevatedButton.icon(
+                      icon: const Icon(Icons.qr_code_scanner,
+                          color: Colors.white),
+                      label: const Text('Start Scanning',
+                          style: TextStyle(color: Colors.white)),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.green[800],
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 12, vertical: 2),
+                      ),
+                      onPressed: _startScanning,
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+          if (scannedData != null) _buildScannedDataCard(),
+          const SizedBox(height: 8),
+          ElevatedButton.icon(
+            icon: const Icon(Icons.qr_code_scanner, color: Colors.white),
+            label: const Text('Scan Again',
+                style: TextStyle(color: Colors.white)),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.green[800],
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
+            ),
+            onPressed: _startScanning,
           ),
         ],
-        if (scannedData != null) _buildScannedDataCard(),
-      ],
+      ),
     );
   }
 
   Widget _buildUploadTab() {
-    return Column(
-      children: [
-        Expanded(
-          child: Center(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(Icons.upload_file, size: 100, color: Colors.grey[400]),
-                const SizedBox(height: 20),
-                Text(
-                  kIsWeb
-                      ? 'Upload QR images (Mobile Only)'
-                      : 'Upload a QR code image to scan',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    fontSize: 16,
-                    color: kIsWeb ? Colors.orange[800] : Colors.black87,
-                  ),
-                ),
-                if (kIsWeb) ...[
+    return SingleChildScrollView(
+      child: Column(
+        children: [
+          Container(
+            height: MediaQuery.of(context).size.height * 0.3,
+            child: Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(Icons.upload_file, size: 48, color: Colors.grey[400]),
                   const SizedBox(height: 8),
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 32),
-                    child: Text(
-                      'Image QR scanning is not supported on web browsers. Please use the Scan tab or the mobile app.',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(
-                        fontSize: 13,
-                        color: Colors.grey[600],
-                        fontStyle: FontStyle.italic,
-                      ),
+                  Text(
+                    kIsWeb
+                        ? 'Upload QR images (Mobile Only)'
+                        : 'Upload a QR code image to scan',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      fontSize: 16,
+                      color: kIsWeb ? Colors.orange[800] : Colors.black87,
                     ),
                   ),
-                ],
-                const SizedBox(height: 20),
-                ElevatedButton.icon(
-                  icon: const Icon(Icons.upload_file, color: Colors.white),
-                  label: Text(
-                    kIsWeb ? 'Upload (Not Available)' : 'Upload QR Image',
-                    style: const TextStyle(color: Colors.white),
+                  if (kIsWeb) ...[
+                    const SizedBox(height: 8),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 32),
+                      child: Text(
+                        'Image QR scanning is not supported on web browsers. Please use the Scan tab or the mobile app.',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          fontSize: 13,
+                          color: Colors.grey[600],
+                          fontStyle: FontStyle.italic,
+                        ),
+                      ),
+                    ),
+                  ],
+                  const SizedBox(height: 8),
+                  ElevatedButton.icon(
+                    icon: const Icon(Icons.upload_file, color: Colors.white),
+                    label: Text(
+                      kIsWeb ? 'Upload (Not Available)' : 'Upload QR Image',
+                      style: const TextStyle(color: Colors.white),
+                    ),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: kIsWeb ? Colors.grey : Colors.green[800],
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 12, vertical: 8),
+                    ),
+                    onPressed: (isUploading || kIsWeb) ? null : _uploadQrImage,
                   ),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: kIsWeb ? Colors.grey : Colors.green[800],
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 24, vertical: 16),
-                  ),
-                  onPressed: (isUploading || kIsWeb) ? null : _uploadQrImage,
-                ),
-                if (isUploading) ...[
-                  const SizedBox(height: 20),
-                  const CircularProgressIndicator(),
-                  const SizedBox(height: 10),
-                  const Text('Processing image...'),
+                  if (isUploading) ...[
+                    const SizedBox(height: 8),
+                    const CircularProgressIndicator(),
+                    const SizedBox(height: 8),
+                    const Text('Processing image...'),
+                  ],
+                  if (uploadedImage != null) _buildUploadedImagePreview(),
                 ],
-                if (uploadedImage != null) _buildUploadedImagePreview(),
-              ],
+              ),
             ),
           ),
-        ),
-        if (scannedData != null) _buildScannedDataCard(),
-      ],
+          if (scannedData != null) _buildScannedDataCard(),
+        ],
+      ),
     );
   }
 
   Widget _buildScannerOverlay() {
+    final screenWidth = MediaQuery.of(context).size.width;
+    final overlaySize = screenWidth * 0.7 < 250 ? screenWidth * 0.7 : 250.0;
+
     return Container(
       decoration: BoxDecoration(color: Colors.black.withOpacity(0.5)),
       child: Center(
         child: Container(
-          width: 250,
-          height: 250,
+          width: overlaySize,
+          height: overlaySize,
           decoration: BoxDecoration(
             border: Border.all(color: Colors.green, width: 3),
             borderRadius: BorderRadius.circular(12),
@@ -554,7 +612,7 @@ Location: ${lat != null && lng != null ? '${lat.toStringAsFixed(6)}, ${lng.toStr
           child: Stack(
             children: [
               _buildCornerIndicators(),
-              if (_animation != null) _buildScanningLine(),
+              if (_animation != null) _buildScanningLine(overlaySize),
             ],
           ),
         ),
@@ -625,12 +683,12 @@ Location: ${lat != null && lng != null ? '${lat.toStringAsFixed(6)}, ${lng.toStr
     );
   }
 
-  Widget _buildScanningLine() {
+  Widget _buildScanningLine(double overlaySize) {
     return AnimatedBuilder(
       animation: _animation!,
       builder: (context, child) {
         return Positioned(
-          top: _animation!.value * 250,
+          top: _animation!.value * overlaySize,
           left: 0,
           right: 0,
           child: Container(
@@ -652,54 +710,52 @@ Location: ${lat != null && lng != null ? '${lat.toStringAsFixed(6)}, ${lng.toStr
   }
 
   Widget _buildScannedDataCard() {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      margin: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.green[50],
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.green[200]!),
-      ),
-      child: Column(
-        children: [
-          const Text(
-            '📄 Scanned Data:',
-            style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            scannedData ?? '',
-            textAlign: TextAlign.center,
-            style: const TextStyle(fontSize: 14),
-          ),
-          if (_treeLatitude != null && _treeLongitude != null) ...[
-            const SizedBox(height: 8),
-            Text(
-              'Tree Coordinates: ${_treeLatitude!.toStringAsFixed(6)}, ${_treeLongitude!.toStringAsFixed(6)}',
-              style: const TextStyle(fontSize: 12, color: Colors.blueGrey),
-            ),
-          ],
-          if (_canOpenMapping) ...[
-            const SizedBox(height: 16),
-            ElevatedButton.icon(
-              icon: const Icon(Icons.map, color: Colors.white),
-              label: const Text(
-                'View Tree Location',
-                style: TextStyle(color: Colors.white),
+    final screenWidth = MediaQuery.of(context).size.width;
+    final cardWidth = screenWidth > 600 ? 400.0 : screenWidth - 32;
+
+    return Center(
+      child: Container(
+        width: cardWidth,
+        padding: const EdgeInsets.all(16),
+        margin: const EdgeInsets.all(16),
+        constraints:
+            BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.4),
+        decoration: BoxDecoration(
+          color: Colors.green[50],
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: Colors.green[200]!),
+        ),
+        child: SingleChildScrollView(
+          child: Column(
+            children: [
+              const Text(
+                '📄 Scanned Data:',
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
               ),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.green[700],
-                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+              const SizedBox(height: 8),
+              Text(
+                scannedData ?? '',
+                textAlign: TextAlign.center,
+                style: const TextStyle(fontSize: 14),
               ),
-              onPressed: _navigateToTreeMapping,
-            ),
-          ],
-        ],
+              if (_treeLatitude != null && _treeLongitude != null) ...[
+                const SizedBox(height: 8),
+                Text(
+                  'Tree Coordinates: ${_treeLatitude!.toStringAsFixed(6)}, ${_treeLongitude!.toStringAsFixed(6)}',
+                  style: const TextStyle(fontSize: 12, color: Colors.blueGrey),
+                ),
+              ],
+            ],
+          ),
+        ),
       ),
     );
   }
 
   Widget _buildUploadedImagePreview() {
+    final screenWidth = MediaQuery.of(context).size.width;
+    final imageSize = screenWidth * 0.5 < 200 ? screenWidth * 0.5 : 200.0;
+
     return Container(
       padding: const EdgeInsets.all(16),
       margin: const EdgeInsets.only(top: 20),
@@ -719,9 +775,9 @@ Location: ${lat != null && lng != null ? '${lat.toStringAsFixed(6)}, ${lng.toStr
             borderRadius: BorderRadius.circular(8),
             child: kIsWeb
                 ? Image.network(uploadedImage!.path,
-                    width: 200, height: 200, fit: BoxFit.cover)
+                    width: imageSize, height: imageSize, fit: BoxFit.cover)
                 : Image.file(io.File(uploadedImage!.path),
-                    width: 200, height: 200, fit: BoxFit.cover),
+                    width: imageSize, height: imageSize, fit: BoxFit.cover),
           ),
         ],
       ),

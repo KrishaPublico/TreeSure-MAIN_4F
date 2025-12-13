@@ -1155,163 +1155,165 @@ class _ForesterTreeMappingState extends State<ForesterTreeMapping> {
                                   width: isSelected ? 2 : 1.5,
                                 ),
                               ),
-                              child: Column(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                crossAxisAlignment: CrossAxisAlignment.center,
-                                children: [
-                                  if (isSelected)
-                                    Icon(Icons.near_me,
-                                        size:
-                                            MediaQuery.of(context).size.width *
-                                                0.035,
-                                        color: Colors.blue),
-                                  Text(
-                                    tree['specie'] ?? 'Unknown',
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                    textAlign: TextAlign.center,
-                                    style: TextStyle(
-                                      fontSize:
-                                          MediaQuery.of(context).size.width *
-                                              0.028,
-                                      fontWeight: FontWeight.bold,
-                                      color: isSelected
-                                          ? Colors.blue
-                                          : Colors.green,
-                                    ),
-                                  ),
-                                  Text(
-                                    'ID: ${tree['tree_no'] ?? "N/A"}',
-                                    style: TextStyle(
-                                      fontSize:
-                                          MediaQuery.of(context).size.width *
-                                              0.023,
-                                      color: Colors.grey,
-                                    ),
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
-                                  if (distanceInfo != null) ...[
-                                    SizedBox(
-                                        height:
-                                            MediaQuery.of(context).size.height *
-                                                0.002),
+                              child: SingleChildScrollView(
+                                child: Column(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  crossAxisAlignment: CrossAxisAlignment.center,
+                                  children: [
+                                    if (isSelected)
+                                      Icon(Icons.near_me,
+                                          size:
+                                              MediaQuery.of(context).size.width *
+                                                  0.035,
+                                          color: Colors.blue),
                                     Text(
-                                      '🚗 ${distanceInfo['distance']}',
+                                      tree['specie'] ?? 'Unknown',
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      textAlign: TextAlign.center,
+                                      style: TextStyle(
+                                        fontSize:
+                                            MediaQuery.of(context).size.width *
+                                                0.028,
+                                        fontWeight: FontWeight.bold,
+                                        color: isSelected
+                                            ? Colors.blue
+                                            : Colors.green,
+                                      ),
+                                    ),
+                                    Text(
+                                      'ID: ${tree['tree_no'] ?? "N/A"}',
                                       style: TextStyle(
                                         fontSize:
                                             MediaQuery.of(context).size.width *
                                                 0.023,
-                                        color: Colors.black87,
-                                        fontWeight: FontWeight.w600,
-                                      ),
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
-                                    ),
-                                    Text(
-                                      '⏱️ ${distanceInfo['duration']}',
-                                      style: TextStyle(
-                                        fontSize:
-                                            MediaQuery.of(context).size.width *
-                                                0.02,
                                         color: Colors.grey,
                                       ),
                                       maxLines: 1,
                                       overflow: TextOverflow.ellipsis,
                                     ),
-                                  ],
-                                  if (elevation != null) ...[
-                                    SizedBox(
-                                        height:
-                                            MediaQuery.of(context).size.height *
-                                                0.002),
-                                    Text(
-                                      '⛰️ ${elevation.toStringAsFixed(0)}m',
-                                      style: TextStyle(
-                                        fontSize:
-                                            MediaQuery.of(context).size.width *
-                                                0.02,
-                                        color: Colors.grey,
+                                    if (distanceInfo != null) ...[
+                                      SizedBox(
+                                          height:
+                                              MediaQuery.of(context).size.height *
+                                                  0.002),
+                                      Text(
+                                        '🚗 ${distanceInfo['distance']}',
+                                        style: TextStyle(
+                                          fontSize:
+                                              MediaQuery.of(context).size.width *
+                                                  0.023,
+                                          color: Colors.black87,
+                                          fontWeight: FontWeight.w600,
+                                        ),
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
                                       ),
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
-                                    ),
-                                  ],
-                                  if (currentLocation != null) ...[
-                                    SizedBox(
-                                        height:
-                                            MediaQuery.of(context).size.height *
-                                                0.005),
-                                    GestureDetector(
-                                      onTap: () {
-                                        final lat = (tree['latitude'] as num?)
-                                            ?.toDouble();
-                                        final lng = (tree['longitude'] as num?)
-                                            ?.toDouble();
-                                        if (lat != null && lng != null) {
-                                          // Show visual route on map
-                                          _onTreeMarkerTapped(treeId, lat, lng);
-                                        }
-                                      },
-                                      child: Container(
-                                        padding: EdgeInsets.symmetric(
-                                          horizontal: MediaQuery.of(context)
-                                                  .size
-                                                  .width *
-                                              0.015,
-                                          vertical: MediaQuery.of(context)
-                                                  .size
-                                                  .height *
-                                              0.002,
+                                      Text(
+                                        '⏱️ ${distanceInfo['duration']}',
+                                        style: TextStyle(
+                                          fontSize:
+                                              MediaQuery.of(context).size.width *
+                                                  0.02,
+                                          color: Colors.grey,
                                         ),
-                                        decoration: BoxDecoration(
-                                          color: isSelected
-                                              ? Colors.blue
-                                              : Colors.green,
-                                          borderRadius:
-                                              BorderRadius.circular(4),
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                    ],
+                                    if (elevation != null) ...[
+                                      SizedBox(
+                                          height:
+                                              MediaQuery.of(context).size.height *
+                                                  0.002),
+                                      Text(
+                                        '⛰️ ${elevation.toStringAsFixed(0)}m',
+                                        style: TextStyle(
+                                          fontSize:
+                                              MediaQuery.of(context).size.width *
+                                                  0.02,
+                                          color: Colors.grey,
                                         ),
-                                        child: Row(
-                                          mainAxisSize: MainAxisSize.min,
-                                          children: [
-                                            Icon(
-                                              isSelected
-                                                  ? Icons.near_me
-                                                  : Icons.route,
-                                              size: MediaQuery.of(context)
-                                                      .size
-                                                      .width *
-                                                  0.025,
-                                              color: Colors.white,
-                                            ),
-                                            SizedBox(
-                                                width: MediaQuery.of(context)
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                    ],
+                                    if (currentLocation != null) ...[
+                                      SizedBox(
+                                          height:
+                                              MediaQuery.of(context).size.height *
+                                                  0.005),
+                                      GestureDetector(
+                                        onTap: () {
+                                          final lat = (tree['latitude'] as num?)
+                                              ?.toDouble();
+                                          final lng = (tree['longitude'] as num?)
+                                              ?.toDouble();
+                                          if (lat != null && lng != null) {
+                                            // Show visual route on map
+                                            _onTreeMarkerTapped(treeId, lat, lng);
+                                          }
+                                        },
+                                        child: Container(
+                                          padding: EdgeInsets.symmetric(
+                                            horizontal: MediaQuery.of(context)
+                                                    .size
+                                                    .width *
+                                                0.015,
+                                            vertical: MediaQuery.of(context)
+                                                    .size
+                                                    .height *
+                                                0.002,
+                                          ),
+                                          decoration: BoxDecoration(
+                                            color: isSelected
+                                                ? Colors.blue
+                                                : Colors.green,
+                                            borderRadius:
+                                                BorderRadius.circular(4),
+                                          ),
+                                          child: Row(
+                                            mainAxisSize: MainAxisSize.min,
+                                            children: [
+                                              Icon(
+                                                isSelected
+                                                    ? Icons.near_me
+                                                    : Icons.route,
+                                                size: MediaQuery.of(context)
                                                         .size
                                                         .width *
-                                                    0.005),
-                                            Flexible(
-                                              child: Text(
-                                                isSelected
-                                                    ? 'Selected'
-                                                    : 'Show Route',
-                                                style: TextStyle(
-                                                  fontSize:
-                                                      MediaQuery.of(context)
-                                                              .size
-                                                              .width *
-                                                          0.02,
-                                                  color: Colors.white,
-                                                  fontWeight: FontWeight.bold,
-                                                ),
-                                                overflow: TextOverflow.ellipsis,
+                                                    0.025,
+                                                color: Colors.white,
                                               ),
-                                            ),
-                                          ],
+                                              SizedBox(
+                                                  width: MediaQuery.of(context)
+                                                          .size
+                                                          .width *
+                                                      0.005),
+                                              Flexible(
+                                                child: Text(
+                                                  isSelected
+                                                      ? 'Selected'
+                                                      : 'Show Route',
+                                                  style: TextStyle(
+                                                    fontSize:
+                                                        MediaQuery.of(context)
+                                                                .size
+                                                                .width *
+                                                            0.02,
+                                                    color: Colors.white,
+                                                    fontWeight: FontWeight.bold,
+                                                  ),
+                                                  overflow: TextOverflow.ellipsis,
+                                                ),
+                                              ),
+                                            ],
+                                          ),
                                         ),
                                       ),
-                                    ),
+                                    ],
                                   ],
-                                ],
+                                ),
                               ),
                             ),
                           );
