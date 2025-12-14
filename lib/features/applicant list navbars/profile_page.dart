@@ -120,21 +120,30 @@ class ProfilePage extends StatelessWidget {
                       final confirmLogout = await showDialog<bool>(
                         context: context,
                         builder: (context) => AlertDialog(
-                          title: const Text("Logout"),
+                          backgroundColor: Colors.green[900],
+                          title: const Text(
+                            "Logout",
+                            style: TextStyle(
+                                color: Colors.white,
+                                fontWeight: FontWeight.bold),
+                          ),
                           content: const Text(
                             "Are you sure you want to log out?",
-                            style: TextStyle(fontSize: 16),
+                            style: TextStyle(color: Colors.white),
                           ),
                           actions: [
                             TextButton(
                               onPressed: () => Navigator.pop(context, false),
-                              child: const Text("Cancel"),
+                              child: const Text(
+                                "Cancel",
+                                style: TextStyle(color: Colors.white),
+                              ),
                             ),
                             TextButton(
                               onPressed: () => Navigator.pop(context, true),
                               child: const Text(
                                 "Logout",
-                                style: TextStyle(color: Colors.red),
+                                style: TextStyle(color: Colors.white),
                               ),
                             ),
                           ],

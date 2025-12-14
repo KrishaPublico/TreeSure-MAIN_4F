@@ -126,6 +126,7 @@ class _ApplicantSummaryPageState extends State<ApplicantSummaryPage> {
     return Scaffold(
       backgroundColor: Colors.white,
       appBar: AppBar(
+        automaticallyImplyLeading: false,
         backgroundColor: Colors.green[700],
         title: Text(
           "Summary Reports",
