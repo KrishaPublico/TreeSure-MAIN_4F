@@ -20,6 +20,9 @@ class _SignupPageState extends State<SignupPage> {
   bool _obscurePassword = true;
   bool _isLoading = false;
 
+  static const _primaryGreen = Color(0xFF2E7D32);
+  static const _darkGreen = Color(0xFF1B5E20);
+
   Future<void> _signup() async {
     final name = _nameController.text.trim();
     final username = _usernameController.text.trim();
@@ -32,12 +35,7 @@ class _SignupPageState extends State<SignupPage> {
         password.isEmpty ||
         contact.isEmpty ||
         address.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text("Please fill in all fields."),
-          backgroundColor: Colors.red,
-        ),
-      );
+      _showSnackBar("Please fill in all fields.", Colors.red);
       return;
     }
 
@@ -55,12 +53,7 @@ class _SignupPageState extends State<SignupPage> {
           .get();
 
       if (existingUser.docs.isNotEmpty) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text("Username already exists. Try another."),
-            backgroundColor: Colors.red,
-          ),
-        );
+        _showSnackBar("Username already exists. Try another.", Colors.red);
         setState(() {
           _isLoading = false;
         });
@@ -72,7 +65,6 @@ class _SignupPageState extends State<SignupPage> {
       List<int> existingIds = [];
       for (var doc in querySnapshot.docs) {
         final id = doc.id;
-        // Only include numeric IDs
         if (int.tryParse(id) != null) {
           existingIds.add(int.parse(id));
         }
@@ -93,13 +85,9 @@ class _SignupPageState extends State<SignupPage> {
         'createdAt': FieldValue.serverTimestamp(),
       });
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content:
-              Text("Signed up successfully as ${widget.role.toUpperCase()}!"),
-          backgroundColor: Colors.green,
-        ),
-      );
+      _showSnackBar(
+          "Signed up successfully as ${widget.role.toUpperCase()}!",
+          _primaryGreen);
 
       // Clear fields
       _nameController.clear();
@@ -108,12 +96,7 @@ class _SignupPageState extends State<SignupPage> {
       _contactController.clear();
       _addressController.clear();
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text("Error: $e"),
-          backgroundColor: Colors.red,
-        ),
-      );
+      _showSnackBar("Error: $e", Colors.red);
     } finally {
       setState(() {
         _isLoading = false;
@@ -121,109 +104,373 @@ class _SignupPageState extends State<SignupPage> {
     }
   }
 
+  void _showSnackBar(String message, Color color) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor: color,
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        margin: const EdgeInsets.all(16),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text(
-          "Sign Up",
-          style: TextStyle(
-            color: Colors.white, // ✅ make text white
-            fontWeight: FontWeight.bold, // optional
+      body: Container(
+        width: double.infinity,
+        height: double.infinity,
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [_darkGreen, _primaryGreen, Color(0xFFE8F5E9)],
+            stops: [0.0, 0.3, 1.0],
           ),
         ),
-        backgroundColor: Colors.green.shade800,
-        iconTheme: const IconThemeData(color: Colors.white),
-      ),
-      body: Center(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.symmetric(horizontal: 30, vertical: 20),
-          child: Column(
-            children: [
-              TextFormField(
-                controller: _nameController,
-                decoration: InputDecoration(
-                  hintText: "Full Name",
-                  prefixIcon: const Icon(Icons.person),
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 15),
-              TextFormField(
-                controller: _usernameController,
-                decoration: InputDecoration(
-                  hintText: "Username",
-                  prefixIcon: const Icon(Icons.account_circle),
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 15),
-              TextFormField(
-                controller: _passwordController,
-                obscureText: _obscurePassword,
-                decoration: InputDecoration(
-                  hintText: "Password",
-                  prefixIcon: const Icon(Icons.vpn_key),
-                  suffixIcon: IconButton(
-                    icon: Icon(_obscurePassword
-                        ? Icons.visibility_off
-                        : Icons.visibility),
-                    onPressed: () {
-                      setState(() {
-                        _obscurePassword = !_obscurePassword;
-                      });
-                    },
-                  ),
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 15),
-              TextFormField(
-                controller: _contactController,
-                decoration: InputDecoration(
-                  hintText: "Contact Number",
-                  prefixIcon: const Icon(Icons.phone),
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 15),
-              TextFormField(
-                controller: _addressController,
-                decoration: InputDecoration(
-                  hintText: "Address",
-                  prefixIcon: const Icon(Icons.location_on),
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 30),
-              _isLoading
-                  ? const CircularProgressIndicator()
-                  : ElevatedButton(
-                      onPressed: _signup,
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.green.shade800,
-                        minimumSize: const Size(double.infinity, 50),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(10),
+        child: SafeArea(
+          child: SingleChildScrollView(
+            child: Column(
+              children: [
+                // Top section with back button
+                Padding(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                  child: Row(
+                    children: [
+                      Container(
+                        decoration: BoxDecoration(
+                          color: Colors.white.withAlpha(30),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: IconButton(
+                          icon: const Icon(Icons.arrow_back_rounded,
+                              color: Colors.white),
+                          onPressed: () => Navigator.pop(context),
                         ),
                       ),
-                      child: const Text(
-                        "Sign Up",
-                        style: TextStyle(fontSize: 18, color: Colors.white),
+                      const SizedBox(width: 16),
+                      const Text(
+                        'Create Account',
+                        style: TextStyle(
+                          fontSize: 20,
+                          fontWeight: FontWeight.w700,
+                          color: Colors.white,
+                          fontFamily: 'Poppins',
+                        ),
                       ),
-                    ),
-            ],
+                    ],
+                  ),
+                ),
+
+                const SizedBox(height: 8),
+
+                // Icon
+                Container(
+                  width: 72,
+                  height: 72,
+                  decoration: BoxDecoration(
+                    color: Colors.white.withAlpha(30),
+                    borderRadius: BorderRadius.circular(22),
+                    border:
+                        Border.all(color: Colors.white.withAlpha(50), width: 2),
+                  ),
+                  child: const Icon(
+                    Icons.person_add_rounded,
+                    color: Colors.white,
+                    size: 36,
+                  ),
+                ),
+
+                const SizedBox(height: 12),
+
+                Text(
+                  'Join as ${widget.role}',
+                  style: const TextStyle(
+                    fontSize: 22,
+                    fontWeight: FontWeight.w800,
+                    color: Colors.white,
+                    fontFamily: 'Poppins',
+                  ),
+                ),
+
+                const SizedBox(height: 4),
+
+                Text(
+                  'Fill in your details to get started',
+                  style: TextStyle(
+                    fontSize: 13,
+                    color: Colors.white.withAlpha(200),
+                    fontFamily: 'Poppins',
+                  ),
+                ),
+
+                const SizedBox(height: 24),
+
+                // White card form
+                Container(
+                  width: double.infinity,
+                  margin: const EdgeInsets.symmetric(horizontal: 20),
+                  padding: const EdgeInsets.all(24),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(28),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withAlpha(15),
+                        blurRadius: 24,
+                        offset: const Offset(0, 8),
+                      ),
+                    ],
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // Section header
+                      Row(
+                        children: [
+                          Container(
+                            width: 4,
+                            height: 20,
+                            decoration: BoxDecoration(
+                              color: _primaryGreen,
+                              borderRadius: BorderRadius.circular(2),
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                          const Text(
+                            'Personal Information',
+                            style: TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w700,
+                              color: _darkGreen,
+                              fontFamily: 'Poppins',
+                            ),
+                          ),
+                        ],
+                      ),
+
+                      const SizedBox(height: 20),
+
+                      _buildTextField(
+                        controller: _nameController,
+                        hint: 'Full Name',
+                        icon: Icons.person_outline_rounded,
+                      ),
+                      const SizedBox(height: 14),
+
+                      _buildTextField(
+                        controller: _usernameController,
+                        hint: 'Username',
+                        icon: Icons.alternate_email_rounded,
+                      ),
+                      const SizedBox(height: 14),
+
+                      _buildTextField(
+                        controller: _passwordController,
+                        hint: 'Password',
+                        icon: Icons.lock_outline_rounded,
+                        obscure: _obscurePassword,
+                        suffixIcon: IconButton(
+                          icon: Icon(
+                            _obscurePassword
+                                ? Icons.visibility_off_outlined
+                                : Icons.visibility_outlined,
+                            color: Colors.grey[400],
+                            size: 20,
+                          ),
+                          onPressed: () => setState(
+                              () => _obscurePassword = !_obscurePassword),
+                        ),
+                      ),
+
+                      const SizedBox(height: 24),
+
+                      // Contact section
+                      Row(
+                        children: [
+                          Container(
+                            width: 4,
+                            height: 20,
+                            decoration: BoxDecoration(
+                              color: _primaryGreen,
+                              borderRadius: BorderRadius.circular(2),
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                          const Text(
+                            'Contact Details',
+                            style: TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w700,
+                              color: _darkGreen,
+                              fontFamily: 'Poppins',
+                            ),
+                          ),
+                        ],
+                      ),
+
+                      const SizedBox(height: 20),
+
+                      _buildTextField(
+                        controller: _contactController,
+                        hint: 'Contact Number',
+                        icon: Icons.phone_outlined,
+                      ),
+                      const SizedBox(height: 14),
+
+                      _buildTextField(
+                        controller: _addressController,
+                        hint: 'Address',
+                        icon: Icons.location_on_outlined,
+                      ),
+
+                      const SizedBox(height: 28),
+
+                      // Sign Up button
+                      SizedBox(
+                        width: double.infinity,
+                        height: 56,
+                        child: _isLoading
+                            ? const Center(
+                                child: SizedBox(
+                                  width: 28,
+                                  height: 28,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2.5,
+                                    valueColor: AlwaysStoppedAnimation<Color>(
+                                        _primaryGreen),
+                                  ),
+                                ),
+                              )
+                            : Material(
+                                color: Colors.transparent,
+                                child: InkWell(
+                                  onTap: _signup,
+                                  borderRadius: BorderRadius.circular(16),
+                                  child: Ink(
+                                    decoration: BoxDecoration(
+                                      gradient: const LinearGradient(
+                                        colors: [_darkGreen, _primaryGreen],
+                                      ),
+                                      borderRadius: BorderRadius.circular(16),
+                                      boxShadow: [
+                                        BoxShadow(
+                                          color: _primaryGreen.withAlpha(60),
+                                          blurRadius: 14,
+                                          offset: const Offset(0, 6),
+                                        ),
+                                      ],
+                                    ),
+                                    child: const Center(
+                                      child: Row(
+                                        mainAxisAlignment:
+                                            MainAxisAlignment.center,
+                                        children: [
+                                          Icon(Icons.how_to_reg_rounded,
+                                              color: Colors.white, size: 20),
+                                          SizedBox(width: 10),
+                                          Text(
+                                            'Sign Up',
+                                            style: TextStyle(
+                                              color: Colors.white,
+                                              fontSize: 17,
+                                              fontWeight: FontWeight.w700,
+                                              fontFamily: 'Poppins',
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                      ),
+
+                      const SizedBox(height: 16),
+
+                      // Already have account
+                      Center(
+                        child: GestureDetector(
+                          onTap: () => Navigator.pop(context),
+                          child: RichText(
+                            text: TextSpan(
+                              text: 'Already have an account? ',
+                              style: TextStyle(
+                                fontSize: 14,
+                                color: Colors.grey[500],
+                                fontFamily: 'Poppins',
+                              ),
+                              children: const [
+                                TextSpan(
+                                  text: 'Log In',
+                                  style: TextStyle(
+                                    color: _primaryGreen,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+
+                const SizedBox(height: 32),
+              ],
+            ),
           ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildTextField({
+    required TextEditingController controller,
+    required String hint,
+    required IconData icon,
+    bool obscure = false,
+    Widget? suffixIcon,
+  }) {
+    return Container(
+      decoration: BoxDecoration(
+        color: const Color(0xFFF5F7F5),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: const Color(0xFFE8E8E8)),
+      ),
+      child: TextFormField(
+        controller: controller,
+        obscureText: obscure,
+        style: const TextStyle(
+          fontSize: 15,
+          fontFamily: 'Poppins',
+          color: Color(0xFF2D2D2D),
+        ),
+        decoration: InputDecoration(
+          hintText: hint,
+          hintStyle: TextStyle(
+            color: Colors.grey[400],
+            fontSize: 14,
+            fontFamily: 'Poppins',
+          ),
+          prefixIcon: Container(
+            margin: const EdgeInsets.all(10),
+            width: 36,
+            height: 36,
+            decoration: BoxDecoration(
+              color: const Color(0xFFE8F5E9),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Icon(icon, color: _primaryGreen, size: 18),
+          ),
+          suffixIcon: suffixIcon,
+          border: InputBorder.none,
+          contentPadding:
+              const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
         ),
       ),
     );

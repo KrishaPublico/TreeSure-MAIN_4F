@@ -235,67 +235,188 @@ class _ApplicationUploadPageState extends State<ApplicationUploadPage> {
     }
   }
 
-  Widget buildUploadField(Map<String, String> label) {
+  static const Color _primaryGreen = Color(0xFF2E7D32);
+  static const Color _darkGreen = Color(0xFF1B5E20);
+  static const Color _lightGreen = Color(0xFFE8F5E9);
+  static const Color _surfaceColor = Color(0xFFF1F8E9);
+
+  Widget buildUploadField(Map<String, String> label, int index) {
     final title = label["title"]!;
     final description = label["description"] ?? "";
     final file = uploadedFiles[title]!["file"] as PlatformFile?;
     final url = uploadedFiles[title]!["url"] as String?;
     final isUploaded = url != null;
 
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 8),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Expanded(
-            child: Column(
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: isUploaded
+              ? _primaryGreen.withValues(alpha: 0.3)
+              : file != null
+                  ? Colors.orange.withValues(alpha: 0.3)
+                  : Colors.grey.withValues(alpha: 0.15),
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.04),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  title +
-                      (isUploaded
-                          ? " ✅ (Uploaded)"
-                          : file != null
-                              ? " (Ready)"
-                              : ""),
-                  style: TextStyle(
-                    fontSize: 15,
-                    fontWeight: FontWeight.bold,
+                Container(
+                  width: 36,
+                  height: 36,
+                  decoration: BoxDecoration(
                     color: isUploaded
-                        ? Colors.green
+                        ? _primaryGreen.withValues(alpha: 0.1)
                         : file != null
-                            ? Colors.orange
-                            : Colors.black,
+                            ? Colors.orange.withValues(alpha: 0.1)
+                            : _lightGreen,
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Center(
+                    child: isUploaded
+                        ? const Icon(Icons.check_circle_rounded, color: _primaryGreen, size: 20)
+                        : file != null
+                            ? const Icon(Icons.hourglass_bottom_rounded, color: Colors.orange, size: 20)
+                            : Text(
+                                '${index + 1}',
+                                style: const TextStyle(
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.bold,
+                                  color: _primaryGreen,
+                                ),
+                              ),
                   ),
                 ),
-                const SizedBox(height: 4),
-                Text(description,
-                    style: const TextStyle(fontSize: 13, color: Colors.black87)),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        title,
+                        style: const TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                          color: Color(0xFF1A1A1A),
+                        ),
+                      ),
+                      if (description.isNotEmpty) ...[
+                        const SizedBox(height: 4),
+                        Text(
+                          description,
+                          style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            // Status + action row
+            Row(
+              children: [
                 if (isUploaded)
-                  TextButton(
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: _primaryGreen.withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    child: const Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.cloud_done_rounded, color: _primaryGreen, size: 14),
+                        SizedBox(width: 4),
+                        Text('Uploaded', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: _primaryGreen)),
+                      ],
+                    ),
+                  )
+                else if (file != null)
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: Colors.orange.withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(Icons.file_present_rounded, color: Colors.orange, size: 14),
+                        const SizedBox(width: 4),
+                        Text(
+                          file.name.length > 20 ? '${file.name.substring(0, 20)}...' : file.name,
+                          style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: Colors.orange),
+                        ),
+                      ],
+                    ),
+                  ),
+                const Spacer(),
+                if (isUploaded)
+                  TextButton.icon(
                     onPressed: () async {
                       await launchUrl(Uri.parse(url!));
                     },
-                    child: const Text("View Uploaded File"),
+                    icon: const Icon(Icons.visibility_rounded, size: 16),
+                    label: const Text('View', style: TextStyle(fontSize: 12)),
+                    style: TextButton.styleFrom(
+                      foregroundColor: _primaryGreen,
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                    ),
                   ),
+                const SizedBox(width: 4),
+                Material(
+                  color: isUploaded
+                      ? Colors.grey[200]
+                      : file != null
+                          ? Colors.orange
+                          : _primaryGreen,
+                  borderRadius: BorderRadius.circular(12),
+                  child: InkWell(
+                    onTap: isUploaded ? null : () => pickFile(title),
+                    borderRadius: BorderRadius.circular(12),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            isUploaded ? Icons.lock_rounded : Icons.upload_file_rounded,
+                            size: 16,
+                            color: isUploaded ? Colors.grey[500] : Colors.white,
+                          ),
+                          const SizedBox(width: 6),
+                          Text(
+                            isUploaded ? 'Done' : file != null ? 'Change' : 'Select File',
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                              color: isUploaded ? Colors.grey[500] : Colors.white,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
               ],
             ),
-          ),
-          ElevatedButton(
-            onPressed: isUploaded ? null : () => pickFile(title),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: isUploaded
-                  ? Colors.grey
-                  : (file != null ? Colors.orange : Colors.green[700]),
-              foregroundColor: Colors.white,
-            ),
-            child: Text(
-              isUploaded
-                  ? "Uploaded"
-                  : (file != null ? "Change File" : "Select File"),
-            ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -303,71 +424,254 @@ class _ApplicationUploadPageState extends State<ApplicationUploadPage> {
   @override
   Widget build(BuildContext context) {
     final formLabels = formRequirements[widget.type.toLowerCase()] ?? [];
+    final uploadProgress = formLabels.isEmpty
+        ? 0.0
+        : formLabels.where((l) => uploadedFiles[l['title']]?['url'] != null).length / formLabels.length;
 
     return Scaffold(
-      appBar: AppBar(
-        backgroundColor: Colors.green[700],
-        iconTheme: const IconThemeData(color: Colors.white),
-        title: Text(
-          '${widget.type.toUpperCase()} Upload',
-          style: const TextStyle(color: Colors.white),
-        ),
-      ),
+      backgroundColor: _surfaceColor,
       body: formLabels.isEmpty
-          ? const Center(child: Text("No requirements defined for this type."))
-          : SingleChildScrollView(
-              padding: const EdgeInsets.all(16.0),
+          ? Center(
               child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
                 children: [
-                  Text(
-                    "Applicant: ${widget.applicantName}",
-                    style: const TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.green,
+                  Container(
+                    width: 80,
+                    height: 80,
+                    decoration: BoxDecoration(
+                      color: _lightGreen,
+                      borderRadius: BorderRadius.circular(20),
                     ),
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    "User ID: ${widget.applicantId}",
-                    style: const TextStyle(fontSize: 13, color: Colors.black54),
-                  ),
-                  const Divider(thickness: 1, height: 24),
-                  Text(
-                    'Upload Documents for ${widget.type.toUpperCase()}',
-                    style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                    child: const Icon(Icons.info_outline_rounded, color: _primaryGreen, size: 40),
                   ),
                   const SizedBox(height: 16),
-                  for (final label in formLabels) buildUploadField(label),
-                  const SizedBox(height: 32),
-                  Center(
-                    child: SizedBox(
-                      width: double.infinity,
-                      child: ElevatedButton(
-                        onPressed: _isUploading ? null : handleSubmit,
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.green[700],
-                          foregroundColor: Colors.white,
-                          padding: const EdgeInsets.symmetric(vertical: 20),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                        ),
-                        child: _isUploading
-                            ? const CircularProgressIndicator(color: Colors.white)
-                            : const Text(
-                                'Submit (Upload All Files)',
-                                style: TextStyle(
-                                  fontSize: 14,
-                                  fontWeight: FontWeight.bold,
+                  const Text("No requirements defined for this type.",
+                      style: TextStyle(fontSize: 16, color: Colors.grey)),
+                ],
+              ),
+            )
+          : CustomScrollView(
+              slivers: [
+                // Gradient Header
+                SliverToBoxAdapter(
+                  child: Container(
+                    decoration: const BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                        colors: [_darkGreen, _primaryGreen, Color(0xFF43A047)],
+                      ),
+                      borderRadius: BorderRadius.only(
+                        bottomLeft: Radius.circular(28),
+                        bottomRight: Radius.circular(28),
+                      ),
+                    ),
+                    child: SafeArea(
+                      bottom: false,
+                      child: Padding(
+                        padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              children: [
+                                InkWell(
+                                  onTap: () => Navigator.pop(context),
+                                  borderRadius: BorderRadius.circular(12),
+                                  child: Container(
+                                    padding: const EdgeInsets.all(8),
+                                    decoration: BoxDecoration(
+                                      color: Colors.white.withValues(alpha: 0.15),
+                                      borderRadius: BorderRadius.circular(12),
+                                    ),
+                                    child: const Icon(Icons.arrow_back_rounded, color: Colors.white, size: 22),
+                                  ),
                                 ),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        '${widget.type.toUpperCase()} Upload',
+                                        style: const TextStyle(
+                                          fontSize: 20,
+                                          fontWeight: FontWeight.bold,
+                                          color: Colors.white,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 2),
+                                      Text(
+                                        'Document Requirements',
+                                        style: TextStyle(fontSize: 13, color: Colors.white.withValues(alpha: 0.8)),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 20),
+                            // Applicant info card
+                            Container(
+                              padding: const EdgeInsets.all(14),
+                              decoration: BoxDecoration(
+                                color: Colors.white.withValues(alpha: 0.12),
+                                borderRadius: BorderRadius.circular(14),
                               ),
+                              child: Row(
+                                children: [
+                                  Container(
+                                    width: 44,
+                                    height: 44,
+                                    decoration: BoxDecoration(
+                                      color: Colors.white.withValues(alpha: 0.2),
+                                      borderRadius: BorderRadius.circular(12),
+                                    ),
+                                    child: const Icon(Icons.person_rounded, color: Colors.white, size: 24),
+                                  ),
+                                  const SizedBox(width: 12),
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Text(
+                                          widget.applicantName,
+                                          style: const TextStyle(
+                                            fontSize: 15,
+                                            fontWeight: FontWeight.bold,
+                                            color: Colors.white,
+                                          ),
+                                        ),
+                                        const SizedBox(height: 2),
+                                        Text(
+                                          'ID: ${widget.applicantId}',
+                                          style: TextStyle(fontSize: 12, color: Colors.white.withValues(alpha: 0.7)),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            const SizedBox(height: 16),
+                            // Progress bar
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: ClipRRect(
+                                    borderRadius: BorderRadius.circular(4),
+                                    child: LinearProgressIndicator(
+                                      value: uploadProgress,
+                                      backgroundColor: Colors.white.withValues(alpha: 0.2),
+                                      valueColor: const AlwaysStoppedAnimation<Color>(Colors.white),
+                                      minHeight: 6,
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(width: 12),
+                                Text(
+                                  '${(uploadProgress * 100).toInt()}%',
+                                  style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Colors.white),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
                       ),
                     ),
                   ),
-                ],
-              ),
+                ),
+                // Body content
+                SliverPadding(
+                  padding: const EdgeInsets.all(16),
+                  sliver: SliverList(
+                    delegate: SliverChildListDelegate([
+                      // Section header
+                      Row(
+                        children: [
+                          Container(
+                            width: 4,
+                            height: 20,
+                            decoration: BoxDecoration(
+                              color: _primaryGreen,
+                              borderRadius: BorderRadius.circular(2),
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                          const Text(
+                            'Required Documents',
+                            style: TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.bold,
+                              color: Color(0xFF1A1A1A),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: _lightGreen,
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                            child: Text(
+                              '${formLabels.length}',
+                              style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: _primaryGreen),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 16),
+                      for (int i = 0; i < formLabels.length; i++) buildUploadField(formLabels[i], i),
+                      const SizedBox(height: 24),
+                      // Submit button
+                      Container(
+                        width: double.infinity,
+                        height: 56,
+                        decoration: BoxDecoration(
+                          gradient: const LinearGradient(
+                            colors: [_darkGreen, _primaryGreen],
+                          ),
+                          borderRadius: BorderRadius.circular(16),
+                          boxShadow: [
+                            BoxShadow(
+                              color: _primaryGreen.withValues(alpha: 0.3),
+                              blurRadius: 12,
+                              offset: const Offset(0, 4),
+                            ),
+                          ],
+                        ),
+                        child: Material(
+                          color: Colors.transparent,
+                          child: InkWell(
+                            onTap: _isUploading ? null : handleSubmit,
+                            borderRadius: BorderRadius.circular(16),
+                            child: Center(
+                              child: _isUploading
+                                  ? const SizedBox(
+                                      width: 24,
+                                      height: 24,
+                                      child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2.5),
+                                    )
+                                  : const Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Icon(Icons.cloud_upload_rounded, color: Colors.white, size: 20),
+                                        SizedBox(width: 10),
+                                        Text(
+                                          'Submit All Documents',
+                                          style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white),
+                                        ),
+                                      ],
+                                    ),
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 24),
+                    ]),
+                  ),
+                ),
+              ],
             ),
     );
   }

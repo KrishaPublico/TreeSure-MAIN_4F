@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 import 'dart:ui';
@@ -62,25 +63,40 @@ class TreeService {
   }) async {
     try {
       final qrData = {
+        "format": "treesure.v2",
+        "inventory_doc_id": treeId,
         "tree_id": treeId,
-        "tree_no": treeData["tree_no"],
-        "specie": treeData["specie"],
-        "latitude": treeData["latitude"],
-        "longitude": treeData["longitude"],
-        "volume": treeData["volume"],
       };
 
       // Generate QR as image data
       final qrPainter = QrPainter(
-        data: qrData.toString(),
+        data: jsonEncode(qrData),
         version: QrVersions.auto,
+        errorCorrectionLevel: QrErrorCorrectLevel.H,
         color: const Color(0xFF000000),
         emptyColor: const Color(0xFFFFFFFF),
+        gapless: false,
       );
 
-      final picData =
-          await qrPainter.toImageData(300, format: ImageByteFormat.png);
-      final Uint8List qrBytes = picData!.buffer.asUint8List();
+      // Render QR with quiet zone (white padding) so scanners can detect it
+      const double qrSize = 504;
+      const double padding = 48;
+      const double totalSize = qrSize + padding * 2; // 600
+
+      final recorder = PictureRecorder();
+      final canvas = Canvas(recorder);
+      canvas.drawRect(
+        const Rect.fromLTWH(0, 0, totalSize, totalSize),
+        Paint()..color = const Color(0xFFFFFFFF),
+      );
+      canvas.translate(padding, padding);
+      qrPainter.paint(canvas, const Size(qrSize, qrSize));
+
+      final picture = recorder.endRecording();
+      final img = await picture.toImage(totalSize.toInt(), totalSize.toInt());
+      final byteData = await img.toByteData(format: ImageByteFormat.png);
+      final Uint8List qrBytes = byteData!.buffer.asUint8List();
+      img.dispose();
 
       // Save temporarily
       final tempDir = await getTemporaryDirectory();

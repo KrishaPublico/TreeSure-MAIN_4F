@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
+import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
@@ -71,19 +72,85 @@ class _SpltpRegisterTreesPageState extends State<SpltpRegisterTreesPage> {
   String? treeStatus = 'Not Yet'; // ✅ Tree cutting status
   bool isLoadingTrees = false;
 
+  // Theme colors
+  static const Color _primaryGreen = Color(0xFF2E7D32);
+  static const Color _darkGreen = Color(0xFF1B5E20);
+  static const Color _lightGreen = Color(0xFFE8F5E9);
+  static const Color _surfaceColor = Color(0xFFF1F8E9);
+
   /// ✅ Show notification dialog
   void _showDialog(String title, String message) {
-    showDialog(
+    final isError = title.toLowerCase().contains('error') || message.contains('❌');
+    final isSuccess = title.toLowerCase().contains('success') || message.contains('✅');
+    final icon = isError
+        ? Icons.error_outline_rounded
+        : isSuccess
+            ? Icons.check_circle_outline_rounded
+            : Icons.info_outline_rounded;
+    final iconColor = isError
+        ? Colors.red[600]!
+        : isSuccess
+            ? _primaryGreen
+            : Colors.blue[600]!;
+
+    showModalBottomSheet(
       context: context,
-      builder: (BuildContext dialogContext) => AlertDialog(
-        title: Text(title),
-        content: Text(message),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(dialogContext).pop(),
-            child: const Text('OK'),
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => Container(
+        margin: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(20),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: Colors.grey[300],
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+              const SizedBox(height: 20),
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: iconColor.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                child: Icon(icon, color: iconColor, size: 32),
+              ),
+              const SizedBox(height: 16),
+              Text(title,
+                style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: _darkGreen)),
+              const SizedBox(height: 8),
+              Text(
+                message.replaceAll(RegExp(r'[✅❌⚠️📍⏳🌳]'), '').trim(),
+                textAlign: TextAlign.center,
+                style: TextStyle(fontSize: 14, color: Colors.grey[600]),
+              ),
+              const SizedBox(height: 20),
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton(
+                  onPressed: () => Navigator.pop(ctx),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: _primaryGreen,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    elevation: 0,
+                  ),
+                  child: const Text('OK', style: TextStyle(fontWeight: FontWeight.w600)),
+                ),
+              ),
+            ],
           ),
-        ],
+        ),
       ),
     );
   }
@@ -385,34 +452,43 @@ Timestamp: ${treeData['timestamp'] != null ? (treeData['timestamp'] as Timestamp
   Future<String?> _generateAndUploadQr(
       String treeId, Map<String, dynamic> data) async {
     try {
+      // Only encode essential lookup fields to keep QR code scannable.
+      // Full tree data is fetched from Firestore using these keys.
       final qrPayload = {
         'format': 'treesure.v2',
         'inventory_doc_id': treeId,
         'appointment_id': data['appointment_id'],
         'tree_id': data['tree_id'],
-        'tree_no': data['tree_no'],
-        'tree_status': data['tree_status'] ?? 'Not Yet Ready',
-        'specie': data['specie'],
-        'diameter': data['diameter'],
-        'height': data['height'],
-        'volume': data['volume'],
-        'latitude': data['latitude'],
-        'longitude': data['longitude'],
-        'forester_id': data['forester_id'],
-        'forester_name': data['forester_name'],
-        'photo_url': data['photo_url'] ?? '',
-        'timestamp': data['timestamp'],
-        'generated_at': DateTime.now().toIso8601String(),
       };
 
       final qrPainter = QrPainter(
         data: jsonEncode(qrPayload),
         version: QrVersions.auto,
-        gapless: true,
+        errorCorrectionLevel: QrErrorCorrectLevel.H,
+        color: const Color(0xFF000000),
+        emptyColor: const Color(0xFFFFFFFF),
+        gapless: false,
       );
 
-      final picData = await qrPainter.toImageData(300);
-      final Uint8List bytes = picData!.buffer.asUint8List();
+      // Render QR with quiet zone (white padding) so scanners can detect it
+      const double qrSize = 504;
+      const double padding = 48;
+      const double totalSize = qrSize + padding * 2; // 600
+
+      final recorder = ui.PictureRecorder();
+      final canvas = Canvas(recorder);
+      canvas.drawRect(
+        const Rect.fromLTWH(0, 0, totalSize, totalSize),
+        Paint()..color = const Color(0xFFFFFFFF),
+      );
+      canvas.translate(padding, padding);
+      qrPainter.paint(canvas, const Size(qrSize, qrSize));
+
+      final picture = recorder.endRecording();
+      final img = await picture.toImage(totalSize.toInt(), totalSize.toInt());
+      final byteData = await img.toByteData(format: ui.ImageByteFormat.png);
+      final Uint8List bytes = byteData!.buffer.asUint8List();
+      img.dispose();
 
       final ref =
           FirebaseStorage.instance.ref().child('tree_qrcodes/$treeId.png');
@@ -730,40 +806,152 @@ Timestamp: ${treeData['timestamp'] != null ? (treeData['timestamp'] as Timestamp
       }
     }
 
-    showDialog(
+    final summaryIcons = <String, IconData>{
+      "Forester Name": Icons.person_rounded,
+      "Specie": Icons.eco_rounded,
+      "Diameter (cm)": Icons.straighten_rounded,
+      "Height (m)": Icons.height_rounded,
+      "Volume (CU m)": Icons.inventory_2_rounded,
+      "Latitude": Icons.explore_rounded,
+      "Longitude": Icons.explore_rounded,
+      "Tree Status": Icons.flag_rounded,
+    };
+
+    showModalBottomSheet(
       context: context,
-      builder: (BuildContext dialogContext) => AlertDialog(
-        title: const Text("🌳 Tree Data Summary"),
-        content: SingleChildScrollView(
-          child: Column(
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => DraggableScrollableSheet(
+        initialChildSize: 0.75,
+        maxChildSize: 0.95,
+        minChildSize: 0.5,
+        builder: (_, scrollController) => Container(
+          decoration: const BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+          ),
+          child: ListView(
+            controller: scrollController,
+            padding: const EdgeInsets.all(24),
             children: [
-              for (var entry in submittedData.entries)
-                ListTile(
-                  title: Text(entry.key),
-                  subtitle: Text(entry.value.toString()),
+              Center(
+                child: Container(width: 40, height: 4,
+                  decoration: BoxDecoration(color: Colors.grey[300], borderRadius: BorderRadius.circular(2))),
+              ),
+              const SizedBox(height: 20),
+              Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(color: _lightGreen, borderRadius: BorderRadius.circular(14)),
+                    child: const Icon(Icons.park_rounded, color: _primaryGreen, size: 28),
+                  ),
+                  const SizedBox(width: 14),
+                  const Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text('Tree Data Summary',
+                          style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: _darkGreen)),
+                        Text('Review submitted tree information',
+                          style: TextStyle(fontSize: 13, color: Colors.grey)),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 24),
+              ...submittedData.entries.map((entry) => Padding(
+                padding: const EdgeInsets.only(bottom: 12),
+                child: Container(
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(color: _surfaceColor, borderRadius: BorderRadius.circular(14)),
+                  child: Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                          color: _primaryGreen.withOpacity(0.1),
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: Icon(summaryIcons[entry.key] ?? Icons.info_rounded, color: _primaryGreen, size: 20),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(entry.key, style: TextStyle(fontSize: 12, color: Colors.grey[600], fontWeight: FontWeight.w500)),
+                            const SizedBox(height: 2),
+                            Text(
+                              entry.value.toString().isEmpty ? 'N/A' : entry.value.toString(),
+                              style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: _darkGreen),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
-              const Divider(),
-              const Text("Photo Evidence",
-                  style: TextStyle(fontWeight: FontWeight.bold)),
-              if (photoUrl != null && photoUrl.isNotEmpty)
-                Image.network(photoUrl, height: 200, fit: BoxFit.cover)
-              else
-                const Text("No photo available"),
-              const SizedBox(height: 10),
-              const Text("QR Code",
-                  style: TextStyle(fontWeight: FontWeight.bold)),
-              if (localQrUrl != null && localQrUrl.isNotEmpty)
-                Image.network(localQrUrl, height: 200, fit: BoxFit.cover)
-              else
-                const Text("No QR available"),
+              )),
+              const SizedBox(height: 16),
+              _buildMediaSection('Photo Evidence', photoUrl),
+              const SizedBox(height: 12),
+              _buildMediaSection('QR Code', localQrUrl),
+              const SizedBox(height: 24),
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton(
+                  onPressed: () => Navigator.pop(ctx),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: _primaryGreen,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                    elevation: 0,
+                  ),
+                  child: const Text('Done', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 16)),
+                ),
+              ),
             ],
           ),
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(dialogContext).pop(),
-            child: const Text("Close"),
-          ),
+      ),
+    );
+  }
+
+  Widget _buildMediaSection(String title, String? url) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: Colors.grey[200]!),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(title, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14, color: _darkGreen)),
+          const SizedBox(height: 12),
+          if (url != null && url.isNotEmpty)
+            ClipRRect(
+              borderRadius: BorderRadius.circular(12),
+              child: Image.network(url, height: 200, width: double.infinity, fit: BoxFit.cover),
+            )
+          else
+            Container(
+              height: 100,
+              width: double.infinity,
+              decoration: BoxDecoration(color: _surfaceColor, borderRadius: BorderRadius.circular(12)),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(Icons.image_not_supported_rounded, color: Colors.grey[400], size: 32),
+                  const SizedBox(height: 8),
+                  Text('Not available', style: TextStyle(color: Colors.grey[500], fontSize: 13)),
+                ],
+              ),
+            ),
         ],
       ),
     );
@@ -772,67 +960,76 @@ Timestamp: ${treeData['timestamp'] != null ? (treeData['timestamp'] as Timestamp
   Widget _buildMapView() {
     return Column(
       children: [
-        // Location status header
         Container(
           padding: const EdgeInsets.all(16),
-          color: Colors.grey[100],
+          margin: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(16),
+            boxShadow: [
+              BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 10, offset: const Offset(0, 2)),
+            ],
+          ),
           child: Row(
             children: [
-              Icon(
-                Icons.location_on,
-                color: currentLocation != null ? Colors.green : Colors.red,
+              Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: currentLocation != null ? _lightGreen : Colors.red[50],
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Icon(
+                  Icons.location_on_rounded,
+                  color: currentLocation != null ? _primaryGreen : Colors.red,
+                  size: 22,
+                ),
               ),
-              const SizedBox(width: 8),
+              const SizedBox(width: 12),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
                       currentLocation != null
-                          ? "Current Location: ${currentLocation!.latitude.toStringAsFixed(4)}, ${currentLocation!.longitude.toStringAsFixed(4)}"
+                          ? "${currentLocation!.latitude.toStringAsFixed(4)}, ${currentLocation!.longitude.toStringAsFixed(4)}"
                           : "Location not available",
-                      style: const TextStyle(fontWeight: FontWeight.bold),
+                      style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
                     ),
                     if (scannedTreeLocation != null)
                       Text(
-                        "Tree Location: ${scannedTreeLocation!.latitude.toStringAsFixed(4)}, ${scannedTreeLocation!.longitude.toStringAsFixed(4)}",
-                        style: const TextStyle(fontSize: 12),
+                        "Tree: ${scannedTreeLocation!.latitude.toStringAsFixed(4)}, ${scannedTreeLocation!.longitude.toStringAsFixed(4)}",
+                        style: TextStyle(fontSize: 12, color: Colors.grey[600]),
                       ),
                   ],
                 ),
               ),
               if (isLoadingLocation)
-                const SizedBox(
-                  width: 16,
-                  height: 16,
-                  child: CircularProgressIndicator(strokeWidth: 2),
-                ),
+                const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: _primaryGreen)),
             ],
           ),
         ),
-        // Map
         Expanded(
-          child: _buildMap(),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(16),
+              child: _buildMap(),
+            ),
+          ),
         ),
-        // Action buttons
-        Container(
+        Padding(
           padding: const EdgeInsets.all(16),
           child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
             children: [
-              ElevatedButton.icon(
-                icon: const Icon(Icons.refresh),
-                label: const Text("Refresh Location"),
-                onPressed: _getCurrentLocation,
+              Expanded(
+                child: _buildGradientButton('Refresh', Icons.refresh_rounded, onPressed: _getCurrentLocation),
               ),
-              if (currentLocation != null && scannedTreeLocation != null)
-                ElevatedButton.icon(
-                  icon: const Icon(Icons.directions),
-                  label: const Text("Get Directions"),
-                  onPressed: () {
-                    // Implement direction logic if needed
-                  },
+              if (currentLocation != null && scannedTreeLocation != null) ...[
+                const SizedBox(width: 12),
+                Expanded(
+                  child: _buildOutlinedButton('Directions', Icons.directions_rounded, onPressed: () {}),
                 ),
+              ],
             ],
           ),
         ),
@@ -941,17 +1138,14 @@ Timestamp: ${treeData['timestamp'] != null ? (treeData['timestamp'] as Timestamp
   // ✅ UI
   @override
   Widget build(BuildContext context) {
-    // If map view is shown, display full screen map
     if (showMapView) {
       return Scaffold(
-        appBar: AppBar(
-          title: const Text("Tree Location Map"),
-          backgroundColor: Colors.green[800],
-          foregroundColor: Colors.white,
-          leading: IconButton(
-            icon: const Icon(Icons.arrow_back),
-            onPressed: _hideMapView,
-          ),
+        backgroundColor: _surfaceColor,
+        body: Column(
+          children: [
+            _buildGradientHeader('Tree Location Map'),
+            Expanded(child: _buildMapView()),
+          ],
         ),
       );
     }
@@ -959,223 +1153,458 @@ Timestamp: ${treeData['timestamp'] != null ? (treeData['timestamp'] as Timestamp
     return DefaultTabController(
       length: 3,
       child: Scaffold(
-        appBar: AppBar(
-          title: const Text("Tree Inventory - SPLTP"),
-          backgroundColor: Colors.green[800],
-          foregroundColor: Colors.white,
-        ),
-        body: TabBarView(
+        backgroundColor: _surfaceColor,
+        body: Column(
           children: [
-            // Register Tree Tab
-            Padding(
-              padding: const EdgeInsets.all(16.0),
-              child: ListView(
-                children: [
-                  Text("Forester: ${widget.foresterName}",
-                      style: const TextStyle(
-                          fontWeight: FontWeight.bold, fontSize: 16)),
-                  const SizedBox(height: 20),
-
-                  // ✅ Tree Selection Dropdown
-                  const Text(
-                    'Select Tree (Optional)',
-                    style: TextStyle(
-                      fontWeight: FontWeight.w600,
-                      color: Colors.black87,
-                      fontSize: 14,
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  const Text(
-                    'Choose from existing trees or leave blank to register a new tree',
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: Colors.grey,
-                      fontStyle: FontStyle.italic,
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  isLoadingTrees
-                      ? const Padding(
-                          padding: EdgeInsets.all(16.0),
-                          child: CircularProgressIndicator(color: Colors.green),
-                        )
-                      : Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 12),
-                          decoration: BoxDecoration(
-                            border: Border.all(color: Colors.grey[400]!),
-                            borderRadius: BorderRadius.circular(10),
-                          ),
-                          child: DropdownButton<String>(
-                            isExpanded: true,
-                            value: selectedDropdownId,
-                            hint: const Text(
-                                'Choose a tree or skip to register new...'),
-                            items: spltpTrees.map((tree) {
-                              final uniqueId = tree['docId'] ?? 'Unknown';
-                              final treeId = tree['treeDocId'] ??
-                                  tree['tree_id'] ??
-                                  'Unknown';
-                              final specie = tree['specie'] ?? 'N/A';
-                              return DropdownMenuItem<String>(
-                                value: uniqueId,
-                                child: Text('$treeId - $specie'),
-                              );
-                            }).toList(),
-                            onChanged: _onTreeSelected,
-                            underline: const SizedBox(),
-                          ),
-                        ),
-                  if (selectedDropdownId != null)
+            // Modern gradient header
+            Container(
+              decoration: const BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [Color(0xFF1B5E20), Color(0xFF2E7D32), Color(0xFF43A047)],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
+                borderRadius: BorderRadius.only(
+                  bottomLeft: Radius.circular(28),
+                  bottomRight: Radius.circular(28),
+                ),
+              ),
+              child: SafeArea(
+                bottom: false,
+                child: Column(
+                  children: [
                     Padding(
-                      padding: const EdgeInsets.only(top: 8.0),
-                      child: TextButton.icon(
-                        icon: const Icon(Icons.clear, size: 16),
-                        label:
-                            const Text('Clear Selection & Register New Tree'),
-                        onPressed: () {
-                          setState(() {
-                            selectedDropdownId = null;
-                            selectedTreeId = null;
-                            selectedTreeTaggingAppointmentId = null;
-                            specieController.clear();
-                            diameterController.clear();
-                            heightController.clear();
-                            volumeController.clear();
-                            latController.clear();
-                            longController.clear();
-                            scannedTreeLocation = null;
-                          });
-                        },
-                        style: TextButton.styleFrom(
-                          foregroundColor: Colors.orange[700],
+                      padding: const EdgeInsets.fromLTRB(8, 8, 20, 0),
+                      child: Row(
+                        children: [
+                          IconButton(
+                            icon: const Icon(Icons.arrow_back_rounded, color: Colors.white),
+                            onPressed: () => Navigator.pop(context),
+                          ),
+                          const SizedBox(width: 4),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                const Text('Tree Inventory - SPLTP',
+                                  style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Colors.white)),
+                                const SizedBox(height: 4),
+                                Text('Forester: ${widget.foresterName}',
+                                  style: TextStyle(fontSize: 13, color: Colors.white.withOpacity(0.85))),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    // Tab bar
+                    Container(
+                      margin: const EdgeInsets.symmetric(horizontal: 16),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withOpacity(0.15),
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+                      child: TabBar(
+                        indicatorSize: TabBarIndicatorSize.tab,
+                        indicator: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(14),
                         ),
+                        labelColor: _darkGreen,
+                        unselectedLabelColor: Colors.white.withOpacity(0.8),
+                        labelStyle: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
+                        unselectedLabelStyle: const TextStyle(fontWeight: FontWeight.w500, fontSize: 13),
+                        dividerHeight: 0,
+                        tabs: const [
+                          Tab(text: 'Register'),
+                          Tab(text: 'QR Scan'),
+                          Tab(text: 'Map'),
+                        ],
                       ),
                     ),
-                  const SizedBox(height: 20),
+                    const SizedBox(height: 16),
+                  ],
+                ),
+              ),
+            ),
 
-                  buildTextField("Specie", specieController,
-                      focusNode: specieFocus),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: buildTextField(
-                            "Diameter (cm)", diameterController,
-                            keyboardType: TextInputType.number),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: buildTextField("Height (m)", heightController,
-                            keyboardType: TextInputType.number),
-                      ),
-                    ],
-                  ),
-                  buildTextField("Volume (CU m)", volumeController,
-                      enabled: false),
-                  const SizedBox(height: 12),
-
-                  // ✅ Tree Status Dropdown
-                  const Text(
-                    'Tree Status',
-                    style: TextStyle(
-                      fontWeight: FontWeight.w600,
-                      color: Colors.black87,
-                      fontSize: 14,
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 12),
-                    decoration: BoxDecoration(
-                      border: Border.all(color: Colors.grey[400]!),
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    child: DropdownButton<String>(
-                      isExpanded: true,
-                      value: treeStatus,
-                      items: const [
-                        DropdownMenuItem(
-                          value: 'Ready for Cutting',
-                          child: Text('Ready for Cutting'),
-                        ),
-                        DropdownMenuItem(
-                          value: 'Not Yet',
-                          child: Text('Not Yet'),
-                        ),
-                      ],
-                      onChanged: (value) {
-                        setState(() {
-                          treeStatus = value;
-                        });
-                      },
-                      underline: const SizedBox(),
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-
-                  Row(
-                    children: [
-                      Expanded(
-                        child: buildTextField("Latitude", latController,
-                            enabled: false, keyboardType: TextInputType.number),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: buildTextField("Longitude", longController,
-                            enabled: false, keyboardType: TextInputType.number),
-                      ),
-                    ],
-                  ),
-                  TextButton.icon(
-                    icon: const Icon(Icons.my_location, color: Colors.green),
-                    label: const Text("Get Current Location"),
-                    onPressed: _getLocation,
-                  ),
-                  const SizedBox(height: 20),
-                  const Text("Photo Evidence",
-                      style: TextStyle(fontWeight: FontWeight.bold)),
-                  if (imageFile != null)
-                    kIsWeb
-                        ? Image.network(imageFile!.path, height: 200)
-                        : Image.file(File(imageFile!.path), height: 200)
-                  else
-                    const Text("No image selected."),
-                  TextButton.icon(
-                    icon: const Icon(Icons.upload),
-                    label: const Text("Pick Photo"),
-                    onPressed: pickImage,
-                  ),
-                  const SizedBox(height: 20),
-                  ElevatedButton(
-                    onPressed: handleSubmit,
-                    style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.green[800],
-                        padding: const EdgeInsets.symmetric(vertical: 16)),
-                    child: const Text("Submit",
-                        style: TextStyle(color: Colors.white, fontSize: 16)),
-                  ),
-                  const SizedBox(height: 10),
-                  ElevatedButton(
-                    onPressed: viewSummaryDialog,
-                    style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.green[800],
-                        padding: const EdgeInsets.symmetric(vertical: 16)),
-                    child: const Text("View Summary",
-                        style: TextStyle(color: Colors.white, fontSize: 16)),
-                  ),
-                  const SizedBox(height: 15),
-                  ElevatedButton(
-                    onPressed: _completeTreeRegistration,
-                    style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.orange[700],
-                        padding: const EdgeInsets.symmetric(vertical: 16)),
-                    child: const Text("Tree Registration Completed",
-                        style: TextStyle(color: Colors.white, fontSize: 16)),
-                  ),
+            // Tab content
+            Expanded(
+              child: TabBarView(
+                children: [
+                  // Register Tree Tab
+                  _buildRegisterTab(),
+                  // QR Scanner Tab (placeholder since no QR scanner tab body exists)
+                  _buildQrPlaceholderTab(),
+                  // Map View Tab
+                  _buildMapView(),
                 ],
               ),
             ),
           ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildGradientHeader(String title) {
+    return Container(
+      decoration: const BoxDecoration(
+        gradient: LinearGradient(
+          colors: [Color(0xFF1B5E20), Color(0xFF2E7D32), Color(0xFF43A047)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.only(
+          bottomLeft: Radius.circular(28),
+          bottomRight: Radius.circular(28),
+        ),
+      ),
+      child: SafeArea(
+        bottom: false,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(8, 8, 20, 24),
+          child: Row(
+            children: [
+              IconButton(
+                icon: const Icon(Icons.arrow_back_rounded, color: Colors.white),
+                onPressed: _hideMapView,
+              ),
+              const SizedBox(width: 4),
+              Text(title, style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Colors.white)),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildQrPlaceholderTab() {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Container(
+            padding: const EdgeInsets.all(32),
+            decoration: BoxDecoration(
+              color: _lightGreen,
+              borderRadius: BorderRadius.circular(28),
+            ),
+            child: const Icon(Icons.qr_code_scanner_rounded, color: _primaryGreen, size: 64),
+          ),
+          const SizedBox(height: 24),
+          const Text('QR Scanner', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: _darkGreen)),
+          const SizedBox(height: 8),
+          Text('Use the QR scanner to scan tree tags', style: TextStyle(fontSize: 14, color: Colors.grey[600])),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildRegisterTab() {
+    return ListView(
+      padding: const EdgeInsets.all(20),
+      children: [
+        // Tree Selection Dropdown
+        _buildSectionHeader('Select Tree (Optional)', Icons.list_alt_rounded),
+        const SizedBox(height: 4),
+        Text('Choose from existing trees or leave blank to register new',
+          style: TextStyle(fontSize: 12, color: Colors.grey[500], fontStyle: FontStyle.italic)),
+        const SizedBox(height: 12),
+        isLoadingTrees
+            ? const Center(child: Padding(padding: EdgeInsets.all(20), child: CircularProgressIndicator(color: _primaryGreen)))
+            : Container(
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(14),
+                  boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 10, offset: const Offset(0, 2))],
+                ),
+                child: DropdownButtonFormField<String>(
+                  isExpanded: true,
+                  value: selectedDropdownId,
+                  decoration: InputDecoration(
+                    hintText: 'Choose a tree or skip to register new...',
+                    hintStyle: TextStyle(color: Colors.grey[400], fontSize: 14),
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: BorderSide.none),
+                    filled: true,
+                    fillColor: Colors.white,
+                    prefixIcon: Container(
+                      margin: const EdgeInsets.all(8),
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(color: _lightGreen, borderRadius: BorderRadius.circular(10)),
+                      child: const Icon(Icons.park_rounded, color: _primaryGreen, size: 20),
+                    ),
+                  ),
+                  items: spltpTrees.map((tree) {
+                    final uniqueId = tree['docId'] ?? 'Unknown';
+                    final treeId = tree['treeDocId'] ?? tree['tree_id'] ?? 'Unknown';
+                    final specie = tree['specie'] ?? 'N/A';
+                    return DropdownMenuItem<String>(value: uniqueId, child: Text('$treeId - $specie'));
+                  }).toList(),
+                  onChanged: _onTreeSelected,
+                ),
+              ),
+        if (selectedDropdownId != null)
+          Padding(
+            padding: const EdgeInsets.only(top: 8.0),
+            child: InkWell(
+              onTap: () {
+                setState(() {
+                  selectedDropdownId = null;
+                  selectedTreeId = null;
+                  selectedTreeTaggingAppointmentId = null;
+                  specieController.clear();
+                  diameterController.clear();
+                  heightController.clear();
+                  volumeController.clear();
+                  latController.clear();
+                  longController.clear();
+                  scannedTreeLocation = null;
+                });
+              },
+              borderRadius: BorderRadius.circular(10),
+              child: Container(
+                padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
+                decoration: BoxDecoration(
+                  color: Colors.orange[50],
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.clear_rounded, size: 16, color: Colors.orange[700]),
+                    const SizedBox(width: 6),
+                    Text('Clear Selection', style: TextStyle(color: Colors.orange[700], fontWeight: FontWeight.w600, fontSize: 13)),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        const SizedBox(height: 24),
+
+        // Tree Details
+        _buildSectionHeader('Tree Details', Icons.eco_rounded),
+        const SizedBox(height: 12),
+        _buildModernTextField('Specie', specieController, icon: Icons.eco_rounded, focusNode: specieFocus),
+        Row(
+          children: [
+            Expanded(child: _buildModernTextField('Diameter (cm)', diameterController, icon: Icons.straighten_rounded, keyboardType: TextInputType.number)),
+            const SizedBox(width: 12),
+            Expanded(child: _buildModernTextField('Height (m)', heightController, icon: Icons.height_rounded, keyboardType: TextInputType.number)),
+          ],
+        ),
+        _buildModernTextField('Volume (CU m)', volumeController, icon: Icons.inventory_2_rounded, enabled: false),
+        const SizedBox(height: 12),
+
+        // Tree Status
+        _buildSectionHeader('Tree Status', Icons.flag_rounded),
+        const SizedBox(height: 12),
+        Container(
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(14),
+            boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 10, offset: const Offset(0, 2))],
+          ),
+          child: DropdownButtonFormField<String>(
+            value: treeStatus,
+            decoration: InputDecoration(
+              border: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: BorderSide.none),
+              filled: true,
+              fillColor: Colors.white,
+              prefixIcon: Container(
+                margin: const EdgeInsets.all(8),
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(color: _lightGreen, borderRadius: BorderRadius.circular(10)),
+                child: const Icon(Icons.flag_rounded, color: _primaryGreen, size: 20),
+              ),
+            ),
+            items: const [
+              DropdownMenuItem(value: 'Ready for Cutting', child: Text('Ready for Cutting')),
+              DropdownMenuItem(value: 'Not Yet', child: Text('Not Yet')),
+            ],
+            onChanged: (value) => setState(() => treeStatus = value),
+          ),
+        ),
+        const SizedBox(height: 20),
+
+        // Location
+        _buildSectionHeader('Location', Icons.location_on_rounded),
+        const SizedBox(height: 12),
+        Row(
+          children: [
+            Expanded(child: _buildModernTextField('Latitude', latController, icon: Icons.explore_rounded, enabled: false)),
+            const SizedBox(width: 12),
+            Expanded(child: _buildModernTextField('Longitude', longController, icon: Icons.explore_rounded, enabled: false)),
+          ],
+        ),
+        InkWell(
+          onTap: _getLocation,
+          borderRadius: BorderRadius.circular(12),
+          child: Container(
+            padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+            decoration: BoxDecoration(color: _lightGreen, borderRadius: BorderRadius.circular(12)),
+            child: const Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(Icons.my_location_rounded, color: _primaryGreen, size: 20),
+                SizedBox(width: 8),
+                Text('Get Current Location', style: TextStyle(color: _primaryGreen, fontWeight: FontWeight.w600, fontSize: 14)),
+              ],
+            ),
+          ),
+        ),
+        const SizedBox(height: 20),
+
+        // Photo section
+        _buildSectionHeader('Photo Evidence', Icons.camera_alt_rounded),
+        const SizedBox(height: 12),
+        GestureDetector(
+          onTap: pickImage,
+          child: Container(
+            height: imageFile != null ? 220 : 140,
+            width: double.infinity,
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(
+                color: imageFile != null ? _primaryGreen : Colors.grey[300]!,
+                width: imageFile != null ? 2 : 1,
+              ),
+              boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 10, offset: const Offset(0, 2))],
+            ),
+            child: imageFile != null
+                ? ClipRRect(
+                    borderRadius: BorderRadius.circular(14),
+                    child: kIsWeb
+                        ? Image.network(imageFile!.path, fit: BoxFit.cover)
+                        : Image.file(File(imageFile!.path), fit: BoxFit.cover),
+                  )
+                : Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(16),
+                        decoration: BoxDecoration(color: _lightGreen, borderRadius: BorderRadius.circular(16)),
+                        child: const Icon(Icons.add_a_photo_rounded, color: _primaryGreen, size: 32),
+                      ),
+                      const SizedBox(height: 12),
+                      Text('Tap to add photo', style: TextStyle(color: Colors.grey[600], fontSize: 14, fontWeight: FontWeight.w500)),
+                    ],
+                  ),
+          ),
+        ),
+        const SizedBox(height: 28),
+
+        // Action buttons
+        _buildGradientButton('Submit Tree Data', Icons.check_circle_rounded, onPressed: handleSubmit),
+        const SizedBox(height: 12),
+        _buildOutlinedButton('View Summary', Icons.summarize_rounded, onPressed: viewSummaryDialog),
+        const SizedBox(height: 12),
+        _buildGradientButton('Tree Registration Completed', Icons.flag_rounded,
+            onPressed: _completeTreeRegistration, colors: [Colors.orange[700]!, Colors.orange[500]!]),
+        const SizedBox(height: 20),
+      ],
+    );
+  }
+
+  Widget _buildSectionHeader(String title, IconData icon) {
+    return Row(
+      children: [
+        Container(
+          padding: const EdgeInsets.all(8),
+          decoration: BoxDecoration(color: _primaryGreen.withOpacity(0.1), borderRadius: BorderRadius.circular(10)),
+          child: Icon(icon, color: _primaryGreen, size: 18),
+        ),
+        const SizedBox(width: 10),
+        Text(title, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: _darkGreen)),
+      ],
+    );
+  }
+
+  Widget _buildModernTextField(
+    String label,
+    TextEditingController controller, {
+    IconData? icon,
+    FocusNode? focusNode,
+    bool enabled = true,
+    TextInputType? keyboardType,
+  }) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Container(
+        decoration: BoxDecoration(
+          color: enabled ? Colors.white : Colors.grey[50],
+          borderRadius: BorderRadius.circular(14),
+          boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 10, offset: const Offset(0, 2))],
+        ),
+        child: TextField(
+          controller: controller,
+          focusNode: focusNode,
+          enabled: enabled,
+          keyboardType: keyboardType,
+          style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w500),
+          decoration: InputDecoration(
+            labelText: label,
+            labelStyle: TextStyle(color: Colors.grey[500], fontSize: 14),
+            border: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: BorderSide.none),
+            focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: const BorderSide(color: _primaryGreen, width: 2)),
+            filled: true,
+            fillColor: enabled ? Colors.white : Colors.grey[50],
+            prefixIcon: icon != null
+                ? Container(
+                    margin: const EdgeInsets.all(8),
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(color: _lightGreen, borderRadius: BorderRadius.circular(10)),
+                    child: Icon(icon, color: _primaryGreen, size: 18),
+                  )
+                : null,
+            contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildGradientButton(String label, IconData icon, {required VoidCallback onPressed, List<Color>? colors}) {
+    final btnColors = colors ?? [_darkGreen, _primaryGreen];
+    return Container(
+      width: double.infinity,
+      decoration: BoxDecoration(
+        gradient: LinearGradient(colors: btnColors),
+        borderRadius: BorderRadius.circular(14),
+        boxShadow: [BoxShadow(color: btnColors.first.withOpacity(0.3), blurRadius: 8, offset: const Offset(0, 4))],
+      ),
+      child: ElevatedButton.icon(
+        onPressed: onPressed,
+        icon: Icon(icon, size: 20),
+        label: Text(label, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
+        style: ElevatedButton.styleFrom(
+          backgroundColor: Colors.transparent,
+          foregroundColor: Colors.white,
+          shadowColor: Colors.transparent,
+          padding: const EdgeInsets.symmetric(vertical: 16),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildOutlinedButton(String label, IconData icon, {required VoidCallback onPressed}) {
+    return Container(
+      width: double.infinity,
+      decoration: BoxDecoration(borderRadius: BorderRadius.circular(14), border: Border.all(color: _primaryGreen, width: 2)),
+      child: ElevatedButton.icon(
+        onPressed: onPressed,
+        icon: Icon(icon, size: 20),
+        label: Text(label, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
+        style: ElevatedButton.styleFrom(
+          backgroundColor: Colors.white,
+          foregroundColor: _primaryGreen,
+          shadowColor: Colors.transparent,
+          padding: const EdgeInsets.symmetric(vertical: 16),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+          elevation: 0,
         ),
       ),
     );
@@ -1188,18 +1617,6 @@ Timestamp: ${treeData['timestamp'] != null ? (treeData['timestamp'] as Timestamp
     bool enabled = true,
     TextInputType? keyboardType,
   }) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 12.0),
-      child: TextField(
-        controller: controller,
-        focusNode: focusNode,
-        enabled: enabled,
-        keyboardType: keyboardType,
-        decoration: InputDecoration(
-          labelText: label,
-          border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
-        ),
-      ),
-    );
+    return _buildModernTextField(label, controller, focusNode: focusNode, enabled: enabled, keyboardType: keyboardType);
   }
 }

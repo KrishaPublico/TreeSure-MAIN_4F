@@ -637,7 +637,12 @@ class _CTPOUploadPageState extends State<CTPOUploadPage> {
     }
   }
 
-  Widget buildUploadField(Map<String, String> label) {
+  static const Color _primaryGreen = Color(0xFF2E7D32);
+  static const Color _darkGreen = Color(0xFF1B5E20);
+  static const Color _lightGreen = Color(0xFFE8F5E9);
+  static const Color _surfaceColor = Color(0xFFF1F8E9);
+
+  Widget buildUploadField(Map<String, String> label, int index) {
   final title = label["title"]!;
   final description = label["description"] ?? "";
   final file = uploadedFiles[title]!["file"] as PlatformFile?;
@@ -645,443 +650,544 @@ class _CTPOUploadPageState extends State<CTPOUploadPage> {
   final fileName = uploadedFiles[title]!["fileName"] as String?;
   final isUploaded = url != null;
 
-  // Get per-document reuploadAllowed flag and comments
   final docData = _documentComments[title];
   final reuploadAllowed = docData?['reuploadAllowed'] as bool? ?? false;
   final hasComments = docData?['message'] != null &&
       (docData?['message'] as String?)?.isNotEmpty == true;
   final comment = docData;
 
-  return Padding(
-    padding: const EdgeInsets.symmetric(vertical: 8),
-    child: Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Title column
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    title,
-                    style: TextStyle(
-                      fontSize: 15,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.black,
+  return Container(
+    margin: const EdgeInsets.only(bottom: 12),
+    decoration: BoxDecoration(
+      color: Colors.white,
+      borderRadius: BorderRadius.circular(16),
+      border: Border.all(
+        color: isUploaded
+            ? _primaryGreen.withValues(alpha: 0.3)
+            : file != null
+                ? Colors.orange.withValues(alpha: 0.3)
+                : Colors.grey.withValues(alpha: 0.15),
+      ),
+      boxShadow: [
+        BoxShadow(
+          color: Colors.black.withValues(alpha: 0.04),
+          blurRadius: 8,
+          offset: const Offset(0, 2),
+        ),
+      ],
+    ),
+    child: Padding(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                width: 36,
+                height: 36,
+                decoration: BoxDecoration(
+                  color: isUploaded
+                      ? _primaryGreen.withValues(alpha: 0.1)
+                      : file != null
+                          ? Colors.orange.withValues(alpha: 0.1)
+                          : _lightGreen,
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Center(
+                  child: isUploaded
+                      ? const Icon(Icons.check_circle_rounded, color: _primaryGreen, size: 20)
+                      : file != null
+                          ? const Icon(Icons.hourglass_bottom_rounded, color: Colors.orange, size: 20)
+                          : Text(
+                              '${index + 1}',
+                              style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: _primaryGreen),
+                            ),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(title, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: Color(0xFF1A1A1A))),
+                    if (description.isNotEmpty) ...[
+                      const SizedBox(height: 4),
+                      Text(description, style: TextStyle(fontSize: 12, color: Colors.grey[600])),
+                    ],
+                    if (fileName != null && fileName.isNotEmpty) ...[
+                      const SizedBox(height: 4),
+                      Text('File: $fileName', style: TextStyle(fontSize: 11, color: Colors.grey[500])),
+                    ],
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              if (isUploaded)
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: _primaryGreen.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: const Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.cloud_done_rounded, color: _primaryGreen, size: 14),
+                      SizedBox(width: 4),
+                      Text('Uploaded', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: _primaryGreen)),
+                    ],
+                  ),
+                )
+              else if (file != null)
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: Colors.orange.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: const Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.file_present_rounded, color: Colors.orange, size: 14),
+                      SizedBox(width: 4),
+                      Text('Ready', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: Colors.orange)),
+                    ],
+                  ),
+                ),
+              const Spacer(),
+              if (isUploaded)
+                TextButton.icon(
+                  onPressed: () {
+                    if (url != null) {
+                      final ext = (fileName ?? url).split('.').last.toLowerCase().split('?').first;
+                      if (ext == 'pdf') {
+                        Navigator.push(context, MaterialPageRoute(builder: (_) => PdfPreviewPage(url: url)));
+                      } else {
+                        launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
+                      }
+                    }
+                  },
+                  icon: const Icon(Icons.visibility_rounded, size: 16),
+                  label: const Text('View', style: TextStyle(fontSize: 12)),
+                  style: TextButton.styleFrom(foregroundColor: _primaryGreen, padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6)),
+                ),
+              const SizedBox(width: 4),
+              Material(
+                color: (isUploaded && !reuploadAllowed)
+                    ? Colors.grey[200]
+                    : isUploaded
+                        ? Colors.orange
+                        : file != null
+                            ? Colors.orange
+                            : _primaryGreen,
+                borderRadius: BorderRadius.circular(12),
+                child: InkWell(
+                  onTap: (isUploaded && !reuploadAllowed) || _isUploading ? null : () => pickFile(title),
+                  borderRadius: BorderRadius.circular(12),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          (isUploaded && !reuploadAllowed) ? Icons.lock_rounded : Icons.upload_file_rounded,
+                          size: 16,
+                          color: (isUploaded && !reuploadAllowed) ? Colors.grey[500] : Colors.white,
+                        ),
+                        const SizedBox(width: 6),
+                        Text(
+                          isUploaded ? (reuploadAllowed ? 'Re-upload' : 'Done') : file != null ? 'Change' : 'Select',
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                            color: (isUploaded && !reuploadAllowed) ? Colors.grey[500] : Colors.white,
+                          ),
+                        ),
+                      ],
                     ),
                   ),
-                  const SizedBox(height: 4),
-                  Text(description,
-                      style: const TextStyle(
-                          fontSize: 13, color: Colors.black87)),
-                  if (fileName != null && fileName.isNotEmpty)
-                    Padding(
-                      padding: const EdgeInsets.only(top: 6),
-                      child: Text(
-                        isUploaded
-                            ? "Uploaded: $fileName"
-                            : "Uploaded: $fileName",
-                        style: TextStyle(
-                            fontSize: 12, color: Colors.grey[700]),
-                      ),
-                    ),
-                  if (isUploaded)
-                    TextButton(
-                      onPressed: () async {
-                        if (url != null) {
-                          final ext = fileName?.split('.').last.toLowerCase() ?? '';
-
-                          if (ext == 'pdf') {
-                            // Preview PDF in-app
-                            Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (_) => PdfPreviewPage(url: url),
-                              ),
-                            );
-                          } else if (ext == 'doc' || ext == 'docx') {
-                            // Open DOC/DOCX in device app
-                            try {
-                              final uri = Uri.parse(url);
-                              if (await canLaunchUrl(uri)) {
-                                await launchUrl(uri,
-                                    mode: LaunchMode.externalApplication);
-                              } else {
-                                if (mounted) {
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                      const SnackBar(
-                                          content: Text(
-                                              "Cannot open this file.")));
-                                }
-                              }
-                            } catch (e) {
-                              if (mounted) {
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                    SnackBar(
-                                        content: Text(
-                                            "Error opening file: $e")));
-                              }
-                            }
-                          } else {
-                            if (mounted) {
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                  const SnackBar(
-                                      content: Text(
-                                          "Preview not supported for this file type.")));
-                            }
-                          }
-                        }
-                      },
-                      child: const Text("View Uploaded File"),
-                    ),
-                ],
+                ),
               ),
-            ),
-
-            ElevatedButton(
-              onPressed: (isUploaded && !reuploadAllowed) || _isUploading
-                  ? null
-                  : () => pickFile(title),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: (isUploaded && !reuploadAllowed)
-                    ? Colors.grey
-                    : (isUploaded ? Colors.orange : Colors.green[700]),
-                foregroundColor: Colors.white,
-              ),
-              child: Text(
-                isUploaded
-                    ? (reuploadAllowed ? "Re-upload" : "Uploaded")
-                    : (file != null ? "Change File" : "Select File"),
-              ),
-            ),
-          ],
-        ),
-
-        // Admin comment section remains the same
-        if (hasComments && comment != null)
-          Padding(
-            padding: const EdgeInsets.only(top: 12),
-            child: Container(
+            ],
+          ),
+          // Admin comment section
+          if (hasComments && comment != null) ...[
+            const SizedBox(height: 12),
+            Container(
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
                 color: Colors.orange[50],
-                border: Border.all(color: Colors.orange, width: 1),
-                borderRadius: BorderRadius.circular(8),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: Colors.orange.withValues(alpha: 0.3)),
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Row(
                     children: [
-                      const Icon(Icons.comment, color: Colors.orange, size: 18),
-                      const SizedBox(width: 8),
-                      Text(
-                        'Admin Comment',
-                        style: TextStyle(
-                          fontSize: 12,
-                          fontWeight: FontWeight.bold,
-                          color: Colors.orange[700],
+                      Container(
+                        padding: const EdgeInsets.all(4),
+                        decoration: BoxDecoration(
+                          color: Colors.orange.withValues(alpha: 0.15),
+                          borderRadius: BorderRadius.circular(6),
                         ),
+                        child: const Icon(Icons.comment_rounded, color: Colors.orange, size: 14),
                       ),
+                      const SizedBox(width: 8),
+                      Text('Admin Comment', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.orange[700])),
                     ],
                   ),
                   const SizedBox(height: 8),
-                  Text(
-                    comment['message'] ?? '',
-                    style:
-                        const TextStyle(fontSize: 13, color: Colors.black87),
-                  ),
+                  Text(comment['message'] ?? '', style: const TextStyle(fontSize: 13, color: Colors.black87)),
                   const SizedBox(height: 4),
                   Text(
                     'From: ${comment['from'] ?? 'Admin'} • ${_formatTimestamp(comment['createdAt'])}',
                     style: TextStyle(fontSize: 11, color: Colors.grey[600]),
                   ),
-                  if (reuploadAllowed)
-                    Padding(
-                      padding: const EdgeInsets.only(top: 8),
-                      child: Container(
-                        padding: const EdgeInsets.all(8),
-                        decoration: BoxDecoration(
-                          color: Colors.green[50],
-                          borderRadius: BorderRadius.circular(4),
-                        ),
-                        child: const Row(
-                          children: [
-                            Icon(Icons.check_circle,
-                                color: Colors.green, size: 16),
-                            SizedBox(width: 8),
-                            Expanded(
-                              child: Text(
-                                'You can re-upload this file',
-                                style: TextStyle(
-                                    fontSize: 12, color: Colors.green),
-                              ),
-                            ),
-                          ],
-                        ),
+                  if (reuploadAllowed) ...[
+                    const SizedBox(height: 8),
+                    Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: _lightGreen,
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: const Row(
+                        children: [
+                          Icon(Icons.check_circle_rounded, color: _primaryGreen, size: 16),
+                          SizedBox(width: 8),
+                          Expanded(child: Text('You can re-upload this file', style: TextStyle(fontSize: 12, color: _primaryGreen))),
+                        ],
                       ),
                     ),
+                  ],
                 ],
               ),
             ),
-          ),
-        const SizedBox(height: 8),
-      ],
+          ],
+        ],
+      ),
     ),
   );
 }
 
   @override
   Widget build(BuildContext context) {
+    final uploadProgress = formLabels.isEmpty
+        ? 0.0
+        : formLabels.where((l) => uploadedFiles[l['title']]?['url'] != null).length / formLabels.length;
+
     return Scaffold(
-      appBar: AppBar(
-        backgroundColor: Colors.green[700],
-        iconTheme: const IconThemeData(color: Colors.white),
-        title: const Text(
-          'CTPO File Upload',
-          style: TextStyle(color: Colors.white),
-        ),
-      ),
+      backgroundColor: _surfaceColor,
       body: _isLoadingSubmissions
-          ? const Center(child: CircularProgressIndicator())
-          : SingleChildScrollView(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const SizedBox(height: 8),
-            // Submission Selector Section
-            Container(
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: Colors.green[50],
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: Colors.green[200]!),
+          ? const Center(child: CircularProgressIndicator(color: _primaryGreen))
+          : CustomScrollView(
+        slivers: [
+          // Gradient Header
+          SliverToBoxAdapter(
+            child: Container(
+              decoration: const BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [_darkGreen, _primaryGreen, Color(0xFF43A047)],
+                ),
+                borderRadius: BorderRadius.only(
+                  bottomLeft: Radius.circular(28),
+                  bottomRight: Radius.circular(28),
+                ),
               ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              child: SafeArea(
+                bottom: false,
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Row(
                         children: [
-                          Icon(Icons.folder_open, color: Colors.green[700], size: 24),
-                          const SizedBox(width: 8),
-                          Text(
-                            'Your Submissions',
-                            style: TextStyle(
-                              fontSize: 18,
-                              fontWeight: FontWeight.bold,
-                              color: Colors.green[900],
+                          InkWell(
+                            onTap: () => Navigator.pop(context),
+                            borderRadius: BorderRadius.circular(12),
+                            child: Container(
+                              padding: const EdgeInsets.all(8),
+                              decoration: BoxDecoration(
+                                color: Colors.white.withValues(alpha: 0.15),
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              child: const Icon(Icons.arrow_back_rounded, color: Colors.white, size: 22),
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                const Text('CTPO Upload', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.white)),
+                                const SizedBox(height: 2),
+                                Text('Certificate of Tree Plantation Ownership', style: TextStyle(fontSize: 12, color: Colors.white.withValues(alpha: 0.8))),
+                              ],
                             ),
                           ),
                         ],
                       ),
-                      ElevatedButton.icon(
-                        onPressed: _createNewSubmission,
-                        icon: const Icon(Icons.add, size: 18),
-                        label: const Text('New'),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.green[700],
-                          foregroundColor: Colors.white,
-                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                      const SizedBox(height: 16),
+                      // Submission selector
+                      Container(
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: Colors.white.withValues(alpha: 0.12),
+                          borderRadius: BorderRadius.circular(14),
                         ),
+                        child: Column(
+                          children: [
+                            Row(
+                              children: [
+                                const Icon(Icons.folder_open_rounded, color: Colors.white, size: 20),
+                                const SizedBox(width: 8),
+                                const Expanded(
+                                  child: Text('Submissions', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: Colors.white)),
+                                ),
+                                Material(
+                                  color: Colors.white.withValues(alpha: 0.2),
+                                  borderRadius: BorderRadius.circular(10),
+                                  child: InkWell(
+                                    onTap: _createNewSubmission,
+                                    borderRadius: BorderRadius.circular(10),
+                                    child: const Padding(
+                                      padding: EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                                      child: Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          Icon(Icons.add_rounded, color: Colors.white, size: 16),
+                                          SizedBox(width: 4),
+                                          Text('New', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Colors.white)),
+                                        ],
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                            if (_existingSubmissions.isNotEmpty) ...[
+                              const SizedBox(height: 10),
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 12),
+                                decoration: BoxDecoration(
+                                  color: Colors.white,
+                                  borderRadius: BorderRadius.circular(10),
+                                ),
+                                child: DropdownButtonHideUnderline(
+                                  child: DropdownButton<String>(
+                                    value: _currentSubmissionId,
+                                    isExpanded: true,
+                                    icon: const Icon(Icons.expand_more_rounded, color: _primaryGreen),
+                                    items: _existingSubmissions.map((submission) {
+                                      return DropdownMenuItem<String>(
+                                        value: submission['id'] as String,
+                                        child: Row(
+                                          children: [
+                                            Icon(
+                                              submission['status'] == 'submitted' ? Icons.check_circle_rounded : Icons.edit_note_rounded,
+                                              color: submission['status'] == 'submitted' ? _primaryGreen : Colors.orange,
+                                              size: 18,
+                                            ),
+                                            const SizedBox(width: 8),
+                                            Expanded(child: Text('${submission['id']}', style: const TextStyle(fontSize: 13))),
+                                          ],
+                                        ),
+                                      );
+                                    }).toList(),
+                                    onChanged: (value) {
+                                      if (value != null) _switchSubmission(value);
+                                    },
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      // Progress bar
+                      Row(
+                        children: [
+                          Expanded(
+                            child: ClipRRect(
+                              borderRadius: BorderRadius.circular(4),
+                              child: LinearProgressIndicator(
+                                value: uploadProgress,
+                                backgroundColor: Colors.white.withValues(alpha: 0.2),
+                                valueColor: const AlwaysStoppedAnimation<Color>(Colors.white),
+                                minHeight: 6,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Text('${(uploadProgress * 100).toInt()}%', style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Colors.white)),
+                        ],
                       ),
                     ],
                   ),
+                ),
+              ),
+            ),
+          ),
+          // Body
+          SliverPadding(
+            padding: const EdgeInsets.all(16),
+            sliver: SliverList(
+              delegate: SliverChildListDelegate([
+                // Templates section
+                if (_availableTemplates.isNotEmpty) ...[
+                  _buildSectionHeader(Icons.file_download_rounded, 'Available Templates', Colors.blue),
                   const SizedBox(height: 12),
-                  if (_existingSubmissions.isEmpty)
-                    const Text('No submissions yet. Click "New" to create one.')
-                  else
-                    DropdownButtonFormField<String>(
-                      value: _currentSubmissionId,
-                      decoration: InputDecoration(
-                        labelText: 'Select Submission',
-                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
-                        filled: true,
-                        fillColor: Colors.white,
-                      ),
-                      items: _existingSubmissions.map((submission) {
-                        return DropdownMenuItem<String>(
-                          value: submission['id'] as String,
-                          child: Row(
-                            children: [
-                              Icon(
-                                submission['status'] == 'submitted'
-                                    ? Icons.check_circle
-                                    : Icons.edit_note,
-                                color: submission['status'] == 'submitted'
-                                    ? Colors.green
-                                    : Colors.orange,
-                                size: 18,
-                              ),
-                              const SizedBox(width: 8),
-                              Text(
-                                '${submission['id']}',
-                                style: const TextStyle(fontSize: 14),
-                              ),
-                            ],
-                          ),
-                        );
-                      }).toList(),
-                      onChanged: (value) {
-                        if (value != null) {
-                          _switchSubmission(value);
-                        }
-                      },
-                    ),
+                  ..._availableTemplates.map((t) => _buildTemplateCard(t)),
+                  const SizedBox(height: 20),
                 ],
-              ),
-            ),
-            const SizedBox(height: 16),
-            // Available Templates Section
-            if (_availableTemplates.isNotEmpty) ...[
-              Container(
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: Colors.blue[50],
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: Colors.blue[200]!),
+                // Documents section
+                _buildSectionHeader(Icons.description_rounded, 'Required Documents', _primaryGreen),
+                const SizedBox(height: 12),
+                for (int i = 0; i < formLabels.length; i++) buildUploadField(formLabels[i], i),
+                const SizedBox(height: 24),
+                // Submit button
+                _buildGradientButton(
+                  onTap: _isUploading ? null : handleSubmit,
+                  isLoading: _isUploading,
+                  icon: Icons.cloud_upload_rounded,
+                  label: 'Submit All Documents',
                 ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        Icon(Icons.folder_special,
-                            color: Colors.blue[700], size: 24),
-                        const SizedBox(width: 8),
-                        Text(
-                          'Available Templates',
-                          style: TextStyle(
-                              fontSize: 18,
-                              fontWeight: FontWeight.bold,
-                              color: Colors.blue[900]),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      'Download these templates before preparing your documents',
-                      style: TextStyle(fontSize: 13, color: Colors.blue[800]),
-                    ),
-                    const Divider(height: 16),
-                    ..._availableTemplates
-                        .map((template) => _buildTemplateCard(template)),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 24),
-            ],
-            const Text(
-              'Upload Documents for Certificate of Tree Plantation Ownership (CTPO)',
-              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                const SizedBox(height: 24),
+              ]),
             ),
-            const SizedBox(height: 16),
-            for (final label in formLabels) buildUploadField(label),
-            const SizedBox(height: 32),
-            Center(
-              child: SizedBox(
-                width: double.infinity,
-                child: ElevatedButton(
-                  onPressed: _isUploading ? null : handleSubmit,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.green[700],
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(vertical: 20),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSectionHeader(IconData icon, String title, Color color) {
+    return Row(
+      children: [
+        Container(
+          padding: const EdgeInsets.all(6),
+          decoration: BoxDecoration(
+            color: color.withValues(alpha: 0.1),
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Icon(icon, color: color, size: 18),
+        ),
+        const SizedBox(width: 10),
+        Text(title, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Color(0xFF1A1A1A))),
+      ],
+    );
+  }
+
+  Widget _buildGradientButton({VoidCallback? onTap, required bool isLoading, required IconData icon, required String label}) {
+    return Container(
+      width: double.infinity,
+      height: 56,
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(colors: [_darkGreen, _primaryGreen]),
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(color: _primaryGreen.withValues(alpha: 0.3), blurRadius: 12, offset: const Offset(0, 4)),
+        ],
+      ),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(16),
+          child: Center(
+            child: isLoading
+                ? const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2.5))
+                : Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(icon, color: Colors.white, size: 20),
+                      const SizedBox(width: 10),
+                      Text(label, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white)),
+                    ],
                   ),
-                  child: _isUploading
-                      ? const CircularProgressIndicator(color: Colors.white)
-                      : const Text(
-                          'Submit (Upload All Files)',
-                          style: TextStyle(
-                              fontSize: 14, fontWeight: FontWeight.bold),
-                        ),
-                ),
-              ),
-            ),
-          ],
+          ),
         ),
       ),
     );
   }
 
-  /// Build template card widget
   Widget _buildTemplateCard(Map<String, dynamic> template) {
-    return Card(
-      margin: const EdgeInsets.only(bottom: 8),
-      elevation: 2,
-      child: ListTile(
-        leading: Icon(Icons.description, color: Colors.blue[700], size: 32),
-        title: Text(
-          template['documentType'] ?? 'Template',
-          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
-        ),
-        subtitle: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+    return Container(
+      margin: const EdgeInsets.only(bottom: 10),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(14),
+        boxShadow: [
+          BoxShadow(color: Colors.black.withValues(alpha: 0.04), blurRadius: 8, offset: const Offset(0, 2)),
+        ],
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(14),
+        child: Row(
           children: [
-            if (template['title']?.isNotEmpty == true)
-              Text(template['title'],
-                  style: const TextStyle(
-                      fontSize: 13, fontWeight: FontWeight.w500)),
-            if (template['description']?.isNotEmpty == true)
-              Text(template['description'],
-                  style: TextStyle(fontSize: 12, color: Colors.grey[600])),
-            const SizedBox(height: 4),
-            Row(
-              children: [
-                Icon(Icons.insert_drive_file,
-                    size: 14, color: Colors.grey[600]),
-                const SizedBox(width: 4),
-                Expanded(
-                  child: Text(
-                    template['fileName'] ?? '',
-                    style: TextStyle(fontSize: 11, color: Colors.grey[600]),
-                    overflow: TextOverflow.ellipsis,
+            Container(
+              width: 42,
+              height: 42,
+              decoration: BoxDecoration(
+                color: Colors.blue.withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: const Icon(Icons.description_rounded, color: Colors.blue, size: 22),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(template['documentType'] ?? 'Template', style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
+                  if (template['fileName']?.isNotEmpty == true)
+                    Text(template['fileName'], style: TextStyle(fontSize: 11, color: Colors.grey[500]), overflow: TextOverflow.ellipsis),
+                ],
+              ),
+            ),
+            const SizedBox(width: 8),
+            Material(
+              color: Colors.blue,
+              borderRadius: BorderRadius.circular(10),
+              child: InkWell(
+                onTap: () async {
+                  final url = template['url'] as String?;
+                  if (url != null && url.isNotEmpty) {
+                    try {
+                      final uri = Uri.parse(url);
+                      if (await canLaunchUrl(uri)) {
+                        await launchUrl(uri, mode: LaunchMode.externalApplication);
+                      }
+                    } catch (_) {}
+                  }
+                },
+                borderRadius: BorderRadius.circular(10),
+                child: const Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.download_rounded, size: 16, color: Colors.white),
+                      SizedBox(width: 4),
+                      Text('Get', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Colors.white)),
+                    ],
                   ),
                 ),
-              ],
+              ),
             ),
           ],
         ),
-        trailing: ElevatedButton.icon(
-          onPressed: () async {
-            final url = template['url'] as String?;
-            if (url != null && url.isNotEmpty) {
-              try {
-                final uri = Uri.parse(url);
-                if (await canLaunchUrl(uri)) {
-                  await launchUrl(uri, mode: LaunchMode.externalApplication);
-                } else {
-                  if (mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text("Cannot open template")));
-                  }
-                }
-              } catch (e) {
-                if (mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(content: Text("Error opening template: $e")));
-                }
-              }
-            }
-          },
-          icon: const Icon(Icons.download, size: 16),
-          label: const Text("Download", style: TextStyle(fontSize: 12)),
-          style: ElevatedButton.styleFrom(
-            backgroundColor: Colors.blue[700],
-            foregroundColor: Colors.white,
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-          ),
-        ),
-        isThreeLine: true,
       ),
     );
   }

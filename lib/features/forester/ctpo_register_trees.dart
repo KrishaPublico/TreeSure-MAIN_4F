@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
+import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
@@ -53,19 +54,96 @@ class _CtpoRegisterTreesPageState extends State<CtpoRegisterTreesPage> {
   bool isLoadingTrees = false;
   String appointmentType = 'Tree Tagging'; // Default to Tree Tagging
 
+  // Theme colors
+  static const Color _primaryGreen = Color(0xFF2E7D32);
+  static const Color _darkGreen = Color(0xFF1B5E20);
+  static const Color _lightGreen = Color(0xFFE8F5E9);
+  static const Color _surfaceColor = Color(0xFFF1F8E9);
+
   /// ✅ Show notification dialog
   void _showDialog(String title, String message) {
-    showDialog(
+    final isError = title.toLowerCase().contains('error') || message.contains('❌');
+    final isSuccess = title.toLowerCase().contains('success') || message.contains('✅');
+    final icon = isError
+        ? Icons.error_outline_rounded
+        : isSuccess
+            ? Icons.check_circle_outline_rounded
+            : Icons.info_outline_rounded;
+    final iconColor = isError
+        ? Colors.red[600]!
+        : isSuccess
+            ? _primaryGreen
+            : Colors.blue[600]!;
+
+    showModalBottomSheet(
       context: context,
-      builder: (BuildContext dialogContext) => AlertDialog(
-        title: Text(title),
-        content: Text(message),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(dialogContext).pop(),
-            child: const Text('OK'),
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => Container(
+        margin: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(20),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: Colors.grey[300],
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+              const SizedBox(height: 20),
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: iconColor.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                child: Icon(icon, color: iconColor, size: 32),
+              ),
+              const SizedBox(height: 16),
+              Text(
+                title,
+                style: const TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                  color: Color(0xFF1B5E20),
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                message.replaceAll(RegExp(r'[✅❌⚠️📍⏳🌳]'), '').trim(),
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: 14,
+                  color: Colors.grey[600],
+                ),
+              ),
+              const SizedBox(height: 20),
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton(
+                  onPressed: () => Navigator.pop(ctx),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: _primaryGreen,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    elevation: 0,
+                  ),
+                  child: const Text('OK', style: TextStyle(fontWeight: FontWeight.w600)),
+                ),
+              ),
+            ],
           ),
-        ],
+        ),
       ),
     );
   }
@@ -222,35 +300,43 @@ class _CtpoRegisterTreesPageState extends State<CtpoRegisterTreesPage> {
   Future<String?> _generateAndUploadQr(
       String documentId, Map<String, dynamic> data) async {
     try {
+      // Only encode essential lookup fields to keep QR code scannable.
+      // Full tree data is fetched from Firestore using these keys.
       final qrPayload = {
         'format': 'treesure.v2',
         'inventory_doc_id': documentId,
         'appointment_id': data['appointment_id'],
         'tree_id': data['tree_id'],
-        'tree_no': data['tree_no'],
-        'tree_status': data['tree_status'] ?? 'Not Yet Ready',
-        'tree_tagging_appointment_id':
-            data['tree_tagging_appointment_id'] ?? '',
-        'specie': data['specie'],
-        'diameter': data['diameter'],
-        'height': data['height'],
-        'volume': data['volume'],
-        'latitude': data['latitude'],
-        'longitude': data['longitude'],
-        'forester_id': data['forester_id'],
-        'forester_name': data['forester_name'],
-        'photo_url': data['photo_url'] ?? '',
-        'timestamp': data['timestamp'],
-        'generated_at': DateTime.now().toIso8601String(),
       };
 
       final qrPainter = QrPainter(
         data: jsonEncode(qrPayload),
         version: QrVersions.auto,
-        gapless: true,
+        errorCorrectionLevel: QrErrorCorrectLevel.H,
+        color: const Color(0xFF000000),
+        emptyColor: const Color(0xFFFFFFFF),
+        gapless: false,
       );
-      final picData = await qrPainter.toImageData(300);
-      final Uint8List bytes = picData!.buffer.asUint8List();
+
+      // Render QR with quiet zone (white padding) so scanners can detect it
+      const double qrSize = 504;
+      const double padding = 48;
+      const double totalSize = qrSize + padding * 2; // 600
+
+      final recorder = ui.PictureRecorder();
+      final canvas = Canvas(recorder);
+      canvas.drawRect(
+        const Rect.fromLTWH(0, 0, totalSize, totalSize),
+        Paint()..color = const Color(0xFFFFFFFF),
+      );
+      canvas.translate(padding, padding);
+      qrPainter.paint(canvas, const Size(qrSize, qrSize));
+
+      final picture = recorder.endRecording();
+      final img = await picture.toImage(totalSize.toInt(), totalSize.toInt());
+      final byteData = await img.toByteData(format: ui.ImageByteFormat.png);
+      final Uint8List bytes = byteData!.buffer.asUint8List();
+      img.dispose();
 
       // Upload bytes directly to Firebase Storage
       final ref =
@@ -600,40 +686,200 @@ class _CtpoRegisterTreesPageState extends State<CtpoRegisterTreesPage> {
       }
     }
 
-    showDialog(
+    final summaryIcons = <String, IconData>{
+      "Forester Name": Icons.person_rounded,
+      "Specie": Icons.eco_rounded,
+      "Diameter (cm)": Icons.straighten_rounded,
+      "Height (m)": Icons.height_rounded,
+      "Volume (CU m)": Icons.inventory_2_rounded,
+      "Latitude": Icons.explore_rounded,
+      "Longitude": Icons.explore_rounded,
+    };
+
+    showModalBottomSheet(
       context: context,
-      builder: (BuildContext dialogContext) => AlertDialog(
-        title: const Text("🌳 Tree Data Summary"),
-        content: SingleChildScrollView(
-          child: Column(
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => DraggableScrollableSheet(
+        initialChildSize: 0.75,
+        maxChildSize: 0.95,
+        minChildSize: 0.5,
+        builder: (_, scrollController) => Container(
+          decoration: const BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+          ),
+          child: ListView(
+            controller: scrollController,
+            padding: const EdgeInsets.all(24),
             children: [
-              for (var entry in submittedData.entries)
-                ListTile(
-                  title: Text(entry.key),
-                  subtitle: Text(entry.value.toString()),
+              Center(
+                child: Container(
+                  width: 40,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: Colors.grey[300],
+                    borderRadius: BorderRadius.circular(2),
+                  ),
                 ),
-              const Divider(),
-              const Text("Photo Evidence",
-                  style: TextStyle(fontWeight: FontWeight.bold)),
-              if (photoUrl != null && photoUrl.isNotEmpty)
-                Image.network(photoUrl, height: 200, fit: BoxFit.cover)
-              else
-                const Text("No photo available"),
-              const SizedBox(height: 10),
-              const Text("QR Code",
-                  style: TextStyle(fontWeight: FontWeight.bold)),
-              if (qrUrl != null && qrUrl!.isNotEmpty)
-                Image.network(qrUrl!, height: 200, fit: BoxFit.cover)
-              else
-                const Text("No QR available"),
+              ),
+              const SizedBox(height: 20),
+              Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: _lightGreen,
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                    child: const Icon(Icons.park_rounded, color: _primaryGreen, size: 28),
+                  ),
+                  const SizedBox(width: 14),
+                  const Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Tree Data Summary',
+                          style: TextStyle(
+                            fontSize: 20,
+                            fontWeight: FontWeight.bold,
+                            color: _darkGreen,
+                          ),
+                        ),
+                        Text(
+                          'Review submitted tree information',
+                          style: TextStyle(fontSize: 13, color: Colors.grey),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 24),
+              ...submittedData.entries.map((entry) => Padding(
+                    padding: const EdgeInsets.only(bottom: 12),
+                    child: Container(
+                      padding: const EdgeInsets.all(14),
+                      decoration: BoxDecoration(
+                        color: _surfaceColor,
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+                      child: Row(
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.all(8),
+                            decoration: BoxDecoration(
+                              color: _primaryGreen.withOpacity(0.1),
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                            child: Icon(
+                              summaryIcons[entry.key] ?? Icons.info_rounded,
+                              color: _primaryGreen,
+                              size: 20,
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  entry.key,
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    color: Colors.grey[600],
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                ),
+                                const SizedBox(height: 2),
+                                Text(
+                                  entry.value.toString().isEmpty
+                                      ? 'N/A'
+                                      : entry.value.toString(),
+                                  style: const TextStyle(
+                                    fontSize: 15,
+                                    fontWeight: FontWeight.w600,
+                                    color: _darkGreen,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  )),
+              const SizedBox(height: 16),
+              _buildMediaSection('Photo Evidence', photoUrl),
+              const SizedBox(height: 12),
+              _buildMediaSection('QR Code', qrUrl),
+              const SizedBox(height: 24),
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton(
+                  onPressed: () => Navigator.pop(ctx),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: _primaryGreen,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                    elevation: 0,
+                  ),
+                  child: const Text('Done', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 16)),
+                ),
+              ),
             ],
           ),
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(dialogContext).pop(),
-            child: const Text("Close"),
+      ),
+    );
+  }
+
+  Widget _buildMediaSection(String title, String? url) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: Colors.grey[200]!),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            title,
+            style: const TextStyle(
+              fontWeight: FontWeight.w600,
+              fontSize: 14,
+              color: _darkGreen,
+            ),
           ),
+          const SizedBox(height: 12),
+          if (url != null && url.isNotEmpty)
+            ClipRRect(
+              borderRadius: BorderRadius.circular(12),
+              child: Image.network(url, height: 200, width: double.infinity, fit: BoxFit.cover),
+            )
+          else
+            Container(
+              height: 100,
+              width: double.infinity,
+              decoration: BoxDecoration(
+                color: _surfaceColor,
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(Icons.image_not_supported_rounded, color: Colors.grey[400], size: 32),
+                  const SizedBox(height: 8),
+                  Text('Not available', style: TextStyle(color: Colors.grey[500], fontSize: 13)),
+                ],
+              ),
+            ),
         ],
       ),
     );
@@ -643,134 +889,467 @@ class _CtpoRegisterTreesPageState extends State<CtpoRegisterTreesPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text("Tree Inventory"),
-        backgroundColor: Colors.green[800],
-        foregroundColor: Colors.white,
-      ),
-      body: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: ListView(
-          children: [
-            Text("Forester: ${widget.foresterName}",
-                style:
-                    const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-            const SizedBox(height: 20),
-            
-            // ✅ Show tree dropdown only for revisit appointments
-            if (appointmentType == 'Revisit') ...[
-              const Text(
-                "Select Existing Tree (Revisit)",
-                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+      backgroundColor: _surfaceColor,
+      body: Column(
+        children: [
+          // Modern gradient header
+          Container(
+            decoration: const BoxDecoration(
+              gradient: LinearGradient(
+                colors: [Color(0xFF1B5E20), Color(0xFF2E7D32), Color(0xFF43A047)],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
               ),
-              const SizedBox(height: 8),
-              isLoadingTrees
-                  ? const Center(child: CircularProgressIndicator())
-                  : existingTrees.isEmpty
-                      ? const Text(
-                          "No existing trees found",
-                          style: TextStyle(color: Colors.grey),
-                        )
-                      : DropdownButtonFormField<String>(
-                          value: selectedDropdownId,
-                          decoration: InputDecoration(
-                            labelText: "Select Tree",
-                            border: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                            prefixIcon: const Icon(Icons.nature, color: Colors.green),
-                          ),
-                          items: existingTrees.map((tree) {
-                            final treeId = tree['tree_id'] ?? tree['docId'];
-                            final specie = tree['specie'] ?? 'Unknown';
-                            return DropdownMenuItem<String>(
-                              value: tree['docId'],
-                              child: Text('$treeId - $specie'),
-                            );
-                          }).toList(),
-                          onChanged: _onTreeSelected,
+              borderRadius: BorderRadius.only(
+                bottomLeft: Radius.circular(28),
+                bottomRight: Radius.circular(28),
+              ),
+            ),
+            child: SafeArea(
+              bottom: false,
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(8, 8, 20, 24),
+                child: Column(
+                  children: [
+                    Row(
+                      children: [
+                        IconButton(
+                          icon: const Icon(Icons.arrow_back_rounded, color: Colors.white),
+                          onPressed: () => Navigator.pop(context),
                         ),
-              const SizedBox(height: 16),
-              const Divider(),
-              const SizedBox(height: 16),
-            ],
-            
-            buildTextField("Specie", specieController, focusNode: specieFocus),
-            Row(
+                        const SizedBox(width: 4),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Text(
+                                'Tree Inventory',
+                                style: TextStyle(
+                                  fontSize: 22,
+                                  fontWeight: FontWeight.bold,
+                                  color: Colors.white,
+                                ),
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                'Forester: ${widget.foresterName}',
+                                style: TextStyle(
+                                  fontSize: 13,
+                                  color: Colors.white.withOpacity(0.85),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                          decoration: BoxDecoration(
+                            color: Colors.white.withOpacity(0.2),
+                            borderRadius: BorderRadius.circular(20),
+                          ),
+                          child: Text(
+                            appointmentType,
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+
+          // Form content
+          Expanded(
+            child: ListView(
+              padding: const EdgeInsets.all(20),
               children: [
-                Expanded(
-                  child: buildTextField("Diameter (cm)", diameterController,
-                      focusNode: diameterFocus,
-                      keyboardType: TextInputType.number),
+                // Revisit tree selection
+                if (appointmentType == 'Revisit') ...[
+                  _buildSectionHeader('Select Existing Tree', Icons.nature_rounded),
+                  const SizedBox(height: 12),
+                  isLoadingTrees
+                      ? const Center(
+                          child: Padding(
+                            padding: EdgeInsets.all(20),
+                            child: CircularProgressIndicator(color: _primaryGreen),
+                          ),
+                        )
+                      : existingTrees.isEmpty
+                          ? _buildEmptyCard('No existing trees found')
+                          : Container(
+                              decoration: BoxDecoration(
+                                color: Colors.white,
+                                borderRadius: BorderRadius.circular(14),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: Colors.black.withOpacity(0.04),
+                                    blurRadius: 10,
+                                    offset: const Offset(0, 2),
+                                  ),
+                                ],
+                              ),
+                              child: DropdownButtonFormField<String>(
+                                value: selectedDropdownId,
+                                decoration: InputDecoration(
+                                  labelText: 'Select Tree',
+                                  labelStyle: TextStyle(color: Colors.grey[600]),
+                                  border: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(14),
+                                    borderSide: BorderSide.none,
+                                  ),
+                                  filled: true,
+                                  fillColor: Colors.white,
+                                  prefixIcon: Container(
+                                    margin: const EdgeInsets.all(8),
+                                    padding: const EdgeInsets.all(8),
+                                    decoration: BoxDecoration(
+                                      color: _lightGreen,
+                                      borderRadius: BorderRadius.circular(10),
+                                    ),
+                                    child: const Icon(Icons.park_rounded, color: _primaryGreen, size: 20),
+                                  ),
+                                ),
+                                items: existingTrees.map((tree) {
+                                  final treeId = tree['tree_id'] ?? tree['docId'];
+                                  final specie = tree['specie'] ?? 'Unknown';
+                                  return DropdownMenuItem<String>(
+                                    value: tree['docId'],
+                                    child: Text('$treeId - $specie'),
+                                  );
+                                }).toList(),
+                                onChanged: _onTreeSelected,
+                              ),
+                            ),
+                  const SizedBox(height: 8),
+                  Divider(color: Colors.grey[200]),
+                  const SizedBox(height: 16),
+                ],
+
+                // Tree Details Section
+                _buildSectionHeader('Tree Details', Icons.eco_rounded),
+                const SizedBox(height: 12),
+                _buildModernTextField('Specie', specieController,
+                    icon: Icons.eco_rounded, focusNode: specieFocus),
+                Row(
+                  children: [
+                    Expanded(
+                      child: _buildModernTextField('Diameter (cm)', diameterController,
+                          icon: Icons.straighten_rounded,
+                          focusNode: diameterFocus,
+                          keyboardType: TextInputType.number),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: _buildModernTextField('Height (m)', heightController,
+                          icon: Icons.height_rounded,
+                          focusNode: heightFocus,
+                          keyboardType: TextInputType.number),
+                    ),
+                  ],
                 ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: buildTextField("Height (m)", heightController,
-                      focusNode: heightFocus,
-                      keyboardType: TextInputType.number),
+                _buildModernTextField('Volume (CU m)', volumeController,
+                    icon: Icons.inventory_2_rounded, enabled: false),
+                const SizedBox(height: 20),
+
+                // Location Section
+                _buildSectionHeader('Location', Icons.location_on_rounded),
+                const SizedBox(height: 12),
+                Row(
+                  children: [
+                    Expanded(
+                      child: _buildModernTextField('Latitude', latController,
+                          icon: Icons.explore_rounded, enabled: false),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: _buildModernTextField('Longitude', longController,
+                          icon: Icons.explore_rounded, enabled: false),
+                    ),
+                  ],
                 ),
+                InkWell(
+                  onTap: _getLocation,
+                  borderRadius: BorderRadius.circular(12),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+                    decoration: BoxDecoration(
+                      color: _lightGreen,
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: const Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(Icons.my_location_rounded, color: _primaryGreen, size: 20),
+                        SizedBox(width: 8),
+                        Text(
+                          'Get Current Location',
+                          style: TextStyle(
+                            color: _primaryGreen,
+                            fontWeight: FontWeight.w600,
+                            fontSize: 14,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 20),
+
+                // Photo Section
+                _buildSectionHeader('Photo Evidence', Icons.camera_alt_rounded),
+                const SizedBox(height: 12),
+                GestureDetector(
+                  onTap: pickImage,
+                  child: Container(
+                    height: imageFile != null ? 220 : 140,
+                    width: double.infinity,
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(
+                        color: imageFile != null ? _primaryGreen : Colors.grey[300]!,
+                        width: imageFile != null ? 2 : 1,
+                        strokeAlign: BorderSide.strokeAlignInside,
+                      ),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withOpacity(0.04),
+                          blurRadius: 10,
+                          offset: const Offset(0, 2),
+                        ),
+                      ],
+                    ),
+                    child: imageFile != null
+                        ? ClipRRect(
+                            borderRadius: BorderRadius.circular(14),
+                            child: kIsWeb
+                                ? Image.network(imageFile!.path, fit: BoxFit.cover)
+                                : Image.file(File(imageFile!.path), fit: BoxFit.cover),
+                          )
+                        : Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Container(
+                                padding: const EdgeInsets.all(16),
+                                decoration: BoxDecoration(
+                                  color: _lightGreen,
+                                  borderRadius: BorderRadius.circular(16),
+                                ),
+                                child: const Icon(Icons.add_a_photo_rounded, color: _primaryGreen, size: 32),
+                              ),
+                              const SizedBox(height: 12),
+                              Text(
+                                'Tap to add photo',
+                                style: TextStyle(
+                                  color: Colors.grey[600],
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                            ],
+                          ),
+                  ),
+                ),
+                const SizedBox(height: 28),
+
+                // Action buttons
+                _buildGradientButton(
+                  'Submit Tree Data',
+                  Icons.check_circle_rounded,
+                  onPressed: handleSubmit,
+                ),
+                const SizedBox(height: 12),
+                _buildOutlinedButton(
+                  'View Summary',
+                  Icons.summarize_rounded,
+                  onPressed: viewSummaryDialog,
+                ),
+                const SizedBox(height: 12),
+                _buildGradientButton(
+                  'Tree Tagging Completed',
+                  Icons.flag_rounded,
+                  onPressed: _completeTreeTagging,
+                  colors: [Colors.orange[700]!, Colors.orange[500]!],
+                ),
+                const SizedBox(height: 20),
               ],
             ),
-            buildTextField("Volume (CU m)", volumeController, enabled: false),
-            const SizedBox(height: 12),
-            Row(
-              children: [
-                Expanded(
-                    child: buildTextField("Latitude", latController,
-                        enabled: false)),
-                const SizedBox(width: 12),
-                Expanded(
-                    child: buildTextField("Longitude", longController,
-                        enabled: false)),
-              ],
-            ),
-            TextButton.icon(
-              icon: const Icon(Icons.my_location, color: Colors.green),
-              label: const Text("Get Current Location"),
-              onPressed: _getLocation,
-            ),
-            const SizedBox(height: 20),
-            const Text("Photo Evidence",
-                style: TextStyle(fontWeight: FontWeight.bold)),
-            if (imageFile != null)
-              kIsWeb
-                  ? Image.network(imageFile!.path, height: 200)
-                  : Image.file(File(imageFile!.path), height: 200)
-            else
-              const Text("No image selected."),
-            TextButton.icon(
-              icon: const Icon(Icons.upload),
-              label: const Text("Pick Photo"),
-              onPressed: pickImage,
-            ),
-            const SizedBox(height: 20),
-            ElevatedButton(
-              onPressed: handleSubmit,
-              style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.green[800],
-                  padding: const EdgeInsets.symmetric(vertical: 16)),
-              child: const Text("Submit",
-                  style: TextStyle(color: Colors.white, fontSize: 16)),
-            ),
-            const SizedBox(height: 10),
-            ElevatedButton(
-              onPressed: viewSummaryDialog,
-              style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.green[800],
-                  padding: const EdgeInsets.symmetric(vertical: 16)),
-              child: const Text("View Summary",
-                  style: TextStyle(color: Colors.white, fontSize: 16)),
-            ),
-            const SizedBox(height: 15),
-            ElevatedButton(
-              onPressed: _completeTreeTagging,
-              style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.orange[700],
-                  padding: const EdgeInsets.symmetric(vertical: 16)),
-              child: const Text("Tree Tagging Completed",
-                  style: TextStyle(color: Colors.white, fontSize: 16)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSectionHeader(String title, IconData icon) {
+    return Row(
+      children: [
+        Container(
+          padding: const EdgeInsets.all(8),
+          decoration: BoxDecoration(
+            color: _primaryGreen.withOpacity(0.1),
+            borderRadius: BorderRadius.circular(10),
+          ),
+          child: Icon(icon, color: _primaryGreen, size: 18),
+        ),
+        const SizedBox(width: 10),
+        Text(
+          title,
+          style: const TextStyle(
+            fontSize: 16,
+            fontWeight: FontWeight.bold,
+            color: _darkGreen,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildEmptyCard(String message) {
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(14),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.04),
+            blurRadius: 10,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          Icon(Icons.info_outline_rounded, color: Colors.grey[400], size: 24),
+          const SizedBox(width: 12),
+          Text(message, style: TextStyle(color: Colors.grey[600], fontSize: 14)),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildModernTextField(
+    String label,
+    TextEditingController controller, {
+    IconData? icon,
+    FocusNode? focusNode,
+    bool enabled = true,
+    TextInputType? keyboardType,
+  }) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Container(
+        decoration: BoxDecoration(
+          color: enabled ? Colors.white : Colors.grey[50],
+          borderRadius: BorderRadius.circular(14),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.04),
+              blurRadius: 10,
+              offset: const Offset(0, 2),
             ),
           ],
+        ),
+        child: TextField(
+          controller: controller,
+          focusNode: focusNode,
+          enabled: enabled,
+          keyboardType: keyboardType,
+          style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w500),
+          decoration: InputDecoration(
+            labelText: label,
+            labelStyle: TextStyle(color: Colors.grey[500], fontSize: 14),
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(14),
+              borderSide: BorderSide.none,
+            ),
+            focusedBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(14),
+              borderSide: const BorderSide(color: _primaryGreen, width: 2),
+            ),
+            filled: true,
+            fillColor: enabled ? Colors.white : Colors.grey[50],
+            prefixIcon: icon != null
+                ? Container(
+                    margin: const EdgeInsets.all(8),
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: _lightGreen,
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Icon(icon, color: _primaryGreen, size: 18),
+                  )
+                : null,
+            contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildGradientButton(
+    String label,
+    IconData icon, {
+    required VoidCallback onPressed,
+    List<Color>? colors,
+  }) {
+    final btnColors = colors ?? [_darkGreen, _primaryGreen];
+    return Container(
+      width: double.infinity,
+      decoration: BoxDecoration(
+        gradient: LinearGradient(colors: btnColors),
+        borderRadius: BorderRadius.circular(14),
+        boxShadow: [
+          BoxShadow(
+            color: btnColors.first.withOpacity(0.3),
+            blurRadius: 8,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: ElevatedButton.icon(
+        onPressed: onPressed,
+        icon: Icon(icon, size: 20),
+        label: Text(label, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
+        style: ElevatedButton.styleFrom(
+          backgroundColor: Colors.transparent,
+          foregroundColor: Colors.white,
+          shadowColor: Colors.transparent,
+          padding: const EdgeInsets.symmetric(vertical: 16),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildOutlinedButton(
+    String label,
+    IconData icon, {
+    required VoidCallback onPressed,
+  }) {
+    return Container(
+      width: double.infinity,
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: _primaryGreen, width: 2),
+      ),
+      child: ElevatedButton.icon(
+        onPressed: onPressed,
+        icon: Icon(icon, size: 20),
+        label: Text(label, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
+        style: ElevatedButton.styleFrom(
+          backgroundColor: Colors.white,
+          foregroundColor: _primaryGreen,
+          shadowColor: Colors.transparent,
+          padding: const EdgeInsets.symmetric(vertical: 16),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+          elevation: 0,
         ),
       ),
     );
@@ -783,18 +1362,7 @@ class _CtpoRegisterTreesPageState extends State<CtpoRegisterTreesPage> {
     bool enabled = true,
     TextInputType? keyboardType,
   }) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 12.0),
-      child: TextField(
-        controller: controller,
-        focusNode: focusNode,
-        enabled: enabled,
-        keyboardType: keyboardType,
-        decoration: InputDecoration(
-          labelText: label,
-          border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
-        ),
-      ),
-    );
+    return _buildModernTextField(label, controller,
+        focusNode: focusNode, enabled: enabled, keyboardType: keyboardType);
   }
 }

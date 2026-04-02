@@ -969,578 +969,748 @@ class _ForesterSummaryReportsState extends State<ForesterSummaryReports> {
     );
   }
 
+  // Theme colors matching notification page
+  static const _primaryGreen = Color(0xFF2E7D32);
+  static const _darkGreen = Color(0xFF1B5E20);
+  static const _lightGreen = Color(0xFFE8F5E9);
+  static const _surfaceColor = Color(0xFFF5F9F5);
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.white,
-      appBar: AppBar(
-        backgroundColor: Colors.green[800],
-        title: const Text(
-          "Summary Reports",
-          style: TextStyle(
-            color: Colors.white,
-            fontWeight: FontWeight.normal,
-          ),
-        ),
-        iconTheme: const IconThemeData(color: Colors.white),
-        actions: [
-          if (!_isLoading)
-            IconButton(
-              icon: const Icon(Icons.list_alt),
-              onPressed: _showSummaryDetailsDialog,
-              tooltip: 'View Summary Details',
-            ),
-          if (!_isLoading)
-            IconButton(
-              icon: _isCapturingScreenshot
-                  ? const SizedBox(
-                      width: 20,
-                      height: 20,
-                      child: CircularProgressIndicator(
-                        color: Colors.white,
-                        strokeWidth: 2,
+      backgroundColor: _surfaceColor,
+      body: SafeArea(
+        child: Column(
+          children: [
+            // Modern gradient header
+            Container(
+              padding: const EdgeInsets.fromLTRB(20, 16, 20, 20),
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [Colors.green[800]!, Colors.green[600]!],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
+                borderRadius: const BorderRadius.only(
+                  bottomLeft: Radius.circular(28),
+                  bottomRight: Radius.circular(28),
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.green.withOpacity(0.3),
+                    blurRadius: 12,
+                    offset: const Offset(0, 4),
+                  ),
+                ],
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(10),
+                        decoration: BoxDecoration(
+                          color: Colors.white.withOpacity(0.2),
+                          borderRadius: BorderRadius.circular(14),
+                        ),
+                        child: const Icon(
+                          Icons.assessment_rounded,
+                          color: Colors.white,
+                          size: 26,
+                        ),
                       ),
-                    )
-                  : const Icon(Icons.camera_alt),
-              onPressed: _isCapturingScreenshot ? null : _captureMapScreenshot,
-              tooltip: 'Capture Map Screenshot',
+                      const SizedBox(width: 14),
+                      const Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              "Summary Reports",
+                              style: TextStyle(
+                                fontSize: 24,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.white,
+                                letterSpacing: 0.5,
+                              ),
+                            ),
+                            SizedBox(height: 2),
+                            Text(
+                              "Tree inventory & map overview",
+                              style: TextStyle(
+                                fontSize: 13,
+                                color: Colors.white70,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      if (!_isLoading) ...[
+                        _buildHeaderAction(
+                          icon: Icons.list_alt_rounded,
+                          onTap: _showSummaryDetailsDialog,
+                          tooltip: 'View Details',
+                        ),
+                        const SizedBox(width: 8),
+                        _buildHeaderAction(
+                          icon: _isCapturingScreenshot
+                              ? Icons.hourglass_top_rounded
+                              : Icons.camera_alt_rounded,
+                          onTap: _isCapturingScreenshot
+                              ? null
+                              : _captureMapScreenshot,
+                          tooltip: 'Screenshot',
+                        ),
+                        const SizedBox(width: 8),
+                        _buildHeaderAction(
+                          icon: Icons.refresh_rounded,
+                          onTap: _loadData,
+                          tooltip: 'Refresh',
+                        ),
+                      ],
+                    ],
+                  ),
+                  if (!_isLoading) ...[
+                    const SizedBox(height: 16),
+                    // Filter type chips
+                    SingleChildScrollView(
+                      scrollDirection: Axis.horizontal,
+                      child: Row(
+                        children: [
+                          _buildFilterChip('All', Icons.all_inbox_rounded,
+                              isFilterType: true),
+                          _buildFilterChip(
+                              'Appointment', Icons.event_note_rounded,
+                              isFilterType: true),
+                          _buildFilterChip('Applicant', Icons.person_rounded,
+                              isFilterType: true),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    // Tree status chips
+                    SingleChildScrollView(
+                      scrollDirection: Axis.horizontal,
+                      child: Row(
+                        children: [
+                          _buildStatusChip('All', Icons.all_inbox_rounded),
+                          _buildStatusChip(
+                              'Not Yet Ready', Icons.schedule_rounded),
+                          _buildStatusChip(
+                              'Ready to Cut', Icons.content_cut_rounded),
+                          _buildStatusChip('Cut', Icons.check_circle_rounded),
+                        ],
+                      ),
+                    ),
+                  ],
+                ],
+              ),
             ),
-          IconButton(
-            icon: const Icon(Icons.refresh),
-            onPressed: _loadData,
-            tooltip: 'Refresh',
-          ),
-        ],
-      ),
-      body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
-          : Column(
-              children: [
-                // Filter Controls
-                Container(
-                  padding: const EdgeInsets.all(16),
+
+            // Conditional dropdown
+            if (!_isLoading &&
+                (_filterType == 'Appointment' || _filterType == 'Applicant'))
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+                child: Container(
                   decoration: BoxDecoration(
-                    color: Colors.green[50],
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(16),
                     boxShadow: [
                       BoxShadow(
-                        color: Colors.grey.withOpacity(0.2),
-                        blurRadius: 4,
+                        color: Colors.black.withOpacity(0.04),
+                        blurRadius: 8,
                         offset: const Offset(0, 2),
                       ),
                     ],
                   ),
-                  child: Column(
-                    children: [
-                      // Filter Type Selection
-                      Row(
-                        children: [
-                          Expanded(
-                            child: _buildFilterTypeButton('All'),
-                          ),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: _buildFilterTypeButton('Appointment'),
-                          ),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: _buildFilterTypeButton('Applicant'),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 12),
-
-                      // Conditional Dropdowns
-                      if (_filterType == 'Appointment')
-                        DropdownButtonFormField<String>(
+                  child: _filterType == 'Appointment'
+                      ? DropdownButtonFormField<String>(
                           value: _selectedAppointmentId,
                           decoration: InputDecoration(
                             labelText: 'Select Appointment',
-                            prefixIcon: const Icon(Icons.location_on),
+                            labelStyle: TextStyle(
+                                fontSize: 14, color: Colors.grey[600]),
+                            prefixIcon: Icon(Icons.location_on_rounded,
+                                color: _primaryGreen, size: 22),
                             border: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(12),
+                              borderRadius: BorderRadius.circular(16),
+                              borderSide: BorderSide.none,
                             ),
                             filled: true,
                             fillColor: Colors.white,
                           ),
                           items: [
                             const DropdownMenuItem(
-                              value: 'All',
-                              child: Text('All Appointments'),
-                            ),
-                            ..._appointments.map((appointment) {
-                              return DropdownMenuItem(
-                                value: appointment['id'],
-                                child: Text(appointment['location']),
-                              );
-                            }),
+                                value: 'All',
+                                child: Text('All Appointments')),
+                            ..._appointments.map((a) => DropdownMenuItem(
+                                value: a['id'],
+                                child: Text(a['location'],
+                                    overflow: TextOverflow.ellipsis))),
                           ],
-                          onChanged: (value) {
-                            setState(() {
-                              _selectedAppointmentId = value!;
-                            });
-                          },
-                        ),
-
-                      if (_filterType == 'Applicant')
-                        DropdownButtonFormField<String>(
+                          onChanged: (v) =>
+                              setState(() => _selectedAppointmentId = v!),
+                        )
+                      : DropdownButtonFormField<String>(
                           value: _selectedApplicantId,
                           decoration: InputDecoration(
                             labelText: 'Select Applicant',
-                            prefixIcon: const Icon(Icons.person),
+                            labelStyle: TextStyle(
+                                fontSize: 14, color: Colors.grey[600]),
+                            prefixIcon: Icon(Icons.person_rounded,
+                                color: _primaryGreen, size: 22),
                             border: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(12),
+                              borderRadius: BorderRadius.circular(16),
+                              borderSide: BorderSide.none,
                             ),
                             filled: true,
                             fillColor: Colors.white,
                           ),
                           items: [
                             const DropdownMenuItem(
-                              value: 'All',
-                              child: Text('All Applicants'),
-                            ),
-                            ..._applicants.map((applicant) {
-                              return DropdownMenuItem(
-                                value: applicant['id'],
-                                child: Text(applicant['name']),
-                              );
-                            }),
+                                value: 'All',
+                                child: Text('All Applicants')),
+                            ..._applicants.map((a) => DropdownMenuItem(
+                                value: a['id'],
+                                child: Text(a['name'],
+                                    overflow: TextOverflow.ellipsis))),
                           ],
-                          onChanged: (value) {
-                            setState(() {
-                              _selectedApplicantId = value!;
-                            });
-                          },
+                          onChanged: (v) =>
+                              setState(() => _selectedApplicantId = v!),
                         ),
-
-                      const SizedBox(height: 12),
-
-                      // Tree Status Filter
-                      SingleChildScrollView(
-                        scrollDirection: Axis.horizontal,
-                        child: Row(
-                          children: [
-                            _buildStatusButton('All'),
-                            const SizedBox(width: 8),
-                            _buildStatusButton('Not Yet Ready'),
-                            const SizedBox(width: 8),
-                            _buildStatusButton('Ready to Cut'),
-                            const SizedBox(width: 8),
-                            _buildStatusButton('Cut'),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
                 ),
+              ),
 
-                // Content Area
-                Expanded(
-                  child: StreamBuilder<List<Map<String, dynamic>>>(
-                    stream: _getTreesStream(),
-                    builder: (context, snapshot) {
-                      if (snapshot.connectionState == ConnectionState.waiting) {
-                        return const Center(child: CircularProgressIndicator());
-                      }
-                      if (snapshot.hasError) {
-                        return Center(child: Text('Error: ${snapshot.error}'));
-                      }
-                      if (!snapshot.hasData || snapshot.data!.isEmpty) {
-                        return const Center(
-                          child: Text(
-                            'No trees found with selected filters.',
-                            style: TextStyle(fontSize: 16, color: Colors.grey),
-                          ),
-                        );
-                      }
-
-                      final trees = snapshot.data!;
-                      final markers = _generateMarkers(trees);
-
-                      // Calculate statistics
-                      final totalTrees = trees.length;
-                      final totalVolume = trees.fold<double>(
-                        0,
-                        (sum, tree) => sum + (tree['volume'] ?? 0),
-                      );
-                      final avgDiameter = trees.isEmpty
-                          ? 0.0
-                          : trees.fold<double>(
-                                0,
-                                (sum, tree) => sum + (tree['diameter'] ?? 0),
-                              ) /
-                              trees.length;
-                      final avgHeight = trees.isEmpty
-                          ? 0.0
-                          : trees.fold<double>(
-                                0,
-                                (sum, tree) => sum + (tree['height'] ?? 0),
-                              ) /
-                              trees.length;
-
-                      // Group trees by status for breakdown
-                      final statusCounts = <String, int>{};
-                      for (var tree in trees) {
-                        final status = tree['tree_status'] ?? 'Not Yet Ready';
-                        statusCounts[status] = (statusCounts[status] ?? 0) + 1;
-                      }
-
-                      // After building markers, fit map
-                      WidgetsBinding.instance.addPostFrameCallback((_) {
-                        if (markers.isNotEmpty) {
-                          _fitMapToMarkers(markers);
+            // Content Area
+            Expanded(
+              child: _isLoading
+                  ? Center(
+                      child: CircularProgressIndicator(
+                          color: _primaryGreen, strokeWidth: 3))
+                  : StreamBuilder<List<Map<String, dynamic>>>(
+                      stream: _getTreesStream(),
+                      builder: (context, snapshot) {
+                        if (snapshot.connectionState ==
+                            ConnectionState.waiting) {
+                          return Center(
+                              child: CircularProgressIndicator(
+                                  color: _primaryGreen, strokeWidth: 3));
                         }
-                      });
+                        if (snapshot.hasError) {
+                          return Center(
+                              child: Text('Error: ${snapshot.error}'));
+                        }
+                        if (!snapshot.hasData || snapshot.data!.isEmpty) {
+                          return _buildEmptyState(
+                            Icons.forest_rounded,
+                            "No Trees Found",
+                            "No trees match the selected filters.",
+                          );
+                        }
 
-                      return Column(
-                        children: [
-                          // Statistics Card
-                          Container(
-                            padding: const EdgeInsets.all(16),
-                            decoration: BoxDecoration(
-                              color: Colors.green[50],
-                              border: Border(
-                                bottom: BorderSide(
-                                  color: Colors.grey.shade300,
-                                  width: 1,
+                        final trees = snapshot.data!;
+                        final markers = _generateMarkers(trees);
+
+                        final totalTrees = trees.length;
+                        final totalVolume = trees.fold<double>(
+                            0, (sum, tree) => sum + (tree['volume'] ?? 0));
+                        final avgDiameter = trees.fold<double>(
+                                0,
+                                (sum, tree) =>
+                                    sum + (tree['diameter'] ?? 0)) /
+                            trees.length;
+                        final avgHeight = trees.fold<double>(0,
+                                (sum, tree) => sum + (tree['height'] ?? 0)) /
+                            trees.length;
+
+                        final statusCounts = <String, int>{};
+                        for (var tree in trees) {
+                          final status =
+                              tree['tree_status'] ?? 'Not Yet Ready';
+                          statusCounts[status] =
+                              (statusCounts[status] ?? 0) + 1;
+                        }
+
+                        WidgetsBinding.instance.addPostFrameCallback((_) {
+                          if (markers.isNotEmpty) _fitMapToMarkers(markers);
+                        });
+
+                        return Column(
+                          children: [
+                            // Stats row
+                            Padding(
+                              padding:
+                                  const EdgeInsets.fromLTRB(16, 12, 16, 0),
+                              child: Row(
+                                children: [
+                                  _buildStatCard('Trees',
+                                      totalTrees.toString(), Icons.park_rounded, _primaryGreen),
+                                  const SizedBox(width: 8),
+                                  _buildStatCard(
+                                      'Volume',
+                                      '${totalVolume.toStringAsFixed(1)} m³',
+                                      Icons.inventory_2_rounded,
+                                      Colors.blue[700]!),
+                                  const SizedBox(width: 8),
+                                  _buildStatCard(
+                                      'Avg Ø',
+                                      '${avgDiameter.toStringAsFixed(1)} cm',
+                                      Icons.circle_outlined,
+                                      Colors.orange[700]!),
+                                  const SizedBox(width: 8),
+                                  _buildStatCard(
+                                      'Avg H',
+                                      '${avgHeight.toStringAsFixed(1)} m',
+                                      Icons.height_rounded,
+                                      Colors.purple[600]!),
+                                ],
+                              ),
+                            ),
+
+                            // Status chips
+                            if (statusCounts.length > 1)
+                              Padding(
+                                padding:
+                                    const EdgeInsets.fromLTRB(16, 8, 16, 0),
+                                child: SingleChildScrollView(
+                                  scrollDirection: Axis.horizontal,
+                                  child: Row(
+                                    children: statusCounts.entries.map((e) {
+                                      Color chipColor = _primaryGreen;
+                                      if (e.key == 'Ready to Cut')
+                                        chipColor = Colors.orange[700]!;
+                                      if (e.key == 'Cut')
+                                        chipColor = Colors.red[700]!;
+                                      return Padding(
+                                        padding:
+                                            const EdgeInsets.only(right: 8),
+                                        child: Container(
+                                          padding: const EdgeInsets.symmetric(
+                                              horizontal: 10, vertical: 5),
+                                          decoration: BoxDecoration(
+                                            color:
+                                                chipColor.withOpacity(0.1),
+                                            borderRadius:
+                                                BorderRadius.circular(20),
+                                          ),
+                                          child: Row(
+                                            mainAxisSize: MainAxisSize.min,
+                                            children: [
+                                              Container(
+                                                padding:
+                                                    const EdgeInsets.all(4),
+                                                decoration: BoxDecoration(
+                                                  color: chipColor,
+                                                  shape: BoxShape.circle,
+                                                ),
+                                                child: Text(
+                                                  '${e.value}',
+                                                  style: const TextStyle(
+                                                    color: Colors.white,
+                                                    fontSize: 10,
+                                                    fontWeight:
+                                                        FontWeight.bold,
+                                                  ),
+                                                ),
+                                              ),
+                                              const SizedBox(width: 6),
+                                              Text(
+                                                e.key,
+                                                style: TextStyle(
+                                                  fontSize: 12,
+                                                  fontWeight: FontWeight.w500,
+                                                  color: chipColor,
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                      );
+                                    }).toList(),
+                                  ),
+                                ),
+                              ),
+
+                            const SizedBox(height: 8),
+
+                            // Map View
+                            Expanded(
+                              child: Padding(
+                                padding:
+                                    const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                                child: ClipRRect(
+                                  borderRadius: BorderRadius.circular(20),
+                                  child: Stack(
+                                    children: [
+                                      RepaintBoundary(
+                                        key: _mapRepaintKey,
+                                        child: Container(
+                                          color: Colors.grey[100],
+                                          width: double.infinity,
+                                          height: double.infinity,
+                                          child: Stack(
+                                            children: [
+                                              FlutterMap(
+                                                mapController: _mapController,
+                                                options: MapOptions(
+                                                  initialCenter:
+                                                      _getValidInitialCenter(
+                                                          markers),
+                                                  initialZoom:
+                                                      markers.isNotEmpty
+                                                          ? 14
+                                                          : 13,
+                                                  interactionOptions:
+                                                      const InteractionOptions(
+                                                    flags: InteractiveFlag
+                                                            .pinchZoom |
+                                                        InteractiveFlag.drag |
+                                                        InteractiveFlag
+                                                            .flingAnimation |
+                                                        InteractiveFlag
+                                                            .doubleTapZoom,
+                                                  ),
+                                                ),
+                                                children: [
+                                                  _getTileLayer(),
+                                                  if (markers.isNotEmpty)
+                                                    MarkerLayer(
+                                                        markers: markers),
+                                                ],
+                                              ),
+
+                                              // Tree Count Badge
+                                              Positioned(
+                                                top: 16,
+                                                left: 16,
+                                                child: Container(
+                                                  padding: const EdgeInsets
+                                                      .symmetric(
+                                                      horizontal: 14,
+                                                      vertical: 8),
+                                                  decoration: BoxDecoration(
+                                                    color: Colors.white,
+                                                    borderRadius:
+                                                        BorderRadius.circular(
+                                                            24),
+                                                    boxShadow: [
+                                                      BoxShadow(
+                                                        color: Colors.black
+                                                            .withOpacity(0.1),
+                                                        blurRadius: 8,
+                                                        offset: const Offset(
+                                                            0, 2),
+                                                      ),
+                                                    ],
+                                                  ),
+                                                  child: Row(
+                                                    mainAxisSize:
+                                                        MainAxisSize.min,
+                                                    children: [
+                                                      const Icon(
+                                                          Icons
+                                                              .location_pin,
+                                                          color:
+                                                              _primaryGreen,
+                                                          size: 18),
+                                                      const SizedBox(
+                                                          width: 6),
+                                                      Text(
+                                                        '$totalTrees Trees',
+                                                        style:
+                                                            const TextStyle(
+                                                          fontWeight:
+                                                              FontWeight
+                                                                  .bold,
+                                                          fontSize: 13,
+                                                        ),
+                                                      ),
+                                                    ],
+                                                  ),
+                                                ),
+                                              ),
+
+                                              // Report Metadata
+                                              Positioned(
+                                                bottom: 16,
+                                                left: 16,
+                                                right: 16,
+                                                child: Container(
+                                                  padding:
+                                                      const EdgeInsets.all(
+                                                          12),
+                                                  decoration: BoxDecoration(
+                                                    color: Colors.white
+                                                        .withOpacity(0.95),
+                                                    borderRadius:
+                                                        BorderRadius.circular(
+                                                            16),
+                                                    boxShadow: [
+                                                      BoxShadow(
+                                                        color: Colors.black
+                                                            .withOpacity(
+                                                                0.08),
+                                                        blurRadius: 8,
+                                                        offset: const Offset(
+                                                            0, 2),
+                                                      ),
+                                                    ],
+                                                  ),
+                                                  child: Column(
+                                                    crossAxisAlignment:
+                                                        CrossAxisAlignment
+                                                            .start,
+                                                    mainAxisSize:
+                                                        MainAxisSize.min,
+                                                    children: [
+                                                      const Row(
+                                                        children: [
+                                                          Icon(Icons.eco,
+                                                              color:
+                                                                  _primaryGreen,
+                                                              size: 18),
+                                                          SizedBox(width: 8),
+                                                          Text(
+                                                            'TreeSure - Forestry Report',
+                                                            style: TextStyle(
+                                                              fontWeight:
+                                                                  FontWeight
+                                                                      .bold,
+                                                              fontSize: 13,
+                                                            ),
+                                                          ),
+                                                        ],
+                                                      ),
+                                                      const SizedBox(
+                                                          height: 6),
+                                                      Text(
+                                                        'Total: $totalTrees trees | Volume: ${totalVolume.toStringAsFixed(2)} m³',
+                                                        style:
+                                                            const TextStyle(
+                                                                fontSize: 11),
+                                                      ),
+                                                      const SizedBox(
+                                                          height: 3),
+                                                      Text(
+                                                        'Generated: ${DateTime.now().toString().split('.')[0]}',
+                                                        style: TextStyle(
+                                                          fontSize: 10,
+                                                          color: Colors
+                                                              .grey[500],
+                                                        ),
+                                                      ),
+                                                    ],
+                                                  ),
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                      ),
+
+                                      // Map Type Selector
+                                      Positioned(
+                                        top: 16,
+                                        right: 16,
+                                        child: _buildMapTypeSelector(),
+                                      ),
+                                    ],
+                                  ),
                                 ),
                               ),
                             ),
-                            child: Column(
-                              children: [
-                                Row(
-                                  children: [
-                                    Expanded(
-                                      child: _buildStatCard(
-                                        'Total Trees',
-                                        totalTrees.toString(),
-                                        Icons.park,
-                                        Colors.green,
-                                      ),
-                                    ),
-                                    const SizedBox(width: 12),
-                                    Expanded(
-                                      child: _buildStatCard(
-                                        'Total Volume',
-                                        '${totalVolume.toStringAsFixed(2)} m┬│',
-                                        Icons.straighten,
-                                        Colors.blue,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                                const SizedBox(height: 12),
-                                Row(
-                                  children: [
-                                    Expanded(
-                                      child: _buildStatCard(
-                                        'Avg Diameter',
-                                        '${avgDiameter.toStringAsFixed(1)} cm',
-                                        Icons.circle_outlined,
-                                        Colors.orange,
-                                      ),
-                                    ),
-                                    const SizedBox(width: 12),
-                                    Expanded(
-                                      child: _buildStatCard(
-                                        'Avg Height',
-                                        '${avgHeight.toStringAsFixed(1)} m',
-                                        Icons.height,
-                                        Colors.purple,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                                const SizedBox(height: 12),
-                                // Status Breakdown
-                                Wrap(
-                                  spacing: 8,
-                                  runSpacing: 8,
-                                  children: statusCounts.entries.map((entry) {
-                                    Color statusColor = Colors.grey;
-                                    if (entry.key == 'Ready to Cut') {
-                                      statusColor = Colors.orange;
-                                    } else if (entry.key == 'Cut') {
-                                      statusColor = Colors.red;
-                                    }
+                          ],
+                        );
+                      },
+                    ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 
-                                    return Chip(
-                                      avatar: CircleAvatar(
-                                        backgroundColor: statusColor,
-                                        child: Text(
-                                          entry.value.toString(),
-                                          style: const TextStyle(
-                                            color: Colors.white,
-                                            fontSize: 12,
-                                            fontWeight: FontWeight.bold,
-                                          ),
-                                        ),
-                                      ),
-                                      label: Text(entry.key),
-                                      backgroundColor:
-                                          statusColor.withOpacity(0.1),
-                                    );
-                                  }).toList(),
-                                ),
-                              ],
-                            ),
-                          ),
+  Widget _buildHeaderAction({
+    required IconData icon,
+    VoidCallback? onTap,
+    required String tooltip,
+  }) {
+    return Tooltip(
+      message: tooltip,
+      child: Material(
+        color: Colors.white.withOpacity(0.2),
+        borderRadius: BorderRadius.circular(12),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(12),
+          onTap: onTap,
+          child: Padding(
+            padding: const EdgeInsets.all(8),
+            child: Icon(icon, color: Colors.white, size: 20),
+          ),
+        ),
+      ),
+    );
+  }
 
-                          // Map View
-                          Expanded(
-                            child: Stack(
-                              children: [
-                                RepaintBoundary(
-                                  key: _mapRepaintKey,
-                                  child: Container(
-                                    color: Colors.grey[100],
-                                    width: double.infinity,
-                                    height: double.infinity,
-                                    child: Stack(
-                                      children: [
-                                        FlutterMap(
-                                          mapController: _mapController,
-                                          options: MapOptions(
-                                            initialCenter:
-                                                _getValidInitialCenter(markers),
-                                            initialZoom:
-                                                markers.isNotEmpty ? 14 : 13,
-                                            interactionOptions:
-                                                const InteractionOptions(
-                                              flags: InteractiveFlag.pinchZoom |
-                                                  InteractiveFlag.drag |
-                                                  InteractiveFlag
-                                                      .flingAnimation |
-                                                  InteractiveFlag.doubleTapZoom,
-                                            ),
-                                          ),
-                                          children: [
-                                            _getTileLayer(),
-                                            if (markers.isNotEmpty)
-                                              MarkerLayer(markers: markers),
-                                          ],
-                                        ),
-
-                                        // Tree Count Badge
-                                        Positioned(
-                                          top: 16,
-                                          left: 16,
-                                          child: Container(
-                                            padding: const EdgeInsets.symmetric(
-                                              horizontal: 12,
-                                              vertical: 8,
-                                            ),
-                                            decoration: BoxDecoration(
-                                              color: Colors.white,
-                                              borderRadius:
-                                                  BorderRadius.circular(20),
-                                              boxShadow: [
-                                                BoxShadow(
-                                                  color: Colors.black
-                                                      .withOpacity(0.2),
-                                                  blurRadius: 6,
-                                                  offset: const Offset(0, 2),
-                                                ),
-                                              ],
-                                            ),
-                                            child: Row(
-                                              mainAxisSize: MainAxisSize.min,
-                                              children: [
-                                                const Icon(
-                                                  Icons.location_pin,
-                                                  color: Colors.green,
-                                                  size: 20,
-                                                ),
-                                                const SizedBox(width: 6),
-                                                Text(
-                                                  '$totalTrees Trees',
-                                                  style: const TextStyle(
-                                                    fontWeight: FontWeight.bold,
-                                                    fontSize: 14,
-                                                  ),
-                                                ),
-                                              ],
-                                            ),
-                                          ),
-                                        ),
-
-                                        // Report Metadata (bottom) - for screenshot
-                                        Positioned(
-                                          bottom: 16,
-                                          left: 16,
-                                          right: 16,
-                                          child: Container(
-                                            padding: const EdgeInsets.all(12),
-                                            decoration: BoxDecoration(
-                                              color: Colors.white
-                                                  .withOpacity(0.95),
-                                              borderRadius:
-                                                  BorderRadius.circular(12),
-                                              boxShadow: [
-                                                BoxShadow(
-                                                  color: Colors.black
-                                                      .withOpacity(0.2),
-                                                  blurRadius: 6,
-                                                  offset: const Offset(0, 2),
-                                                ),
-                                              ],
-                                            ),
-                                            child: Column(
-                                              crossAxisAlignment:
-                                                  CrossAxisAlignment.start,
-                                              mainAxisSize: MainAxisSize.min,
-                                              children: [
-                                                const Row(
-                                                  children: [
-                                                    Icon(Icons.eco,
-                                                        color: Colors.green,
-                                                        size: 20),
-                                                    SizedBox(width: 8),
-                                                    Text(
-                                                      'TreeSure - Forestry Report',
-                                                      style: TextStyle(
-                                                        fontWeight:
-                                                            FontWeight.bold,
-                                                        fontSize: 14,
-                                                      ),
-                                                    ),
-                                                  ],
-                                                ),
-                                                const SizedBox(height: 8),
-                                                Row(
-                                                  children: [
-                                                    Expanded(
-                                                      child: Text(
-                                                        'Total: $totalTrees trees | Volume: ${totalVolume.toStringAsFixed(2)} m┬│',
-                                                        style: const TextStyle(
-                                                            fontSize: 11),
-                                                      ),
-                                                    ),
-                                                  ],
-                                                ),
-                                                const SizedBox(height: 4),
-                                                Text(
-                                                  'Generated: ${DateTime.now().toString().split('.')[0]}',
-                                                  style: TextStyle(
-                                                    fontSize: 10,
-                                                    color: Colors.grey[600],
-                                                  ),
-                                                ),
-                                              ],
-                                            ),
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                ),
-
-                                // Map Type Selector (outside screenshot)
-                                Positioned(
-                                  top: 16,
-                                  right: 16,
-                                  child: _buildMapTypeSelector(),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ],
-                      );
-                    },
+  Widget _buildFilterChip(String label, IconData icon,
+      {bool isFilterType = false}) {
+    final isSelected = _filterType == label;
+    return Padding(
+      padding: const EdgeInsets.only(right: 8),
+      child: Material(
+        color: isSelected ? Colors.white : Colors.white.withOpacity(0.15),
+        borderRadius: BorderRadius.circular(20),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(20),
+          onTap: () {
+            setState(() {
+              _filterType = label;
+              _selectedAppointmentId = 'All';
+              _selectedApplicantId = 'All';
+            });
+          },
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(icon,
+                    size: 16,
+                    color: isSelected ? _darkGreen : Colors.white),
+                const SizedBox(width: 6),
+                Text(
+                  label,
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                    color: isSelected ? _darkGreen : Colors.white,
                   ),
                 ),
               ],
             ),
-    );
-  }
-
-  Widget _buildFilterTypeButton(String type) {
-    final isSelected = _filterType == type;
-    return ElevatedButton(
-      onPressed: () {
-        setState(() {
-          _filterType = type;
-          _selectedAppointmentId = 'All';
-          _selectedApplicantId = 'All';
-        });
-      },
-      style: ElevatedButton.styleFrom(
-        backgroundColor: isSelected ? Colors.green[700] : Colors.white,
-        foregroundColor: isSelected ? Colors.white : Colors.green[700],
-        elevation: isSelected ? 4 : 1,
-        padding: const EdgeInsets.symmetric(vertical: 12),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(12),
+          ),
         ),
-      ),
-      child: Text(
-        type,
-        style: const TextStyle(fontWeight: FontWeight.bold),
       ),
     );
   }
 
-  Widget _buildStatusButton(String status) {
-    final isSelected = _selectedTreeStatus == status;
-    Color statusColor = Colors.grey;
-    if (status == 'Ready to Cut') {
-      statusColor = Colors.orange;
-    } else if (status == 'Cut') {
-      statusColor = Colors.red;
-    }
-
-    return ElevatedButton(
-      onPressed: () {
-        setState(() {
-          _selectedTreeStatus = status;
-        });
-      },
-      style: ElevatedButton.styleFrom(
-        backgroundColor: isSelected ? statusColor : Colors.white,
-        foregroundColor: isSelected ? Colors.white : statusColor,
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(20),
+  Widget _buildStatusChip(String label, IconData icon) {
+    final isSelected = _selectedTreeStatus == label;
+    return Padding(
+      padding: const EdgeInsets.only(right: 8),
+      child: Material(
+        color: isSelected
+            ? Colors.white.withOpacity(0.9)
+            : Colors.white.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(16),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(16),
+          onTap: () => setState(() => _selectedTreeStatus = label),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(icon,
+                    size: 14,
+                    color: isSelected ? _darkGreen : Colors.white70),
+                const SizedBox(width: 4),
+                Text(
+                  label,
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w500,
+                    color: isSelected ? _darkGreen : Colors.white70,
+                  ),
+                ),
+              ],
+            ),
+          ),
         ),
       ),
-      child: Text(status),
+    );
+  }
+
+  Widget _buildEmptyState(IconData icon, String title, String subtitle) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(32),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              padding: const EdgeInsets.all(24),
+              decoration: const BoxDecoration(
+                color: _lightGreen,
+                shape: BoxShape.circle,
+              ),
+              child: Icon(icon, size: 48, color: _primaryGreen),
+            ),
+            const SizedBox(height: 20),
+            Text(
+              title,
+              style: const TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
+                color: Color(0xFF37474F),
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              subtitle,
+              textAlign: TextAlign.center,
+              style: TextStyle(fontSize: 14, color: Colors.grey[500]),
+            ),
+          ],
+        ),
+      ),
     );
   }
 
   Widget _buildStatCard(
       String label, String value, IconData icon, Color color) {
-    return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.grey.withOpacity(0.2),
-            blurRadius: 4,
-            offset: const Offset(0, 2),
-          ),
-        ],
-      ),
-      child: Column(
-        children: [
-          Icon(icon, color: color, size: 28),
-          const SizedBox(height: 4),
-          Text(
-            value,
-            style: TextStyle(
-              fontSize: 18,
-              fontWeight: FontWeight.bold,
-              color: color,
+    return Expanded(
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 12),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(14),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.04),
+              blurRadius: 8,
+              offset: const Offset(0, 2),
             ),
-          ),
-          Text(
-            label,
-            style: const TextStyle(
-              fontSize: 12,
-              color: Colors.grey,
+          ],
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, color: color, size: 22),
+            const SizedBox(height: 4),
+            Text(
+              value,
+              style: TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.bold,
+                color: color,
+              ),
+              textAlign: TextAlign.center,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
             ),
-          ),
-        ],
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: 11,
+                color: Colors.grey[500],
+                fontWeight: FontWeight.w500,
+              ),
+              textAlign: TextAlign.center,
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -1549,11 +1719,11 @@ class _ForesterSummaryReportsState extends State<ForesterSummaryReports> {
     return Container(
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(8),
+        borderRadius: BorderRadius.circular(14),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.2),
-            blurRadius: 6,
+            color: Colors.black.withOpacity(0.1),
+            blurRadius: 8,
             offset: const Offset(0, 2),
           ),
         ],
@@ -1561,11 +1731,12 @@ class _ForesterSummaryReportsState extends State<ForesterSummaryReports> {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          _buildMapTypeButton('street', Icons.map, 'Street'),
-          const Divider(height: 1),
-          _buildMapTypeButton('satellite', Icons.satellite_alt, 'Satellite'),
-          const Divider(height: 1),
-          _buildMapTypeButton('terrain', Icons.terrain, 'Terrain'),
+          _buildMapTypeButton('street', Icons.map_rounded, 'Street'),
+          Container(height: 1, color: Colors.grey[200]),
+          _buildMapTypeButton(
+              'satellite', Icons.satellite_alt_rounded, 'Satellite'),
+          Container(height: 1, color: Colors.grey[200]),
+          _buildMapTypeButton('terrain', Icons.terrain_rounded, 'Terrain'),
         ],
       ),
     );
@@ -1574,24 +1745,20 @@ class _ForesterSummaryReportsState extends State<ForesterSummaryReports> {
   Widget _buildMapTypeButton(String type, IconData icon, String label) {
     final isSelected = _mapType == type;
     return InkWell(
-      onTap: () {
-        setState(() {
-          _mapType = type;
-        });
-      },
+      onTap: () => setState(() => _mapType = type),
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
         decoration: BoxDecoration(
-          color: isSelected ? Colors.green[700] : Colors.transparent,
+          color: isSelected ? _primaryGreen : Colors.transparent,
           borderRadius: type == 'street'
               ? const BorderRadius.only(
-                  topLeft: Radius.circular(8),
-                  topRight: Radius.circular(8),
+                  topLeft: Radius.circular(14),
+                  topRight: Radius.circular(14),
                 )
               : type == 'terrain'
                   ? const BorderRadius.only(
-                      bottomLeft: Radius.circular(8),
-                      bottomRight: Radius.circular(8),
+                      bottomLeft: Radius.circular(14),
+                      bottomRight: Radius.circular(14),
                     )
                   : null,
         ),

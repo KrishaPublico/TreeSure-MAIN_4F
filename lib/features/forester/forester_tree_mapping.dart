@@ -643,65 +643,112 @@ class _ForesterTreeMappingState extends State<ForesterTreeMapping> {
     }
   }
 
+  static const _primaryGreen = Color(0xFF2E7D32);
+  static const _darkGreen = Color(0xFF1B5E20);
+  static const _lightGreen = Color(0xFFE8F5E9);
+
   @override
   Widget build(BuildContext context) {
     final screenWidth = MediaQuery.of(context).size.width;
     final screenHeight = MediaQuery.of(context).size.height;
 
     return Scaffold(
-      appBar: AppBar(
-        backgroundColor: Colors.green, // ← WHITE APP BAR
-        elevation: 1, // slight shadow for visibility
-
-        iconTheme: const IconThemeData(
-          color: Colors.white, // ← back button & icons become green
-        ),
-
-        title: Text(
-          selectedAppointmentId == null ? 'My Appointments' : 'Tree Locations',
-          style: const TextStyle(
-            color: Colors.white, // ← title text color
-            fontWeight: FontWeight.bold,
+      backgroundColor: const Color(0xFFF5F5F5),
+      body: Column(
+        children: [
+          // Gradient header
+          Container(
+            decoration: const BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [Color(0xFF1B5E20), Color(0xFF388E3C)],
+              ),
+              borderRadius: BorderRadius.vertical(bottom: Radius.circular(24)),
+            ),
+            child: SafeArea(
+              bottom: false,
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(4, 8, 8, 20),
+                child: Row(
+                  children: [
+                    if (selectedAppointmentId != null)
+                      IconButton(
+                        icon: const Icon(Icons.arrow_back_rounded, color: Colors.white),
+                        onPressed: () {
+                          setState(() {
+                            selectedAppointmentId = null;
+                            selectedTreeId = null;
+                            taggedTrees = [];
+                            markers.clear();
+                            polylines.clear();
+                          });
+                        },
+                      )
+                    else
+                      const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            selectedAppointmentId == null
+                                ? 'My Appointments'
+                                : 'Tree Locations',
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 22,
+                              fontWeight: FontWeight.w700,
+                              letterSpacing: -0.3,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            selectedAppointmentId == null
+                                ? '${appointments.length} appointment${appointments.length != 1 ? 's' : ''} found'
+                                : '${taggedTrees.length} tree${taggedTrees.length != 1 ? 's' : ''} tagged',
+                            style: TextStyle(
+                              color: Colors.white.withOpacity(0.8),
+                              fontSize: 13,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    Container(
+                      decoration: BoxDecoration(
+                        color: Colors.white.withOpacity(0.15),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: IconButton(
+                        icon: const Icon(Icons.refresh_rounded, color: Colors.white),
+                        onPressed: isLoading
+                            ? null
+                            : () {
+                                if (selectedAppointmentId != null) {
+                                  _fetchTreesForAppointment(selectedAppointmentId!);
+                                } else {
+                                  _fetchTaggedTrees();
+                                }
+                              },
+                        tooltip: 'Refresh',
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
           ),
-        ),
-
-        leading: selectedAppointmentId != null
-            ? IconButton(
-                icon: const Icon(Icons.arrow_back),
-                onPressed: () {
-                  setState(() {
-                    selectedAppointmentId = null;
-                    selectedTreeId = null;
-                    taggedTrees = [];
-                    markers.clear();
-                    polylines.clear();
-                  });
-                },
-              )
-            : null,
-
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.refresh,
-                color: Colors.green), // icon becomes green
-            onPressed: isLoading
-                ? null
-                : () {
-                    if (selectedAppointmentId != null) {
-                      _fetchTreesForAppointment(selectedAppointmentId!);
-                    } else {
-                      _fetchTaggedTrees();
-                    }
-                  },
-            tooltip: 'Refresh',
+          // Content
+          Expanded(
+            child: isLoading
+                ? const Center(child: CircularProgressIndicator(color: _primaryGreen))
+                : selectedAppointmentId == null
+                    ? _buildAppointmentsList()
+                    : _buildMapView(),
           ),
         ],
       ),
-      body: isLoading
-          ? const Center(child: CircularProgressIndicator())
-          : selectedAppointmentId == null
-              ? _buildAppointmentsList()
-              : _buildMapView(),
     );
   }
 
@@ -716,23 +763,29 @@ class _ForesterTreeMappingState extends State<ForesterTreeMapping> {
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Icon(Icons.assignment_outlined,
-                  size: screenWidth * 0.16, color: Colors.grey),
-              SizedBox(height: screenHeight * 0.02),
-              Text(
-                'No appointments found',
+              Container(
+                width: 80,
+                height: 80,
+                decoration: BoxDecoration(
+                  color: _lightGreen,
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: const Icon(Icons.assignment_outlined, size: 40, color: _primaryGreen),
+              ),
+              SizedBox(height: screenHeight * 0.025),
+              const Text(
+                'No Appointments Found',
                 textAlign: TextAlign.center,
                 style: TextStyle(
-                  fontSize: screenWidth * 0.045,
-                  color: Colors.grey[600],
-                  fontWeight: FontWeight.w500,
+                  fontSize: 18,
+                  fontWeight: FontWeight.w600,
+                  color: Color(0xFF1A1A1A),
                 ),
               ),
               SizedBox(height: screenHeight * 0.01),
               Text(
-                'Forester ID: ${widget.foresterId}',
-                style: TextStyle(
-                    fontSize: screenWidth * 0.035, color: Colors.grey),
+                'No appointments are assigned to you yet',
+                style: TextStyle(fontSize: 14, color: Colors.grey[500]),
                 textAlign: TextAlign.center,
               ),
             ],
@@ -742,7 +795,7 @@ class _ForesterTreeMappingState extends State<ForesterTreeMapping> {
     }
 
     return ListView.builder(
-      padding: EdgeInsets.all(screenWidth * 0.04),
+      padding: EdgeInsets.fromLTRB(screenWidth * 0.04, 12, screenWidth * 0.04, 16),
       itemCount: appointments.length,
       itemBuilder: (context, index) {
         final appointment = appointments[index];
@@ -753,105 +806,156 @@ class _ForesterTreeMappingState extends State<ForesterTreeMapping> {
         final actualTreeCount = appointment['actual_tree_count'] as int? ?? 0;
 
         Color statusColor;
+        IconData statusIcon;
         switch (status.toLowerCase()) {
           case 'completed':
-            statusColor = Colors.green;
+            statusColor = const Color(0xFF4CAF50);
+            statusIcon = Icons.check_circle_rounded;
             break;
           case 'in progress':
-            statusColor = Colors.orange;
+            statusColor = const Color(0xFFFF9800);
+            statusIcon = Icons.timelapse_rounded;
             break;
           case 'pending':
-            statusColor = Colors.blue;
+            statusColor = const Color(0xFF2196F3);
+            statusIcon = Icons.schedule_rounded;
             break;
           default:
             statusColor = Colors.grey;
+            statusIcon = Icons.info_rounded;
         }
 
-        return Card(
+        return Container(
           margin: EdgeInsets.only(bottom: screenHeight * 0.015),
-          elevation: 2,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(16),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.04),
+                blurRadius: 12,
+                offset: const Offset(0, 4),
+              ),
+            ],
           ),
-          child: InkWell(
-            onTap: () => _fetchTreesForAppointment(appointmentId),
-            borderRadius: BorderRadius.circular(12),
-            child: Padding(
-              padding: EdgeInsets.all(screenWidth * 0.04),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Expanded(
-                        child: Text(
-                          appointmentType,
-                          style: TextStyle(
-                            fontSize: screenWidth * 0.04,
-                            fontWeight: FontWeight.bold,
-                            color: Colors.green,
+          child: Material(
+            color: Colors.transparent,
+            child: InkWell(
+              onTap: () => _fetchTreesForAppointment(appointmentId),
+              borderRadius: BorderRadius.circular(16),
+              child: Padding(
+                padding: EdgeInsets.all(screenWidth * 0.04),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Container(
+                          width: 44,
+                          height: 44,
+                          decoration: BoxDecoration(
+                            color: _lightGreen,
+                            borderRadius: BorderRadius.circular(12),
                           ),
-                          overflow: TextOverflow.ellipsis,
+                          child: const Icon(Icons.calendar_today_rounded, size: 22, color: _primaryGreen),
                         ),
-                      ),
-                      SizedBox(width: screenWidth * 0.02),
-                      Container(
-                        padding: EdgeInsets.symmetric(
-                            horizontal: screenWidth * 0.02,
-                            vertical: screenHeight * 0.005),
-                        decoration: BoxDecoration(
-                          color: statusColor.withOpacity(0.2),
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        child: Text(
-                          status,
-                          style: TextStyle(
-                            fontSize: screenWidth * 0.028,
-                            fontWeight: FontWeight.w600,
-                            color: statusColor,
+                        SizedBox(width: screenWidth * 0.035),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                appointmentType,
+                                style: TextStyle(
+                                  fontSize: screenWidth * 0.04,
+                                  fontWeight: FontWeight.w700,
+                                  color: const Color(0xFF1A1A1A),
+                                ),
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                              const SizedBox(height: 3),
+                              Row(
+                                children: [
+                                  Icon(Icons.location_on_rounded, size: 14, color: Colors.grey[400]),
+                                  const SizedBox(width: 4),
+                                  Expanded(
+                                    child: Text(
+                                      location,
+                                      style: TextStyle(
+                                        fontSize: screenWidth * 0.033,
+                                        color: Colors.grey[500],
+                                      ),
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ],
                           ),
                         ),
-                      ),
-                    ],
-                  ),
-                  SizedBox(height: screenHeight * 0.01),
-                  Row(
-                    children: [
-                      Icon(Icons.location_on,
-                          size: screenWidth * 0.04, color: Colors.grey),
-                      SizedBox(width: screenWidth * 0.01),
-                      Expanded(
-                        child: Text(
-                          location,
-                          style: TextStyle(
-                            fontSize: screenWidth * 0.035,
-                            color: Colors.grey[700],
+                        SizedBox(width: screenWidth * 0.02),
+                        Container(
+                          padding: EdgeInsets.symmetric(
+                              horizontal: screenWidth * 0.025,
+                              vertical: screenHeight * 0.006),
+                          decoration: BoxDecoration(
+                            color: statusColor.withOpacity(0.1),
+                            borderRadius: BorderRadius.circular(20),
                           ),
-                          overflow: TextOverflow.ellipsis,
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(statusIcon, size: 12, color: statusColor),
+                              SizedBox(width: screenWidth * 0.01),
+                              Text(
+                                status,
+                                style: TextStyle(
+                                  fontSize: screenWidth * 0.028,
+                                  fontWeight: FontWeight.w600,
+                                  color: statusColor,
+                                ),
+                              ),
+                            ],
+                          ),
                         ),
+                      ],
+                    ),
+                    SizedBox(height: screenHeight * 0.015),
+                    Container(
+                      padding: EdgeInsets.symmetric(
+                        horizontal: screenWidth * 0.035,
+                        vertical: screenHeight * 0.012,
                       ),
-                    ],
-                  ),
-                  SizedBox(height: screenHeight * 0.01),
-                  Row(
-                    children: [
-                      Icon(Icons.park,
-                          size: screenWidth * 0.04, color: Colors.grey),
-                      SizedBox(width: screenWidth * 0.01),
-                      Text(
-                        '$actualTreeCount trees',
-                        style: TextStyle(
-                          fontSize: screenWidth * 0.035,
-                          color: Colors.grey[700],
-                        ),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFF5F5F5),
+                        borderRadius: BorderRadius.circular(10),
                       ),
-                      const Spacer(),
-                      Icon(Icons.chevron_right,
-                          size: screenWidth * 0.05, color: Colors.green),
-                    ],
-                  ),
-                ],
+                      child: Row(
+                        children: [
+                          const Icon(Icons.park_rounded, size: 18, color: _primaryGreen),
+                          SizedBox(width: screenWidth * 0.02),
+                          Text(
+                            '$actualTreeCount tree${actualTreeCount != 1 ? 's' : ''} tagged',
+                            style: TextStyle(
+                              fontSize: screenWidth * 0.033,
+                              fontWeight: FontWeight.w600,
+                              color: _primaryGreen,
+                            ),
+                          ),
+                          const Spacer(),
+                          Container(
+                            padding: const EdgeInsets.all(4),
+                            decoration: BoxDecoration(
+                              color: _primaryGreen.withOpacity(0.1),
+                              borderRadius: BorderRadius.circular(6),
+                            ),
+                            child: Icon(Icons.chevron_right_rounded, size: screenWidth * 0.045, color: _primaryGreen),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
           ),
@@ -861,13 +965,11 @@ class _ForesterTreeMappingState extends State<ForesterTreeMapping> {
   }
 
   Widget _buildMapView() {
-    // Determine initial camera center: prefer current location, else first tree, else null
     LatLng? initialCenter;
     if (currentLocation != null) {
       initialCenter =
           LatLng(currentLocation!.latitude!, currentLocation!.longitude!);
     } else {
-      // Try first valid tree coordinate
       for (final tree in taggedTrees) {
         final lat = (tree['latitude'] as num?)?.toDouble();
         final lng = (tree['longitude'] as num?)?.toDouble();
@@ -886,16 +988,28 @@ class _ForesterTreeMappingState extends State<ForesterTreeMapping> {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(Icons.map_outlined,
-                size: screenWidth * 0.16, color: Colors.grey),
-            SizedBox(height: screenHeight * 0.02),
-            Text(
-              'No tree locations found',
-              style: TextStyle(
-                fontSize: screenWidth * 0.045,
-                color: Colors.grey[600],
-                fontWeight: FontWeight.w500,
+            Container(
+              width: 80,
+              height: 80,
+              decoration: BoxDecoration(
+                color: _lightGreen,
+                borderRadius: BorderRadius.circular(20),
               ),
+              child: const Icon(Icons.map_outlined, size: 40, color: _primaryGreen),
+            ),
+            SizedBox(height: screenHeight * 0.025),
+            const Text(
+              'No Tree Locations',
+              style: TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.w600,
+                color: Color(0xFF1A1A1A),
+              ),
+            ),
+            SizedBox(height: screenHeight * 0.01),
+            Text(
+              'No trees have been tagged for this appointment',
+              style: TextStyle(fontSize: 14, color: Colors.grey[500]),
             ),
           ],
         ),
@@ -904,23 +1018,25 @@ class _ForesterTreeMappingState extends State<ForesterTreeMapping> {
 
     return Stack(
       children: [
-        FlutterMap(
-          mapController: _controller,
-          options: MapOptions(
-            initialCenter: initialCenter,
-            initialZoom: 14.5,
-            interactionOptions: const InteractionOptions(
-              flags: InteractiveFlag.pinchZoom |
-                  InteractiveFlag.drag |
-                  InteractiveFlag.flingAnimation |
-                  InteractiveFlag.doubleTapZoom,
+        ClipRRect(
+          child: FlutterMap(
+            mapController: _controller,
+            options: MapOptions(
+              initialCenter: initialCenter,
+              initialZoom: 14.5,
+              interactionOptions: const InteractionOptions(
+                flags: InteractiveFlag.pinchZoom |
+                    InteractiveFlag.drag |
+                    InteractiveFlag.flingAnimation |
+                    InteractiveFlag.doubleTapZoom,
+              ),
             ),
+            children: [
+              _getTileLayer(),
+              if (polylines.isNotEmpty) PolylineLayer(polylines: polylines),
+              if (markers.isNotEmpty) MarkerLayer(markers: markers),
+            ],
           ),
-          children: [
-            _getTileLayer(), // Dynamic tile layer based on map type
-            if (polylines.isNotEmpty) PolylineLayer(polylines: polylines),
-            if (markers.isNotEmpty) MarkerLayer(markers: markers),
-          ],
         ),
         // Map type selector
         Positioned(
@@ -928,442 +1044,366 @@ class _ForesterTreeMappingState extends State<ForesterTreeMapping> {
           right: MediaQuery.of(context).size.width * 0.04,
           child: _buildMapTypeSelector(),
         ),
-        // Info panel at bottom
+        // Bottom info panel
         Positioned(
           bottom: MediaQuery.of(context).size.height * 0.025,
-          left: MediaQuery.of(context).size.width * 0.05,
-          right: MediaQuery.of(context).size.width * 0.05,
-          child: Container(
-            constraints: BoxConstraints(
-              maxHeight: MediaQuery.of(context).size.height * 0.35,
-            ),
-            padding: EdgeInsets.all(MediaQuery.of(context).size.width * 0.04),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(12),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withOpacity(0.1),
-                  blurRadius: 8,
-                  offset: const Offset(0, 4),
-                ),
-              ],
-            ),
-            child: SingleChildScrollView(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          left: MediaQuery.of(context).size.width * 0.04,
+          right: MediaQuery.of(context).size.width * 0.04,
+          child: _buildInfoPanel(),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildInfoPanel() {
+    final screenWidth = MediaQuery.of(context).size.width;
+    final screenHeight = MediaQuery.of(context).size.height;
+
+    return Container(
+      constraints: BoxConstraints(
+        maxHeight: screenHeight * 0.35,
+      ),
+      padding: EdgeInsets.all(screenWidth * 0.04),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.08),
+            blurRadius: 20,
+            offset: const Offset(0, 8),
+          ),
+        ],
+      ),
+      child: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Row(
+              children: [
+                Container(
+                  padding: EdgeInsets.symmetric(
+                    horizontal: screenWidth * 0.025,
+                    vertical: screenHeight * 0.006,
+                  ),
+                  decoration: BoxDecoration(
+                    color: _lightGreen,
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
                     children: [
-                      Flexible(
-                        child: Text(
-                          'Trees: ${taggedTrees.length}',
-                          style: TextStyle(
-                            fontSize: MediaQuery.of(context).size.width * 0.04,
-                            fontWeight: FontWeight.bold,
-                            color: Colors.green,
-                          ),
-                          overflow: TextOverflow.ellipsis,
+                      const Icon(Icons.park_rounded, size: 16, color: _primaryGreen),
+                      SizedBox(width: screenWidth * 0.012),
+                      Text(
+                        '${taggedTrees.length} Trees',
+                        style: TextStyle(
+                          fontSize: screenWidth * 0.035,
+                          fontWeight: FontWeight.w700,
+                          color: _primaryGreen,
                         ),
+                        overflow: TextOverflow.ellipsis,
                       ),
-                      if (selectedTreeId != null)
-                        Flexible(
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Flexible(
-                                child: Container(
-                                  padding: EdgeInsets.symmetric(
-                                      horizontal:
-                                          MediaQuery.of(context).size.width *
-                                              0.02,
-                                      vertical:
-                                          MediaQuery.of(context).size.height *
-                                              0.005),
-                                  decoration: BoxDecoration(
-                                    color: Colors.blue[100],
-                                    borderRadius: BorderRadius.circular(12),
-                                  ),
-                                  child: Row(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      Icon(Icons.route,
-                                          size: MediaQuery.of(context)
-                                                  .size
-                                                  .width *
-                                              0.03,
-                                          color: Colors.blue),
-                                      SizedBox(
-                                          width: MediaQuery.of(context)
-                                                  .size
-                                                  .width *
-                                              0.01),
-                                      Flexible(
-                                        child: Text(
-                                          'Route Active',
-                                          style: TextStyle(
-                                            fontSize: MediaQuery.of(context)
-                                                    .size
-                                                    .width *
-                                                0.028,
-                                            fontWeight: FontWeight.w600,
-                                            color: Colors.blue,
-                                          ),
-                                          overflow: TextOverflow.ellipsis,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              ),
-                              SizedBox(
-                                  width:
-                                      MediaQuery.of(context).size.width * 0.02),
-                              InkWell(
-                                onTap: () {
-                                  setState(() {
-                                    selectedTreeId = null;
-                                    polylines.clear();
-                                  });
-                                },
-                                child: Container(
-                                  padding: EdgeInsets.all(
-                                      MediaQuery.of(context).size.width * 0.01),
-                                  decoration: BoxDecoration(
-                                    color: Colors.red[100],
-                                    borderRadius: BorderRadius.circular(8),
-                                  ),
-                                  child: Icon(
-                                    Icons.close,
-                                    size: MediaQuery.of(context).size.width *
-                                        0.04,
-                                    color: Colors.red,
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
                     ],
                   ),
-                  SizedBox(height: MediaQuery.of(context).size.height * 0.01),
-                  Text(
-                    selectedTreeId == null
-                        ? 'Tap a tree card or marker to display route on map'
-                        : 'Showing route from your location to selected tree',
-                    style: TextStyle(
-                      fontSize: MediaQuery.of(context).size.width * 0.028,
-                      color: Colors.grey[600],
-                      fontStyle: FontStyle.italic,
-                    ),
-                    textAlign: TextAlign.center,
-                  ),
-                  if (isLoadingDistanceElevation) ...[
-                    SizedBox(height: MediaQuery.of(context).size.height * 0.01),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        SizedBox(
-                          width: MediaQuery.of(context).size.width * 0.03,
-                          height: MediaQuery.of(context).size.width * 0.03,
-                          child:
-                              const CircularProgressIndicator(strokeWidth: 2),
-                        ),
-                        SizedBox(
-                            width: MediaQuery.of(context).size.width * 0.02),
-                        Flexible(
-                          child: Text(
-                            'Loading distance & elevation data...',
-                            style: TextStyle(
-                              fontSize:
-                                  MediaQuery.of(context).size.width * 0.025,
-                              color: Colors.grey[600],
-                              fontStyle: FontStyle.italic,
-                            ),
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
-                  SizedBox(height: MediaQuery.of(context).size.height * 0.015),
-                  if (currentLocation == null)
-                    Padding(
-                      padding: EdgeInsets.only(
-                          bottom: MediaQuery.of(context).size.height * 0.01),
+                ),
+                const Spacer(),
+                if (selectedTreeId != null) ...[
+                  Flexible(
+                    child: Container(
+                      padding: EdgeInsets.symmetric(
+                        horizontal: screenWidth * 0.025,
+                        vertical: screenHeight * 0.006,
+                      ),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFE3F2FD),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
                       child: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          Icon(Icons.info_outline,
-                              size: MediaQuery.of(context).size.width * 0.04,
-                              color: Colors.orange),
-                          SizedBox(
-                              width: MediaQuery.of(context).size.width * 0.01),
+                          Icon(Icons.route_rounded,
+                              size: screenWidth * 0.035,
+                              color: const Color(0xFF1565C0)),
+                          SizedBox(width: screenWidth * 0.01),
                           Flexible(
                             child: Text(
-                              'Device location unavailable',
+                              'Route Active',
                               style: TextStyle(
-                                  fontSize:
-                                      MediaQuery.of(context).size.width * 0.028,
-                                  color: Colors.orange),
+                                fontSize: screenWidth * 0.028,
+                                fontWeight: FontWeight.w600,
+                                color: const Color(0xFF1565C0),
+                              ),
                               overflow: TextOverflow.ellipsis,
                             ),
                           ),
                         ],
                       ),
                     ),
-                  if (taggedTrees.isNotEmpty)
-                    SizedBox(
-                      height: MediaQuery.of(context).size.height * 0.13,
-                      child: ListView.builder(
-                        scrollDirection: Axis.horizontal,
-                        itemCount: taggedTrees.length,
-                        itemBuilder: (context, index) {
-                          final tree = taggedTrees[index];
-                          final treeId =
-                              tree['tree_id'] ?? tree['tree_no'] ?? 'N/A';
-                          final isSelected = selectedTreeId == treeId;
-                          final distanceInfo = treeDistanceData[treeId];
-                          final elevation = treeElevationData[treeId];
-
-                          return GestureDetector(
-                            onTap: () {
-                              final lat =
-                                  (tree['latitude'] as num?)?.toDouble();
-                              final lng =
-                                  (tree['longitude'] as num?)?.toDouble();
-                              if (lat != null && lng != null) {
-                                _onTreeMarkerTapped(treeId, lat, lng);
-                              }
-                            },
-                            child: Container(
-                              width: MediaQuery.of(context).size.width * 0.3,
-                              margin: EdgeInsets.only(
-                                  right:
-                                      MediaQuery.of(context).size.width * 0.02),
-                              padding: EdgeInsets.all(
-                                  MediaQuery.of(context).size.width * 0.02),
-                              decoration: BoxDecoration(
-                                color: isSelected
-                                    ? Colors.blue[100]
-                                    : Colors.green[50],
-                                borderRadius: BorderRadius.circular(8),
-                                border: Border.all(
-                                  color:
-                                      isSelected ? Colors.blue : Colors.green,
-                                  width: isSelected ? 2 : 1.5,
-                                ),
-                              ),
-                              child: SingleChildScrollView(
-                                child: Column(
-                                  mainAxisAlignment: MainAxisAlignment.center,
-                                  crossAxisAlignment: CrossAxisAlignment.center,
-                                  children: [
-                                    if (isSelected)
-                                      Icon(Icons.near_me,
-                                          size:
-                                              MediaQuery.of(context).size.width *
-                                                  0.035,
-                                          color: Colors.blue),
-                                    Text(
-                                      tree['specie'] ?? 'Unknown',
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
-                                      textAlign: TextAlign.center,
-                                      style: TextStyle(
-                                        fontSize:
-                                            MediaQuery.of(context).size.width *
-                                                0.028,
-                                        fontWeight: FontWeight.bold,
-                                        color: isSelected
-                                            ? Colors.blue
-                                            : Colors.green,
-                                      ),
-                                    ),
-                                    Text(
-                                      'ID: ${tree['tree_no'] ?? "N/A"}',
-                                      style: TextStyle(
-                                        fontSize:
-                                            MediaQuery.of(context).size.width *
-                                                0.023,
-                                        color: Colors.grey,
-                                      ),
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
-                                    ),
-                                    if (distanceInfo != null) ...[
-                                      SizedBox(
-                                          height:
-                                              MediaQuery.of(context).size.height *
-                                                  0.002),
-                                      Text(
-                                        '🚗 ${distanceInfo['distance']}',
-                                        style: TextStyle(
-                                          fontSize:
-                                              MediaQuery.of(context).size.width *
-                                                  0.023,
-                                          color: Colors.black87,
-                                          fontWeight: FontWeight.w600,
-                                        ),
-                                        maxLines: 1,
-                                        overflow: TextOverflow.ellipsis,
-                                      ),
-                                      Text(
-                                        '⏱️ ${distanceInfo['duration']}',
-                                        style: TextStyle(
-                                          fontSize:
-                                              MediaQuery.of(context).size.width *
-                                                  0.02,
-                                          color: Colors.grey,
-                                        ),
-                                        maxLines: 1,
-                                        overflow: TextOverflow.ellipsis,
-                                      ),
-                                    ],
-                                    if (elevation != null) ...[
-                                      SizedBox(
-                                          height:
-                                              MediaQuery.of(context).size.height *
-                                                  0.002),
-                                      Text(
-                                        '⛰️ ${elevation.toStringAsFixed(0)}m',
-                                        style: TextStyle(
-                                          fontSize:
-                                              MediaQuery.of(context).size.width *
-                                                  0.02,
-                                          color: Colors.grey,
-                                        ),
-                                        maxLines: 1,
-                                        overflow: TextOverflow.ellipsis,
-                                      ),
-                                    ],
-                                    if (currentLocation != null) ...[
-                                      SizedBox(
-                                          height:
-                                              MediaQuery.of(context).size.height *
-                                                  0.005),
-                                      GestureDetector(
-                                        onTap: () {
-                                          final lat = (tree['latitude'] as num?)
-                                              ?.toDouble();
-                                          final lng = (tree['longitude'] as num?)
-                                              ?.toDouble();
-                                          if (lat != null && lng != null) {
-                                            // Show visual route on map
-                                            _onTreeMarkerTapped(treeId, lat, lng);
-                                          }
-                                        },
-                                        child: Container(
-                                          padding: EdgeInsets.symmetric(
-                                            horizontal: MediaQuery.of(context)
-                                                    .size
-                                                    .width *
-                                                0.015,
-                                            vertical: MediaQuery.of(context)
-                                                    .size
-                                                    .height *
-                                                0.002,
-                                          ),
-                                          decoration: BoxDecoration(
-                                            color: isSelected
-                                                ? Colors.blue
-                                                : Colors.green,
-                                            borderRadius:
-                                                BorderRadius.circular(4),
-                                          ),
-                                          child: Row(
-                                            mainAxisSize: MainAxisSize.min,
-                                            children: [
-                                              Icon(
-                                                isSelected
-                                                    ? Icons.near_me
-                                                    : Icons.route,
-                                                size: MediaQuery.of(context)
-                                                        .size
-                                                        .width *
-                                                    0.025,
-                                                color: Colors.white,
-                                              ),
-                                              SizedBox(
-                                                  width: MediaQuery.of(context)
-                                                          .size
-                                                          .width *
-                                                      0.005),
-                                              Flexible(
-                                                child: Text(
-                                                  isSelected
-                                                      ? 'Selected'
-                                                      : 'Show Route',
-                                                  style: TextStyle(
-                                                    fontSize:
-                                                        MediaQuery.of(context)
-                                                                .size
-                                                                .width *
-                                                            0.02,
-                                                    color: Colors.white,
-                                                    fontWeight: FontWeight.bold,
-                                                  ),
-                                                  overflow: TextOverflow.ellipsis,
-                                                ),
-                                              ),
-                                            ],
-                                          ),
-                                        ),
-                                      ),
-                                    ],
-                                  ],
-                                ),
-                              ),
-                            ),
-                          );
-                        },
+                  ),
+                  SizedBox(width: screenWidth * 0.015),
+                  InkWell(
+                    onTap: () {
+                      setState(() {
+                        selectedTreeId = null;
+                        polylines.clear();
+                      });
+                    },
+                    child: Container(
+                      padding: EdgeInsets.all(screenWidth * 0.012),
+                      decoration: BoxDecoration(
+                        color: Colors.red[50],
+                        borderRadius: BorderRadius.circular(8),
                       ),
-                    )
-                  else
-                    Text(
-                      'No tagged trees yet',
-                      style: TextStyle(
-                          color: Colors.grey,
-                          fontSize: MediaQuery.of(context).size.width * 0.035),
+                      child: Icon(
+                        Icons.close_rounded,
+                        size: screenWidth * 0.04,
+                        color: Colors.red[400],
+                      ),
                     ),
+                  ),
+                ],
+              ],
+            ),
+            SizedBox(height: screenHeight * 0.01),
+            Text(
+              selectedTreeId == null
+                  ? 'Tap a tree card or marker to display route'
+                  : 'Showing route to selected tree',
+              style: TextStyle(
+                fontSize: screenWidth * 0.03,
+                color: Colors.grey[500],
+                fontStyle: FontStyle.italic,
+              ),
+              textAlign: TextAlign.center,
+            ),
+            if (isLoadingDistanceElevation) ...[
+              SizedBox(height: screenHeight * 0.01),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  SizedBox(
+                    width: screenWidth * 0.03,
+                    height: screenWidth * 0.03,
+                    child:
+                        const CircularProgressIndicator(strokeWidth: 2, color: _primaryGreen),
+                  ),
+                  SizedBox(width: screenWidth * 0.02),
+                  Flexible(
+                    child: Text(
+                      'Loading distance data...',
+                      style: TextStyle(
+                        fontSize: screenWidth * 0.028,
+                        color: Colors.grey[500],
+                      ),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
                 ],
               ),
-            ),
-          ),
+            ],
+            SizedBox(height: screenHeight * 0.012),
+            if (currentLocation == null)
+              Padding(
+                padding: EdgeInsets.only(bottom: screenHeight * 0.01),
+                child: Container(
+                  padding: EdgeInsets.symmetric(
+                    horizontal: screenWidth * 0.025,
+                    vertical: screenHeight * 0.007,
+                  ),
+                  decoration: BoxDecoration(
+                    color: Colors.orange[50],
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.info_outline_rounded,
+                          size: screenWidth * 0.035,
+                          color: Colors.orange[700]),
+                      SizedBox(width: screenWidth * 0.015),
+                      Flexible(
+                        child: Text(
+                          'Device location unavailable',
+                          style: TextStyle(
+                              fontSize: screenWidth * 0.028,
+                              color: Colors.orange[700]),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            if (taggedTrees.isNotEmpty)
+              SizedBox(
+                height: screenHeight * 0.13,
+                child: ListView.builder(
+                  scrollDirection: Axis.horizontal,
+                  itemCount: taggedTrees.length,
+                  itemBuilder: (context, index) => _buildTreeCard(taggedTrees[index]),
+                ),
+              )
+            else
+              Text(
+                'No tagged trees yet',
+                style: TextStyle(
+                    color: Colors.grey[400],
+                    fontSize: screenWidth * 0.035),
+              ),
+          ],
         ),
-      ],
+      ),
     );
   }
 
-  /// 🗺️ Build map type selector widget
+  Widget _buildTreeCard(Map<String, dynamic> tree) {
+    final screenWidth = MediaQuery.of(context).size.width;
+    final screenHeight = MediaQuery.of(context).size.height;
+    final treeId = tree['tree_id'] ?? tree['tree_no'] ?? 'N/A';
+    final isSelected = selectedTreeId == treeId;
+    final distanceInfo = treeDistanceData[treeId];
+    final elevation = treeElevationData[treeId];
+    final accentColor = isSelected ? const Color(0xFF1565C0) : _primaryGreen;
+
+    return GestureDetector(
+      onTap: () {
+        final lat = (tree['latitude'] as num?)?.toDouble();
+        final lng = (tree['longitude'] as num?)?.toDouble();
+        if (lat != null && lng != null) {
+          _onTreeMarkerTapped(treeId, lat, lng);
+        }
+      },
+      child: Container(
+        width: screenWidth * 0.3,
+        margin: EdgeInsets.only(right: screenWidth * 0.025),
+        padding: EdgeInsets.all(screenWidth * 0.025),
+        decoration: BoxDecoration(
+          color: isSelected ? const Color(0xFFE3F2FD) : _lightGreen,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(
+            color: isSelected ? const Color(0xFF1565C0) : _primaryGreen.withOpacity(0.3),
+            width: isSelected ? 2 : 1,
+          ),
+        ),
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              if (isSelected)
+                Icon(Icons.near_me_rounded,
+                    size: screenWidth * 0.035,
+                    color: accentColor),
+              Text(
+                tree['specie'] ?? 'Unknown',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: screenWidth * 0.03,
+                  fontWeight: FontWeight.w700,
+                  color: accentColor,
+                ),
+              ),
+              Text(
+                'ID: ${tree['tree_no'] ?? "N/A"}',
+                style: TextStyle(
+                  fontSize: screenWidth * 0.025,
+                  color: Colors.grey[500],
+                ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+              if (distanceInfo != null) ...[
+                SizedBox(height: screenHeight * 0.003),
+                Text(
+                  distanceInfo['distance'],
+                  style: TextStyle(
+                    fontSize: screenWidth * 0.025,
+                    color: Colors.grey[700],
+                    fontWeight: FontWeight.w600,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                Text(
+                  distanceInfo['duration'],
+                  style: TextStyle(
+                    fontSize: screenWidth * 0.022,
+                    color: Colors.grey[500],
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ],
+              if (elevation != null) ...[
+                SizedBox(height: screenHeight * 0.003),
+                Text(
+                  '${elevation.toStringAsFixed(0)}m elev',
+                  style: TextStyle(
+                    fontSize: screenWidth * 0.022,
+                    color: Colors.grey[500],
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ],
+              if (currentLocation != null) ...[
+                SizedBox(height: screenHeight * 0.005),
+                Container(
+                  padding: EdgeInsets.symmetric(
+                    horizontal: screenWidth * 0.02,
+                    vertical: screenHeight * 0.003,
+                  ),
+                  decoration: BoxDecoration(
+                    color: accentColor,
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                  child: Text(
+                    isSelected ? 'Selected' : 'Route',
+                    style: TextStyle(
+                      fontSize: screenWidth * 0.022,
+                      color: Colors.white,
+                      fontWeight: FontWeight.w600,
+                    ),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   Widget _buildMapTypeSelector() {
     return Container(
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(8),
+        borderRadius: BorderRadius.circular(14),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.2),
-            blurRadius: 6,
-            offset: const Offset(0, 2),
+            color: Colors.black.withOpacity(0.1),
+            blurRadius: 12,
+            offset: const Offset(0, 4),
           ),
         ],
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          _buildMapTypeButton('street', Icons.map, 'Street'),
-          const Divider(height: 1),
-          _buildMapTypeButton('satellite', Icons.satellite_alt, 'Satellite'),
-          const Divider(height: 1),
-          _buildMapTypeButton('terrain', Icons.terrain, 'Terrain'),
+          _buildMapTypeButton('street', Icons.map_rounded, 'Street'),
+          Container(height: 1, color: Colors.grey[200]),
+          _buildMapTypeButton('satellite', Icons.satellite_alt_rounded, 'Satellite'),
+          Container(height: 1, color: Colors.grey[200]),
+          _buildMapTypeButton('terrain', Icons.terrain_rounded, 'Terrain'),
         ],
       ),
     );
   }
 
-  /// 🗺️ Build individual map type button
   Widget _buildMapTypeButton(String type, IconData icon, String label) {
     final screenWidth = MediaQuery.of(context).size.width;
     final isSelected = _mapType == type;
@@ -1378,16 +1418,16 @@ class _ForesterTreeMappingState extends State<ForesterTreeMapping> {
         padding: EdgeInsets.symmetric(
             horizontal: screenWidth * 0.03, vertical: screenWidth * 0.025),
         decoration: BoxDecoration(
-          color: isSelected ? Colors.green[700] : Colors.transparent,
+          color: isSelected ? _darkGreen : Colors.transparent,
           borderRadius: type == 'street'
               ? const BorderRadius.only(
-                  topLeft: Radius.circular(8),
-                  topRight: Radius.circular(8),
+                  topLeft: Radius.circular(14),
+                  topRight: Radius.circular(14),
                 )
               : type == 'terrain'
                   ? const BorderRadius.only(
-                      bottomLeft: Radius.circular(8),
-                      bottomRight: Radius.circular(8),
+                      bottomLeft: Radius.circular(14),
+                      bottomRight: Radius.circular(14),
                     )
                   : null,
         ),
@@ -1396,16 +1436,16 @@ class _ForesterTreeMappingState extends State<ForesterTreeMapping> {
           children: [
             Icon(
               icon,
-              size: screenWidth * 0.05,
-              color: isSelected ? Colors.white : Colors.grey[700],
+              size: screenWidth * 0.045,
+              color: isSelected ? Colors.white : Colors.grey[600],
             ),
             SizedBox(width: screenWidth * 0.02),
             Text(
               label,
               style: TextStyle(
-                fontSize: screenWidth * 0.032,
-                fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-                color: isSelected ? Colors.white : Colors.grey[700],
+                fontSize: screenWidth * 0.03,
+                fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
+                color: isSelected ? Colors.white : Colors.grey[600],
               ),
             ),
           ],

@@ -689,203 +689,154 @@ class _PLTPFormPageState extends State<PLTPFormPage> {
     }
   }
 
-  Widget buildUploadField(Map<String, String> label) {
+  static const Color _primaryGreen = Color(0xFF2E7D32);
+  static const Color _darkGreen = Color(0xFF1B5E20);
+  static const Color _lightGreen = Color(0xFFE8F5E9);
+  static const Color _surfaceColor = Color(0xFFF1F8E9);
+
+  Widget buildUploadField(Map<String, String> label, int index) {
     final title = label["title"]!;
     final description = label["description"] ?? "";
     final file = uploadedFiles[title]!["file"] as PlatformFile?;
     final url = uploadedFiles[title]!["url"] as String?;
     final isUploaded = url != null;
 
-    // Get per-document reuploadAllowed flag and comments
     final docData = _documentComments[title];
     final reuploadAllowed = docData?['reuploadAllowed'] as bool? ?? false;
-    final hasComments = docData?['message'] != null &&
-        (docData?['message'] as String?)?.isNotEmpty == true;
+    final hasComments = docData?['message'] != null && (docData?['message'] as String?)?.isNotEmpty == true;
     final comment = docData;
 
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 8),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      title,
-                      style: const TextStyle(
-                        fontSize: 15,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.black,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    if ((file != null) || (isUploaded))
-                      Padding(
-                        padding: const EdgeInsets.only(top: 6),
-                        child: Text(
-                          "Uploaded: ${file != null ? file.name : url != null ? url.split('/').last : ''}",
-                          style: const TextStyle(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w500,
-                            color: Colors.grey,
-                          ),
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: isUploaded ? _primaryGreen.withValues(alpha: 0.3) : file != null ? Colors.orange.withValues(alpha: 0.3) : Colors.grey.withValues(alpha: 0.15),
+        ),
+        boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.04), blurRadius: 8, offset: const Offset(0, 2))],
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Container(
+                  width: 36, height: 36,
+                  decoration: BoxDecoration(
+                    color: isUploaded ? _primaryGreen.withValues(alpha: 0.1) : file != null ? Colors.orange.withValues(alpha: 0.1) : _lightGreen,
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Center(
+                    child: isUploaded
+                        ? const Icon(Icons.check_circle_rounded, color: _primaryGreen, size: 20)
+                        : file != null
+                            ? const Icon(Icons.hourglass_bottom_rounded, color: Colors.orange, size: 20)
+                            : Text('${index + 1}', style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: _primaryGreen)),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(title, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: Color(0xFF1A1A1A))),
+                      if (description.isNotEmpty) ...[const SizedBox(height: 4), Text(description, style: TextStyle(fontSize: 12, color: Colors.grey[600]))],
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                if (isUploaded)
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                    decoration: BoxDecoration(color: _primaryGreen.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(20)),
+                    child: const Row(mainAxisSize: MainAxisSize.min, children: [
+                      Icon(Icons.cloud_done_rounded, color: _primaryGreen, size: 14), SizedBox(width: 4),
+                      Text('Uploaded', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: _primaryGreen)),
+                    ]),
+                  )
+                else if (file != null)
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                    decoration: BoxDecoration(color: Colors.orange.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(20)),
+                    child: const Row(mainAxisSize: MainAxisSize.min, children: [
+                      Icon(Icons.file_present_rounded, color: Colors.orange, size: 14), SizedBox(width: 4),
+                      Text('Ready', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: Colors.orange)),
+                    ]),
+                  ),
+                const Spacer(),
+                if (isUploaded)
+                  TextButton.icon(
+                    onPressed: () {
+                      final fn = url.split('/').last.split('?').first;
+                      final ext = fn.split('.').last.toLowerCase();
+                      if (ext == 'pdf') {
+                        Navigator.push(context, MaterialPageRoute(builder: (_) => PdfPreviewPage(url: url)));
+                      } else {
+                        launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
+                      }
+                    },
+                    icon: const Icon(Icons.visibility_rounded, size: 16),
+                    label: const Text('View', style: TextStyle(fontSize: 12)),
+                    style: TextButton.styleFrom(foregroundColor: _primaryGreen, padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6)),
+                  ),
+                const SizedBox(width: 4),
+                Material(
+                  color: (isUploaded && !reuploadAllowed) ? Colors.grey[200] : isUploaded ? Colors.orange : file != null ? Colors.orange : _primaryGreen,
+                  borderRadius: BorderRadius.circular(12),
+                  child: InkWell(
+                    onTap: (isUploaded && !reuploadAllowed) || _isUploading ? null : () => pickFile(title),
+                    borderRadius: BorderRadius.circular(12),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                      child: Row(mainAxisSize: MainAxisSize.min, children: [
+                        Icon((isUploaded && !reuploadAllowed) ? Icons.lock_rounded : Icons.upload_file_rounded, size: 16, color: (isUploaded && !reuploadAllowed) ? Colors.grey[500] : Colors.white),
+                        const SizedBox(width: 6),
+                        Text(
+                          isUploaded ? (reuploadAllowed ? 'Re-upload' : 'Done') : file != null ? 'Change' : 'Select',
+                          style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: (isUploaded && !reuploadAllowed) ? Colors.grey[500] : Colors.white),
                         ),
-                      ),
-                    if (isUploaded)
-                      TextButton(
-                        onPressed: () async {
-                          if (url != null) {
-                            final fileName = url
-                                .split('/')
-                                .last
-                                .split('?')
-                                .first; // Remove query params
-                            final ext = fileName.split('.').last.toLowerCase();
-
-                            if (ext == 'pdf') {
-                              // Preview PDF in-app
-                              Navigator.push(
-                                context,
-                                MaterialPageRoute(
-                                  builder: (_) => PdfPreviewPage(url: url),
-                                ),
-                              );
-                            } else if (ext == 'doc' || ext == 'docx') {
-                              // Open DOC/DOCX in external app
-                              try {
-                                final uri = Uri.parse(url);
-                                if (await canLaunchUrl(uri)) {
-                                  await launchUrl(uri,
-                                      mode: LaunchMode.externalApplication);
-                                } else {
-                                  if (mounted) {
-                                    ScaffoldMessenger.of(context).showSnackBar(
-                                      const SnackBar(
-                                          content:
-                                              Text("Cannot open this file.")),
-                                    );
-                                  }
-                                }
-                              } catch (e) {
-                                if (mounted) {
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    SnackBar(
-                                        content:
-                                            Text("Error opening file: $e")),
-                                  );
-                                }
-                              }
-                            } else {
-                              if (mounted) {
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  const SnackBar(
-                                    content: Text(
-                                        "Preview not supported for this file type."),
-                                  ),
-                                );
-                              }
-                            }
-                          }
-                        },
-                        child: const Text("View Uploaded File"),
-                      ),
+                      ]),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            if (hasComments && comment != null) ...[
+              const SizedBox(height: 12),
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(color: Colors.orange[50], borderRadius: BorderRadius.circular(12), border: Border.all(color: Colors.orange.withValues(alpha: 0.3))),
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Row(children: [
+                    Container(padding: const EdgeInsets.all(4), decoration: BoxDecoration(color: Colors.orange.withValues(alpha: 0.15), borderRadius: BorderRadius.circular(6)), child: const Icon(Icons.comment_rounded, color: Colors.orange, size: 14)),
+                    const SizedBox(width: 8),
+                    Text('Admin Comment', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.orange[700])),
+                  ]),
+                  const SizedBox(height: 8),
+                  Text(comment['message'] ?? '', style: const TextStyle(fontSize: 13, color: Colors.black87)),
+                  const SizedBox(height: 4),
+                  Text('From: ${comment['from'] ?? 'Admin'} • ${_formatTimestamp(comment['createdAt'])}', style: TextStyle(fontSize: 11, color: Colors.grey[600])),
+                  if (reuploadAllowed) ...[
+                    const SizedBox(height: 8),
+                    Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(color: _lightGreen, borderRadius: BorderRadius.circular(8)),
+                      child: const Row(children: [Icon(Icons.check_circle_rounded, color: _primaryGreen, size: 16), SizedBox(width: 8), Expanded(child: Text('You can re-upload this file', style: TextStyle(fontSize: 12, color: _primaryGreen)))]),
+                    ),
                   ],
-                ),
-              ),
-              ElevatedButton(
-                onPressed: (isUploaded && !reuploadAllowed) || _isUploading
-                    ? null
-                    : () => pickFile(title),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: (isUploaded && !reuploadAllowed)
-                      ? Colors.grey
-                      : (isUploaded ? Colors.orange : Colors.green[700]),
-                  foregroundColor: Colors.white,
-                ),
-                child: Text(
-                  isUploaded
-                      ? (reuploadAllowed ? "Re-upload" : "Uploaded")
-                      : (file != null ? "Change File" : "Select File"),
-                ),
+                ]),
               ),
             ],
-          ),
-          // Show admin comment if exists
-          if (hasComments && comment != null)
-            Padding(
-              padding: const EdgeInsets.only(top: 12),
-              child: Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: Colors.orange[50],
-                  border: Border.all(color: Colors.orange, width: 1),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        const Icon(Icons.comment,
-                            color: Colors.orange, size: 18),
-                        const SizedBox(width: 8),
-                        Text(
-                          'Admin Comment',
-                          style: TextStyle(
-                            fontSize: 12,
-                            fontWeight: FontWeight.bold,
-                            color: Colors.orange[700],
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      comment['message'] ?? '',
-                      style:
-                          const TextStyle(fontSize: 13, color: Colors.black87),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      'From: ${comment['from'] ?? 'Admin'} • ${_formatTimestamp(comment['createdAt'])}',
-                      style: TextStyle(fontSize: 11, color: Colors.grey[600]),
-                    ),
-                    if (reuploadAllowed)
-                      Padding(
-                        padding: const EdgeInsets.only(top: 8),
-                        child: Container(
-                          padding: const EdgeInsets.all(8),
-                          decoration: BoxDecoration(
-                            color: Colors.green[50],
-                            borderRadius: BorderRadius.circular(4),
-                          ),
-                          child: const Row(
-                            children: [
-                              Icon(Icons.check_circle,
-                                  color: Colors.green, size: 16),
-                              SizedBox(width: 8),
-                              Expanded(
-                                child: Text(
-                                  'You can re-upload this file',
-                                  style: TextStyle(
-                                      fontSize: 12, color: Colors.green),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                  ],
-                ),
-              ),
-            ),
-          const SizedBox(height: 8),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -893,140 +844,156 @@ class _PLTPFormPageState extends State<PLTPFormPage> {
   /// UI
   @override
   Widget build(BuildContext context) {
+    final uploadProgress = formLabels.isEmpty ? 0.0 : formLabels.where((l) => uploadedFiles[l['title']]?['url'] != null).length / formLabels.length;
+
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('pltpP Application Form'),
-        backgroundColor: Colors.green,
-        foregroundColor: Colors.white,
-      ),
+      backgroundColor: _surfaceColor,
       body: _isLoadingSubmissions
-          ? const Center(child: CircularProgressIndicator())
-          : SingleChildScrollView(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // Submission Selector
-                  Container(
-                    padding: const EdgeInsets.all(16),
-                    decoration: BoxDecoration(
-                      color: Colors.green[50],
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: Colors.green[200]!),
+          ? const Center(child: CircularProgressIndicator(color: _primaryGreen))
+          : CustomScrollView(
+              slivers: [
+                SliverToBoxAdapter(
+                  child: Container(
+                    decoration: const BoxDecoration(
+                      gradient: LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: [_darkGreen, _primaryGreen, Color(0xFF43A047)]),
+                      borderRadius: BorderRadius.only(bottomLeft: Radius.circular(28), bottomRight: Radius.circular(28)),
                     ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    child: SafeArea(
+                      bottom: false,
+                      child: Padding(
+                        padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Row(
-                              children: [
-                                Icon(Icons.folder_open,
-                                    color: Colors.green[700], size: 24),
-                                const SizedBox(width: 8),
-                                Text(
-                                  'Your Submissions',
-                                  style: TextStyle(
-                                    fontSize: 18,
-                                    fontWeight: FontWeight.bold,
-                                    color: Colors.green[900],
-                                  ),
+                            Row(children: [
+                              InkWell(
+                                onTap: () => Navigator.pop(context),
+                                borderRadius: BorderRadius.circular(12),
+                                child: Container(
+                                  padding: const EdgeInsets.all(8),
+                                  decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.15), borderRadius: BorderRadius.circular(12)),
+                                  child: const Icon(Icons.arrow_back_rounded, color: Colors.white, size: 22),
                                 ),
-                              ],
-                            ),
-                            ElevatedButton.icon(
-                              onPressed: _createNewSubmission,
-                              icon: const Icon(Icons.add, size: 18),
-                              label: const Text('New'),
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: Colors.green[700],
-                                foregroundColor: Colors.white,
-                                padding: const EdgeInsets.symmetric(
-                                    horizontal: 12, vertical: 8),
                               ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                                  const Text('PLTP Application', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.white)),
+                                  const SizedBox(height: 2),
+                                  Text('Private Land Timber Permit', style: TextStyle(fontSize: 12, color: Colors.white.withValues(alpha: 0.8))),
+                                ]),
+                              ),
+                            ]),
+                            const SizedBox(height: 16),
+                            // Submission selector
+                            Container(
+                              padding: const EdgeInsets.all(12),
+                              decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(14)),
+                              child: Column(children: [
+                                Row(children: [
+                                  const Icon(Icons.folder_open_rounded, color: Colors.white, size: 20),
+                                  const SizedBox(width: 8),
+                                  const Expanded(child: Text('Submissions', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: Colors.white))),
+                                  Material(
+                                    color: Colors.white.withValues(alpha: 0.2),
+                                    borderRadius: BorderRadius.circular(10),
+                                    child: InkWell(
+                                      onTap: _createNewSubmission,
+                                      borderRadius: BorderRadius.circular(10),
+                                      child: const Padding(
+                                        padding: EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                                        child: Row(mainAxisSize: MainAxisSize.min, children: [
+                                          Icon(Icons.add_rounded, color: Colors.white, size: 16), SizedBox(width: 4),
+                                          Text('New', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Colors.white)),
+                                        ]),
+                                      ),
+                                    ),
+                                  ),
+                                ]),
+                                if (_existingSubmissions.isNotEmpty) ...[
+                                  const SizedBox(height: 10),
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 12),
+                                    decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(10)),
+                                    child: DropdownButtonHideUnderline(
+                                      child: DropdownButton<String>(
+                                        value: _currentSubmissionId,
+                                        isExpanded: true,
+                                        icon: const Icon(Icons.expand_more_rounded, color: _primaryGreen),
+                                        items: _existingSubmissions.map((s) {
+                                          return DropdownMenuItem<String>(
+                                            value: s['id'] as String,
+                                            child: Row(children: [
+                                              Icon(s['status'] == 'submitted' ? Icons.check_circle_rounded : Icons.edit_note_rounded, color: s['status'] == 'submitted' ? _primaryGreen : Colors.orange, size: 18),
+                                              const SizedBox(width: 8),
+                                              Expanded(child: Text('${s['id']}', style: const TextStyle(fontSize: 13))),
+                                            ]),
+                                          );
+                                        }).toList(),
+                                        onChanged: (v) { if (v != null) _switchSubmission(v); },
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ]),
                             ),
+                            const SizedBox(height: 16),
+                            Row(children: [
+                              Expanded(
+                                child: ClipRRect(
+                                  borderRadius: BorderRadius.circular(4),
+                                  child: LinearProgressIndicator(value: uploadProgress, backgroundColor: Colors.white.withValues(alpha: 0.2), valueColor: const AlwaysStoppedAnimation<Color>(Colors.white), minHeight: 6),
+                                ),
+                              ),
+                              const SizedBox(width: 12),
+                              Text('${(uploadProgress * 100).toInt()}%', style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Colors.white)),
+                            ]),
                           ],
                         ),
-                        const SizedBox(height: 12),
-                        if (_existingSubmissions.isEmpty)
-                          const Text('No submissions yet.')
-                        else
-                          DropdownButtonFormField<String>(
-                            value: _currentSubmissionId,
-                            decoration: InputDecoration(
-                              labelText: 'Select Submission',
-                              border: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(8)),
-                              filled: true,
-                              fillColor: Colors.white,
-                            ),
-                            items: _existingSubmissions.map((submission) {
-                              return DropdownMenuItem<String>(
-                                value: submission['id'] as String,
-                                child: Row(
-                                  children: [
-                                    Icon(
-                                      submission['status'] == 'submitted'
-                                          ? Icons.check_circle
-                                          : Icons.edit_note,
-                                      color: submission['status'] == 'submitted'
-                                          ? Colors.green
-                                          : Colors.orange,
-                                      size: 18,
-                                    ),
-                                    const SizedBox(width: 8),
-                                    Text(
-                                      '${submission['id']}',
-                                      style: const TextStyle(fontSize: 14),
-                                    ),
-                                  ],
-                                ),
-                              );
-                            }).toList(),
-                            onChanged: (value) {
-                              if (value != null) {
-                                _switchSubmission(value);
-                              }
-                            },
-                          ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  const Text(
-                    'Issuance of Special Private Land Timber Permit (pltpP) for Premium/Naturally Grown Trees Within Private/Titled Lands',
-                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                  ),
-                  const SizedBox(height: 16),
-
-                  for (final label in formLabels) buildUploadField(label),
-                  const SizedBox(height: 32),
-                  Center(
-                    child: SizedBox(
-                      width: double.infinity,
-                      child: ElevatedButton(
-                        onPressed: _isUploading ? null : handleSubmit,
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.green[700],
-                          foregroundColor: Colors.white,
-                          padding: const EdgeInsets.symmetric(vertical: 20),
-                          textStyle: const TextStyle(
-                              fontSize: 14, fontWeight: FontWeight.bold),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                        ),
-                        child: _isUploading
-                            ? const CircularProgressIndicator(
-                                color: Colors.white)
-                            : const Text('Submit (Upload All Files)'),
                       ),
                     ),
                   ),
-                  const SizedBox(height: 32),
-                ],
-              ),
+                ),
+                SliverPadding(
+                  padding: const EdgeInsets.all(16),
+                  sliver: SliverList(
+                    delegate: SliverChildListDelegate([
+                      Row(children: [
+                        Container(padding: const EdgeInsets.all(6), decoration: BoxDecoration(color: _primaryGreen.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(8)), child: const Icon(Icons.description_rounded, color: _primaryGreen, size: 18)),
+                        const SizedBox(width: 10),
+                        const Text('Required Documents', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Color(0xFF1A1A1A))),
+                      ]),
+                      const SizedBox(height: 12),
+                      for (int i = 0; i < formLabels.length; i++) buildUploadField(formLabels[i], i),
+                      const SizedBox(height: 24),
+                      Container(
+                        width: double.infinity, height: 56,
+                        decoration: BoxDecoration(
+                          gradient: const LinearGradient(colors: [_darkGreen, _primaryGreen]),
+                          borderRadius: BorderRadius.circular(16),
+                          boxShadow: [BoxShadow(color: _primaryGreen.withValues(alpha: 0.3), blurRadius: 12, offset: const Offset(0, 4))],
+                        ),
+                        child: Material(
+                          color: Colors.transparent,
+                          child: InkWell(
+                            onTap: _isUploading ? null : handleSubmit,
+                            borderRadius: BorderRadius.circular(16),
+                            child: Center(
+                              child: _isUploading
+                                  ? const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2.5))
+                                  : const Row(mainAxisSize: MainAxisSize.min, children: [
+                                      Icon(Icons.cloud_upload_rounded, color: Colors.white, size: 20), SizedBox(width: 10),
+                                      Text('Submit All Documents', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white)),
+                                    ]),
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 24),
+                    ]),
+                  ),
+                ),
+              ],
             ),
     );
   }
